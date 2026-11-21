@@ -1168,7 +1168,7 @@ MainActor.assumeIsolated {
         let info = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: u1.email, expected: nil, mismatch: false,
                                plan: "Ultra", fiveHour: nil, fiveHourResets: nil, weekly: updated == nil ? nil : 42, weeklyResets: now.addingTimeInterval(3 * 86400),
                                updated: updated, source: nil, problem: nil, renewNote: nil, needsLogin: false, ownColor: main.ownColor, noFiveHour: true)
-            .with(AccountView(label: u1.email, numbersOwner: u1.email, line: nil, lit: true, clash: nil))
+            .with(AccountView(label: u1.email, numbersOwner: u1.email, lit: true, clash: nil))
         for f in [Face.std, .silver] { for (wn, w) in aWidths {
             snapshot(framed(DetailsView(info: info, actions: noop).frame(width: min(w, 340)), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 900)
         } }

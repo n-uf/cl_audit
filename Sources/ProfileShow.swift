@@ -56,7 +56,11 @@ struct ProfileShow {
         case .split:
             if display.sign == .signedOut || display.sign == .expired, splitWords?.switched != true { return nil }
             return (short ? splitWords?.shortLine : splitWords?.line) ?? record?.resolved?.lineText()
-        case .given(let s): return s
+        case .given(let s):
+            // "Usage: Claude Code on <address>": `display` holds the sentence as it was when the value was made, so it is built
+            // again now from the record's fact (Show emails may have changed since); any other given line has no address
+            if let r = record?.resolved, r.line == nil, r.codeUsageLine == true, let now = r.lineText() { return now }
+            return s
         }
     }
 

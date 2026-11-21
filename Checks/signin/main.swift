@@ -1613,7 +1613,7 @@ do {
     let sh = AccountNames.short
 
     // release A: the menus read the profile's record through AccountView, not the entry's seat
-    let cmView = AccountView(label: u1.email, numbersOwner: u1.email, line: nil, lit: true, clash: nil, account: u1.account)
+    let cmView = AccountView(label: u1.email, numbersOwner: u1.email, lit: true, clash: nil, account: u1.account)
     let noView = AccountView.of(nil)
 
     // the card: the trays in the order a full limit offers them; the best is the first that can be switched to and has room

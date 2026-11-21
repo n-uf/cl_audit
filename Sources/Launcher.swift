@@ -1264,6 +1264,7 @@ final class ManagerUI {
     private var othersObserver: NSObjectProtocol?
     private var appObservers: [NSObjectProtocol] = []
     private var historyWatch: AnyCancellable?
+    private var privacyWatch: AnyCancellable?
 
     init() {
         // An account icon opening its panel closes the palette (and the palette closes theirs).
@@ -1300,6 +1301,10 @@ final class ManagerUI {
                 if !on { self.stats.reload(); self.week.reload(hidden: self.model.hidden) }
                 else if self.historyShown { self.stats.reload() }     // else when the Dashboard or the launcher shows
             }
+        // Show emails switched (here, or by another process): the cards' rows are made again now, not at the next 10 s tick, so
+        // an address in a line or a name leaves them at once
+        privacyWatch = AddressPrivacy.shared.$blur.dropFirst().removeDuplicates().receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.model.reload() }
     }
 
     /// Click on cl_audit's own Dock icon. With its window open (or in the Dock, minimised): a click while it's

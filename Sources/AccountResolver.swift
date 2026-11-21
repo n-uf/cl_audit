@@ -217,8 +217,7 @@ struct SplitUsage: Equatable {
 struct AccountView: Equatable {
     var label: String?              // the active account: its address, or "account <8>"; nil: none known
     var numbersOwner: String?       // Claude Code's account, whose numbers they are (or will be, after a switch's first read)
-    var line: String?               // the one line of state
-    var lit: Bool                   // the green lamp and "in use"
+    var lit: Bool                 // the green lamp and "in use"
     var clash: String?              // another profile's name, when Claude Code's folder is on its account
     /// The active account's id (lower case), from the record; nil for a record from before the resolver.
     var account: String? = nil
@@ -228,17 +227,22 @@ struct AccountView: Equatable {
     var differs = false
     /// Claude Code's folder account's id (lower case), where the record has it.
     var codeAccount: String? = nil
+    /// What the resolver decided: the one line of state is built from it each time it is read (`line`), never kept as text.
+    var resolved: ResolvedAccount? = nil
+
+    /// The one line of state, built now (ResolvedAccount.lineText: an address in it follows Show emails as it is at this read).
+    var line: String? { resolved?.lineText() }
 
     static func of(_ s: IconStatus?) -> AccountView {
-        guard let s else { return AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil) }
+        guard let s else { return AccountView(label: nil, numbersOwner: nil, lit: false, clash: nil) }
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.codeName ?? r.numbersFor,
-                               line: r.lineText(), lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true,
-                               differs: r.differs, codeAccount: r.codeAccount)
+                               lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true,
+                               differs: r.differs, codeAccount: r.codeAccount, resolved: r)
         }
         // a record from before the resolver (or none written yet): the sign-in it was read for
         let who = s.loginEmail ?? s.expectedEmail
-        return AccountView(label: who, numbersOwner: who, line: nil, lit: who != nil, clash: nil)
+        return AccountView(label: who, numbersOwner: who, lit: who != nil, clash: nil)
     }
 
     /// "ultra-1": the account in use with no label (showing it, with its lamp, says it's in use).

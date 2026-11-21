@@ -1,5 +1,6 @@
 import AddressPrivacy
 import AppKit
+import Combine
 import ProfileCore
 import ServiceManagement
 import UserNotifications
@@ -35,6 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var quietQuit = false         // quit without taking the Claude window along (asked by cl_audit or the agent, or "Quit and keep")
     var tileView: TileView!
     var timer: Timer?
+    /// Show emails changed: the Dock icon's value is made again at once (loadStatus), so a line or a panel that names an account
+    /// follows, an open panel included.
+    var privacyWatch: AnyCancellable?
 
     var style: IconStyle { entry.style }
 
@@ -75,6 +79,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func statusChanged(_ note: Notification) {
         guard (note.object as? String) == accountID else { return }
         loadStatus()
+    }
+
+    /// Show emails changed (here, or in another process: the module follows the change note): the value is made again at once,
+    /// so the menu's line and an open panel's texts hold no address that was in them.
+    func watchPrivacy() {
+        privacyWatch = AddressPrivacy.shared.$blur.dropFirst().removeDuplicates().receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.loadStatus() }
     }
 
     func applyEntry() {
@@ -179,6 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // logging out or shutting down quits every app: not a reason for its window to quit (macOS reopens it)
         ws.addObserver(self, selector: #selector(quietQuitAsked(_:)), name: NSWorkspace.willPowerOffNotification, object: nil)
         show = ProfileShow.load(entry)
+        watchPrivacy()
         tileView = TileView(model: model())
         NSApp.dockTile.contentView = tileView
         NSApp.dockTile.display()
