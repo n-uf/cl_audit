@@ -1156,18 +1156,37 @@ enum SessionsExport {
                        checklistCarried: checklistCarried, side: sideCarried)
     }
 
-    /// `rel` when no file of the export has that name yet, else the first free "name 2.ext", "name 3.ext" … beside it (the folder
-    /// stays); the name given is added to `taken`, compared without case (the file system's way).
-    static func uniqueName(_ rel: String, taken: inout Set<String>) -> String {
-        if taken.insert(rel.lowercased()).inserted { return rel }
-        let dir = (rel as NSString).deletingLastPathComponent, leaf = (rel as NSString).lastPathComponent
-        let ext = (leaf as NSString).pathExtension, stem = (leaf as NSString).deletingPathExtension
-        for n in 2... {
-            let name = "\(stem) \(n)" + (ext.isEmpty ? "" : ".\(ext)")
-            let candidate = dir.isEmpty ? name : (dir as NSString).appendingPathComponent(name)
-            if taken.insert(candidate.lowercased()).inserted { return candidate }
+    /// The names an export gives, one folder level at a time: each of the backup's names (a project folder, a session's file or
+    /// folder, a tool result) gets the scrubbed name, unless another of the backup's names in the same folder already got that one
+    /// (two names that become the same once an id or address in them is replaced): then the first free "name 2", "name 3" … The
+    /// same backup name always gets the same name back, so a session's transcript, its folder and its marker stay together, and a
+    /// renamed project folder takes all its files with it. Compared without case (the file system's way).
+    struct Names {
+        private var given: [String: String] = [:]          // "<parent given>\0<backup name, lower case>" → the name given
+        private var taken: [String: Set<String>] = [:]      // parent given → the names given in it (lower case)
+
+        /// The export's path for `original`, whose scrubbed form is `scrubbed` (the same number of parts).
+        mutating func path(original: String, scrubbed: String) -> String {
+            let o = original.split(separator: "/").map(String.init), s = scrubbed.split(separator: "/").map(String.init)
+            guard o.count == s.count else { return scrubbed }
+            var parent = ""
+            for (a, b) in zip(o, s) {
+                let key = parent + "\u{0}" + a.lowercased()
+                let name: String
+                if let g = given[key] { name = g }
+                else {
+                    var candidate = b, n = 1
+                    let ext = (b as NSString).pathExtension, stem = (b as NSString).deletingPathExtension
+                    while taken[parent, default: []].contains(candidate.lowercased()) {
+                        n += 1; candidate = "\(ext.isEmpty ? b : stem) \(n)" + (ext.isEmpty ? "" : ".\(ext)")
+                    }
+                    taken[parent, default: []].insert(candidate.lowercased()); given[key] = candidate
+                    name = candidate
+                }
+                parent = parent.isEmpty ? name : parent + "/" + name
+            }
+            return parent
         }
-        return rel
     }
 
     private static func write(_ data: Data, to url: URL) throws {
@@ -1228,9 +1247,10 @@ enum SessionsExport {
         guard let reader = SessionsRestore.Reader(path: b.dir.path) else { throw ArchiveError("The backup's folder isn't a plain folder.") }
         var made = Set<String>()
         // the names given in the file so far: two of the backup's names that become the same one once an id or address in them is
-        // replaced (a tool result named for an address beside one already named for its fingerprint) get a free name, never a refusal
-        var taken = Set<String>()
-        func free(_ rel: String) -> String { uniqueName(rel, taken: &taken) }
+        // replaced (a tool result named for an address beside one already named for its fingerprint) get a free name, never a
+        // refusal, one folder level at a time (Names)
+        var names = Names()
+        func free(_ original: String) -> String { names.path(original: original, scrubbed: scrubber.name(original)) }
         func create(_ rel: String) throws -> String {
             let path = (out.path as NSString).appendingPathComponent(rel)
             let dir = (path as NSString).deletingLastPathComponent
@@ -1391,7 +1411,7 @@ enum SessionsExport {
                 let src = b.dir.appendingPathComponent(it.path).path
                 // the name it gets in the file: a known account id or address in a path (a tool result named for it, a project
                 // folder named for an address) becomes its fingerprint, so the file's own names carry nothing known either
-                let rel = free(scrubber.name(it.path))
+                let rel = free(it.path)
                 let dst = try create(rel)
                 var bytes = it.bytes
                 if rel.hasSuffix(".jsonl"), !endsOnLine(src) {
