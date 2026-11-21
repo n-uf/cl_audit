@@ -4,10 +4,30 @@
 // saves a renewed sign-in). Read only: never written, copied, moved or deleted here (sign-out is Claude Code's own
 // `claude auth logout`). The text read stays in memory: only Login's named fields come out (ProfileCore's Login.parse),
 // and nothing of it is printed or logged.
+//
+// The one file of ClaudeAuth that touches the Keychain: an app that never reads it (cl_quick) leaves this file out of its
+// build, and ClaudeAuth reaches the store only through StoredSignInReader (StoredSignIn.swift), which cl_audit wires to
+// `KeychainSignInReader` here (`AuthTools.systemWithKeychain`).
 
 import Foundation
 import ProfileCore
 import Runs
+
+/// The Keychain as the stored sign-in (StoredSignIn.swift): `security` run by `tool` (the checks pass a fake).
+public struct KeychainSignInReader: StoredSignInReader {
+    public var tool: KeychainSignIn.Tool
+    public init(tool: @escaping KeychainSignIn.Tool = KeychainSignIn.system) { self.tool = tool }
+    public func read(_ folder: AuthFolder, user: String) -> Login { KeychainSignIn.read(folder, user: user, tool: tool) }
+}
+
+extension AuthTools {
+    /// The real Mac's tools with the Keychain reader (cl_audit's).
+    public static var systemWithKeychain: AuthTools {
+        var t = AuthTools.system
+        t.stored = KeychainSignInReader()
+        return t
+    }
+}
 
 public enum KeychainSignIn {
     /// What runs `security`: arguments in, exit status and output out. The checks pass a fake (no real Keychain).

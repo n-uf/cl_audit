@@ -13,10 +13,12 @@ moves to its own repository with ProfileCore and cl_quick compiles it from sourc
 | --- | --- |
 | `Folder.swift` | `AuthFolder`: the folder's path, default or not (`~/.claude` however spelled), its record (`.claude.json`), its Keychain item names (`Claude Code-credentials`, or `-` and 8 hex of the path's SHA-256), the environment a `claude` run on it gets (no key or other provider; `CLAUDE_CONFIG_DIR` set, or unset for the default folder), and `isReady` (there as a plain folder; never made) |
 | `Identity.swift` | `SignedInAccount` from each source (`record`: guessed; `process`, a running claude's `initialize` account, and `server`, Anthropic's reply about the sign-in: verified), the one matching rule (`matches`), and `FolderSignIn.answer`: `verified`, `guessed`, `differs` or `none` |
-| `Keychain.swift` | `KeychainSignIn.read`: the item through `/usr/bin/security`, read only, into `Login`'s named fields |
+| `StoredSignIn.swift` | `StoredSignInReader`: the one door to a stored sign-in; ClaudeAuth names no store |
+| `Keychain.swift` | `KeychainSignIn.read`: the item through `/usr/bin/security`, read only, into `Login`'s named fields; `KeychainSignInReader` (the Keychain as the stored sign-in) and `AuthTools.systemWithKeychain`. The only file that touches the Keychain: an app that never reads it (cl_quick) leaves it out of its build |
 | `Watch.swift` | `RecordStamp` and `SignInChangeWatch`: another account signed in to the folder since the last look (signing out isn't a change) |
-| `Runs.swift` | `ClaudeCommand`, `AuthRun` (renew's "Reply with OK." on Haiku, `claude auth logout`, the real runner), `SignInScript` (`claude auth login --claudeai --email` in Terminal) |
-| `Authenticator.swift` | `Authenticator`: one folder's sign-in behind one type, with every tool in `AuthTools` (the Keychain tool, the runner, Terminal, the launch guard, the record reader, the environment); `RecordFile`, the bounded record read |
+| `Runs.swift` | `ClaudeCommand`, `AuthRun` (renew's "Reply with OK." on Haiku, `claude auth logout`, the real runner), `SignInScript` (`claude auth login --claudeai --email` in Terminal; `Watch`, the files ClaudeSignIn follows; `write`, the owner-only file writer) |
+| `Authenticator.swift` | `Authenticator`: one folder's sign-in behind one type, with every tool in `AuthTools` (the stored sign-in reader, the runner, Terminal, the launch guard, the record reader, the environment); `RecordFile`, the bounded record read |
+| `ClaudeSignIn.swift` | `ClaudeSignIn`: a sign-in in a Terminal window, followed to its outcome (signed in or wrong account, as the app's word confirmed; unverified; declined; failed; stopped; timed out) and its window closed after it; one per app; the process guard and the folder's lock (`~/Library/Caches/n-uf/signin-<8 hex>.lock`); the app's verified word passed in (`Confirm`) |
 
 ## Rules
 
@@ -47,7 +49,9 @@ an account to it. Making them one rule is the open question in `Core/README.md` 
 ## cl_quick fit
 
 cl_quick never reads the Keychain: it knows the account from the running claude's `initialize` answer (`email`,
-`organization` name: verified) and treats the folder's `.claude.json` as a guess. What fits as it is:
+`organization` name: verified) and treats the folder's `.claude.json` as a guess. It builds ClaudeAuth without
+`Keychain.swift` and passes no `StoredSignInReader`; its `ClaudeSignIn.Confirm` is a short claude's `initialize`
+account. What fits as it is:
 `SignedInAccount.process(_:)` takes the `initialize` account, `SignedInAccount.record(_:)` the oauthAccount block
 (cl_quick passes its own `FolderFiles` read through `AuthTools.readRecord`), `FolderSignIn.answer` lets the process's
 word win over the record (`differs` when they disagree), its sign-in script is `SignInScript.lines(..., removesItself:

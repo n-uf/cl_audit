@@ -34,7 +34,7 @@ func record(_ p: String, email: String?, account: String?, org: String?, orgName
 }
 /// The tools every section starts from: a Keychain tool, a runner and a Terminal that stop the run if called, so nothing
 /// real is touched unless a section passes its own fake.
-var fakes = AuthTools(security: { _ in fatalError("the real Keychain tool was asked") },
+var fakes = AuthTools(stored: KeychainSignInReader(tool: { _ in fatalError("the real Keychain tool was asked") }),
                       run: { _ in fatalError("a real claude run was asked") },
                       openTerminal: { _ in fatalError("Terminal was asked") },
                       mayLaunch: { _, f in f.isReady }, readRecord: { RecordFile.oauthAccount($0) },
@@ -229,8 +229,13 @@ do {
     }
     // through the authenticator: its tools and user name
     var tools = fakes
-    tools.security = fake([item + "|user": (0, json)]); tools.userName = "ann"
+    tools.stored = KeychainSignInReader(tool: fake([item + "|user": (0, json)])); tools.userName = "ann"
     if case .token = Authenticator(folder, tools: tools).readSignIn() {} else { check(false, "Authenticator.readSignIn uses its tools") }
+    // an app that never reads the store (cl_quick) passes no reader: nothing is read, nothing is asked
+    tools.stored = nil
+    check(Authenticator(folder, tools: tools).readSignIn() == nil && AuthTools.system.stored == nil,
+          "no reader: readSignIn is nil, and the plain system tools carry none")
+    check(AuthTools.systemWithKeychain.stored is KeychainSignInReader, "systemWithKeychain: the Keychain reader")
 }
 
 // ============ 6. the sign-in watch ============
@@ -421,6 +426,12 @@ do {
         for bad in ["print(", "NSLog", "Logger(", "os_log", "debugPrint", "dump("] { check(!s.contains(bad), "\(f): never logs or prints (\(bad))") }
         for bad in ["add-generic-password", "delete-generic-password", "SecItemAdd", "SecItemUpdate", "SecItemDelete", "UserDefaults"] {
             check(!s.contains(bad), "\(f): never writes the Keychain or keeps anything (\(bad))")
+        }
+        // the Keychain read is Keychain.swift's alone (an app that never reads it leaves that file out and still builds)
+        if f != "Keychain.swift" {
+            for bad in ["KeychainSignIn", "/usr/bin/security", "find-generic-password", "SecItem", "import Security"] {
+                check(!s.contains(bad), "\(f): no Keychain outside Keychain.swift (\(bad))")
+            }
         }
     }
     let core = repo.appendingPathComponent("Core")

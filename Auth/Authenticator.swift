@@ -1,15 +1,17 @@
 // ClaudeAuth · the authenticator: one folder's sign-in, behind one type. It answers which account the folder is signed in
-// to (verified or guessed), reads its Keychain item, and starts a sign-in, a renew or a sign-out on it. Every tool it
-// uses is in AuthTools, so an app passes its own (cl_audit its FolderGuard and bounded reader) and the checks pass fakes.
+// to (verified or guessed), reads its stored sign-in through the app's reader (cl_audit's Keychain reader; none in
+// cl_quick), and starts a sign-in, a renew or a sign-out on it. Every tool it uses is in AuthTools, so an app passes its own
+// (cl_audit its FolderGuard, bounded reader and Keychain reader) and the checks pass fakes.
 
 import Foundation
 import ProfileCore
 import Runs
 
-/// The tools an authenticator works with. `system` is the real Mac's.
+/// The tools an authenticator works with. `system` is the real Mac's, without a stored sign-in reader (Keychain.swift adds
+/// `systemWithKeychain` where it is compiled in).
 public struct AuthTools {
-    /// Runs `security` (KeychainSignIn.Tool).
-    public var security: KeychainSignIn.Tool
+    /// Reads the folder's stored sign-in (StoredSignIn.swift); nil: this app never reads it (cl_quick).
+    public var stored: StoredSignInReader?
     /// Runs `claude` (AuthRun.Runner).
     public var run: AuthRun.Runner
     /// Opens a sign-in script in Terminal: true when it opened.
@@ -24,15 +26,15 @@ public struct AuthTools {
     /// The user's account name, which Claude Code stores the Keychain item under.
     public var userName: String
 
-    public init(security: @escaping KeychainSignIn.Tool, run: @escaping AuthRun.Runner, openTerminal: @escaping (URL) -> Bool,
+    public init(stored: StoredSignInReader? = nil, run: @escaping AuthRun.Runner, openTerminal: @escaping (URL) -> Bool,
                 mayLaunch: @escaping (String, AuthFolder) -> Bool, readRecord: @escaping (String) -> [String: Any]?,
                 environment: @escaping () -> [String: String], userName: String) {
-        self.security = security; self.run = run; self.openTerminal = openTerminal; self.mayLaunch = mayLaunch
+        self.stored = stored; self.run = run; self.openTerminal = openTerminal; self.mayLaunch = mayLaunch
         self.readRecord = readRecord; self.environment = environment; self.userName = userName
     }
 
     public static var system: AuthTools {
-        AuthTools(security: KeychainSignIn.system, run: AuthRun.system,
+        AuthTools(stored: nil, run: AuthRun.system,
                   // `open` hands the script to Terminal and returns: a minute is plenty
                   openTerminal: { url in Runs.Runner.run(Program("/usr/bin/open", ["-a", "Terminal", url.path], timeout: 60))?.ok ?? false },
                   mayLaunch: { _, folder in folder.isReady },
@@ -62,11 +64,11 @@ public struct Authenticator {
     /// The record's stamp, for SignInChangeWatch.look.
     public func recordStamp() -> RecordStamp { RecordStamp.of(folder.recordPath) }
 
-    // MARK: the Keychain item
+    // MARK: the stored sign-in
 
-    /// The folder's sign-in from its Keychain item (KeychainSignIn.read). Blocks up to 30 s on a locked Keychain: off the
-    /// main thread.
-    public func readSignIn() -> Login { KeychainSignIn.read(folder, user: tools.userName, tool: tools.security) }
+    /// The folder's stored sign-in, through the app's reader (cl_audit: its Keychain item, Keychain.swift; blocks up to
+    /// 30 s on a locked Keychain: off the main thread). nil when the app passes no reader (cl_quick never reads it).
+    public func readSignIn() -> Login? { tools.stored?.read(folder, user: tools.userName) }
 
     // MARK: runs
 
@@ -82,21 +84,15 @@ public struct Authenticator {
 
     /// Starts Claude Code's own sign-in in Terminal on the folder, with `email` filled in (`claude auth login --email`).
     /// The script is written to `script` (owner only) and opened; `marker`, `shown`, `done`, `failed` go into it
-    /// (SignInScript.lines). Never on a folder that isn't there: a new folder is made by the app first.
+    /// (SignInScript.lines; `watch` too, for ClaudeSignIn). Never on a folder that isn't there: a new folder is made by the
+    /// app first.
     public func startSignIn(claude: String, email: String?, script: URL, marker: URL? = nil, removesItself: Bool = false,
                             shown: String? = nil, done: String = SignInScript.doneWords,
-                            failed: String = SignInScript.failedWords) -> Outcome {
+                            failed: String = SignInScript.failedWords, watch: SignInScript.Watch? = nil) -> Outcome {
         guard tools.mayLaunch("login", folder) else { return .folderNotReady }
         let lines = SignInScript.lines(claude: claude, folder: folder, email: email, marker: marker, removesItself: removesItself,
-                                       shown: shown, done: done, failed: failed)
-        // owner only from the start (it holds the address): made new, 0700, never through a link; one left from before
-        // is removed first (removeItem doesn't follow a link at the end)
-        try? FileManager.default.removeItem(at: script)
-        let fd = open(script.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o700)
-        guard fd >= 0 else { return .failed }
-        let h = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        guard fchmod(fd, 0o700) == 0, (try? h.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))) != nil,
-              (try? h.close()) != nil else { return .failed }
+                                       shown: shown, done: done, failed: failed, watch: watch)
+        guard SignInScript.write(Data((lines.joined(separator: "\n") + "\n").utf8), to: script) else { return .failed }
         return tools.openTerminal(script) ? .done : .failed
     }
 
