@@ -1871,6 +1871,8 @@ struct AccountSettings: View {
         // the profile's newest switch, read off the main thread (as the Sessions card reads them), again as things change
         .task(id: "\(entry.id) \(model.tick) \(model.switchChanges)") {
             let id = entry.id
+            // another profile shown: the last one's switch goes at once, not on the next load
+            if let n = newestSwitch, n.profile != id { newestSwitch = nil }
             newestSwitch = await Task.detached(priority: .utility) { SwitchEngine.receipts(profile: id).first }.value
         }
     }
