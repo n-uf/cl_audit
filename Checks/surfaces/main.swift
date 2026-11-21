@@ -12,6 +12,7 @@
 import AppKit
 import ClaudeAuth
 import ProfileCore
+import Runs
 import SwiftUI
 
 setbuf(stdout, nil)
