@@ -107,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SwitchMarker.sweep()                           // a switch left marked by a cl_audit that's gone keeps no window closed
             SwitchEngine.settled = { ClaudeWindow.afterSwitch($0, activate: true) }   // a settled switch opens the window it closed
             SwitchWaiting.clearAll(wait: false)            // so does a "switch is waiting for you" alert a cl_audit that's gone left
+            SignInWindow.sweepAtStart()                    // Terminal's kept profiles of earlier sign-in windows (cl_audit's own folder only)
             NSWindow.allowsAutomaticWindowTabbing = false   // Settings and Dashboard are separate windows
             AppIconPrefs.shared.apply()                    // the chosen app icon (Settings ▸ General ▸ App icon)
             MainMenu.install()
@@ -219,6 +220,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the switches live in memory: a "switch is waiting for you" alert doesn't outlive cl_audit (SwitchWaiting.swift)
         if isSettingsApp {
             SwitchWaiting.clearAll(wait: true)
+            // a sign-in window of cl_audit's own: its login and window end, and Terminal's kept profiles of them go
+            SignInWindow.stopForQuit()
             // an export or an import under way: its tools stop, its unpacked files and attached image go, no password stays
             MainActor.assumeIsolated { SettingsModel.current?.leaveArchiveWork() }
             SessionsImport.shutDown()

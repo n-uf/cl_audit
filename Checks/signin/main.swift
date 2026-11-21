@@ -3193,6 +3193,25 @@ do {
         SignInWindow.terminalProfiles = prefs.tool
         check(prefs.names.allSatisfy { $0.hasPrefix("cl_audit sign-in") }, "stage G: every profile Terminal kept in these checks is named after cl_audit's settings file: \(prefs.names)")
     }
+    // ── where the sweep is called: the settings app's start and quit (and Uninstall), never the agent or a Dock icon ──
+    do {
+        let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+        func lines(_ f: String) -> [String] { ((try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? "").components(separatedBy: "\n") }
+        let icon = lines("IconApp.swift")
+        /// The call sits in the settings app's own branch: `if isSettingsApp {` a few lines above it, in the function named.
+        func inSettingsApp(_ call: String, in function: String) -> Bool {
+            guard let f = icon.firstIndex(where: { $0.contains("func \(function)(") }),
+                  let c = icon.indices.first(where: { $0 > f && icon[$0].contains(call) }),
+                  let b = icon.indices.last(where: { $0 > f && $0 < c && icon[$0].contains("if isSettingsApp {") }) else { return false }
+            return c - b < 12
+        }
+        check(inSettingsApp("SignInWindow.sweepAtStart()", in: "applicationDidFinishLaunching") && inSettingsApp("SignInWindow.stopForQuit()", in: "applicationWillTerminate"),
+              "stage G: Terminal's kept profiles are swept at the settings app's start and quit (SignInWindow.sweepAtStart, stopForQuit), in its own branch")
+        let others = ["Agent.swift", "MenuBar.swift", "Launcher.swift", "QuickChat.swift", "SwitchRunner.swift", "FirstRun.swift", "DefaultProfileRunner.swift"]
+        check(others.allSatisfy { f in !lines(f).contains { $0.contains("SignInWindow") } },
+              "stage G: the agent and the sign-ins left on ClaudeCLI.openLogin (menus, launcher, quick chat, the switch, first run, the default profile) don't use the sign-in window")
+        check(lines("Uninstall.swift").contains { $0.contains("SignInWindow.sweepNow()") }, "stage G: Uninstall sweeps Terminal's kept profiles before it removes the work folder")
+    }
     SignInWindow.wordSeam = nil
     ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = keepSeam
     term.killAll()

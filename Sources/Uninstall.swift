@@ -104,6 +104,7 @@ enum Uninstall {
         }
         // 6. settings, saved usage, caches and preferences, Terminal scripts
         log("Deleting cl_audit's settings")
+        SignInWindow.sweepNow()            // Terminal's kept profiles of cl_audit's sign-in windows go first: their folder goes next
         try? fm.removeItem(at: Store.folder)
         for b in [Installer.managerID, Agent.bundleID] {
             Installer.run("/usr/bin/defaults", ["delete", b])
