@@ -118,7 +118,7 @@ enum AccountResolver {
     /// The line while the reading is for another account than the one Claude Code's record names (stale): the numbers are
     /// hidden, and this says the way back. True both right after a switch (the new sign-in's first read is on its way) and
     /// when the Keychain's sign-in stays on another account (only a sign-in helps then).
-    static let staleWords = "Read for another account: if this stays, sign in to read again."
+    static let staleWords = "Numbers for another account: if this stays, sign in to read again."
 
     /// Two addresses (a reading's, an account's) name one account: the one owner rule's address-only part; with either
     /// empty, the plain comparison as before (two empty addresses are not "another account", so nothing goes stale).

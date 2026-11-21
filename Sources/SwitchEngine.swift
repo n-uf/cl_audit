@@ -531,6 +531,8 @@ enum SwitchEngine {
         // not named: it may age out (the backups' keep rules), so nothing is promised about it
         let moved = r.partlyUndone != nil ? (r.left ?? []).filter(ClaudeFiles.isEntryName).count
                                           : r.steps.filter { $0.kind == .entry && $0.done }.count
+        // (none left there: no "0 Code-tab sessions")
+        if moved == 0 { return "Left as it is: no Code-tab session stays under the account the switch went to; they're under the one it came from." }
         return "Left as it is: \(moved) Code-tab \(moved == 1 ? "session stays" : "sessions stay") under the account the switch went to, the rest under the one it came from."
     }
 
