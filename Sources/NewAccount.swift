@@ -106,8 +106,8 @@ struct SetupCheck: Identifiable {
 enum NewAccountSetup {
     static func shared(_ d: NewAccountDraft) -> URL { URL(fileURLWithPath: expand(d.shareFrom)) }
 
-    /// The Account pop-up's label as drawn (and read by VoiceOver: the well is plain text): while emails are hidden, an
-    /// address in the mask form every other place shows, never the address itself under the blur.
+    /// The Account pop-up's label as drawn: while emails are hidden, an address in the mask form every other place in
+    /// Settings shows (hovering lifts the blur off that form, as elsewhere), never the address itself under the blur.
     static func wellText(_ text: String, show: Bool = Privacy.shared.show) -> String {
         show || !text.contains("@") ? text : Privacy.mask(text)
     }
