@@ -60,6 +60,7 @@ enum SessionTransfer {
         var unreadable: [String] = []       // the ones held because they can't be read whole (a subset of `held`): said apart
         var tasks = 0                       // scheduled tasks to move
         var taskStay: String? = nil         // why the scheduled tasks stay: then `tasks` is 0 and neither file is touched
+        var taskStayTwin = false            // …because of a differing twin (removing one of the two settles it)
     }
 
     /// The source's entries, by ClaudeFiles' one lister.
@@ -105,7 +106,7 @@ enum SessionTransfer {
     static func sort(_ s: Scopes, owned: Set<String>) -> Sorted {
         var out = Sorted()
         let fm = FileManager.default
-        let taskBlock = TaskRegistry.twinProblem(source: s.sourceDir, target: s.targetDir)
+        let taskBlock = TaskRegistry.twinCheck(source: s.sourceDir, target: s.targetDir)
         let taskIDs = Set(TaskRegistry.tasks(in: s.sourceDir).compactMap { $0["id"] as? String })
         for n in entries(s) {
             let id = String(n.dropFirst("local_".count).dropLast(".json".count))
@@ -120,7 +121,12 @@ enum SessionTransfer {
             out.move.append(n)
         }
         out.tasks = taskBlock == nil ? taskIDs.count : 0
-        out.taskStay = taskIDs.isEmpty ? nil : taskBlock       // nothing to say about tasks the source hasn't
+        // nothing to say about the new account's file when the source has no task; the old account's own file that can't
+        // be read as one (its tasks then count as none) is said all the same
+        if let b = taskBlock, b.side == .source || !taskIDs.isEmpty {
+            out.taskStay = b.words
+            out.taskStayTwin = b.twin
+        }
         return out
     }
 

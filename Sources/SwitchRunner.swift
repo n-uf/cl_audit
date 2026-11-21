@@ -198,7 +198,7 @@ final class SwitchRunner: ObservableObject {
         if let why = p.taskStay {
             // named by address: after the sign-in "the account in use" is the new one
             let old = p.from.email.map(AccountNames.short) ?? "the old account"
-            let out = why.contains("same id") ? "Remove one of the two, then switch again." : "Fix that, then switch again."
+            let out = p.taskStayTwin ? "Remove one of the two, then switch again." : "Fix that, then switch again."
             parts.append("The scheduled tasks stay with \(old), and so do their sessions: \(why). \(out)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")

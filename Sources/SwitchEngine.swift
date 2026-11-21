@@ -61,6 +61,7 @@ struct SwitchPlan: Equatable {
     var held: [String] = []             // a running Claude Code owns it: left where it is, for a later switch
     var tasks = 0                       // scheduled tasks to move
     var taskStay: String? = nil         // why the scheduled tasks stay (taskProblem): then `tasks` is 0 and neither file is touched
+    var taskStayTwin = false            // …because of a differing twin: removing one of the two settles it
     var taskHeld: [String] = []         // the sessions of those tasks, held too (a subset of `held`)
     var unreadable: [String] = []       // held because they can't be read whole, not because Claude Code runs them (a subset of `held`)
     var odd: [SessionTransfer.Odd] = [] // names shaped like an entry that aren't one (a link, an unknown name): left in place, said
@@ -233,7 +234,7 @@ enum SwitchEngine {
         }
         let sorted = SessionTransfer.sort(p.scopes, owned: live)
         p.move = sorted.move; p.already = sorted.already; p.deleted = sorted.deleted; p.held = sorted.held
-        p.taskHeld = sorted.taskHeld; p.tasks = sorted.tasks; p.taskStay = sorted.taskStay; p.unreadable = sorted.unreadable
+        p.taskHeld = sorted.taskHeld; p.tasks = sorted.tasks; p.taskStay = sorted.taskStay; p.taskStayTwin = sorted.taskStayTwin; p.unreadable = sorted.unreadable
         return .success(p)
     }
 
