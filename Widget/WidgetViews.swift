@@ -96,7 +96,7 @@ enum AgentFiles {
             // says so (the resolver's stale reading), never the profile's seat address read here.
             if let d = try? Data(contentsOf: dir.appendingPathComponent("status/\(e.id).json")),
                let raw = StatusCodec.decode(d)?.current(now: now) {
-                let ages = StatusAges.of(pollMinutes: e.pollMinutes ?? 5)
+                let ages = StatusAges.of(pollMinutes: min(max(e.pollMinutes ?? 5, 1), 60))   // 1 to 60, as AccountEntry reads it
                 let s = raw.shown(raw.headline(now: now, ages: ages), now: now)
                 p.updated = s.updatedAt
                 p.noFive = s.noFiveHour ?? false
