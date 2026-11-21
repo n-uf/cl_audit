@@ -134,7 +134,7 @@ enum NewAccountSetup {
         var missing: [String] = []
         if d.source == .existing ? !d.connected : !exists(d.configDir) { missing.append(d.configDir) }
         if d.window == .separate, d.claudeWindow, !exists(d.dataDir) { missing.append(d.dataDir) }
-        return "The folder isn't ready yet: " + (missing.isEmpty ? "something is missing" : missing.joined(separator: " and ") + " isn't there") + ". Cancel and start over."
+        return "The folder isn't ready yet: " + (missing.isEmpty ? "something is missing" : missing.joined(separator: " and ") + (missing.count > 1 ? " aren't there" : " isn't there")) + ". Cancel and start over."
     }
 
     static func linksReady(_ d: NewAccountDraft) -> Bool {
