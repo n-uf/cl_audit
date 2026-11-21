@@ -504,7 +504,7 @@ enum SwitchEngine {
 
     /// Every profile's switches, newest first.
     static func receipts() -> [SwitchReceipt] {
-        cachedList(prune: true) { !$0.hasPrefix(".") && !$0.hasSuffix(".json") }
+        cachedList { !$0.hasPrefix(".") && !$0.hasSuffix(".json") }
     }
 
     /// A receipt file as last read: its inode, size and modification time (a save replaces the file whole, so any change
@@ -512,15 +512,19 @@ enum SwitchEngine {
     private struct Cached { let ino: UInt64; let size: Int64; let mtime: timespec; let receipt: SwitchReceipt? }
     private static let cacheLock = NSLock()
     nonisolated(unsafe) private static var cache: [String: Cached] = [:]
+    #if CL_AUDIT_TESTING
+    /// A check's seam: the receipt ids the cache holds now. Only a test build (compiled with -D CL_AUDIT_TESTING) has it.
+    static var cachedIDs: Set<String> { cacheLock.lock(); defer { cacheLock.unlock() }; return Set(cache.keys) }
+    #endif
 
     /// The store's receipts `include` takes, newest first, each decoded again only when its file changed: the agent's and
-    /// the pages' ticks ask every few seconds, and most of the time nothing has. `prune`: the whole list was read, so ids
-    /// no longer there leave the cache.
-    private static func cachedList(prune: Bool = false, _ include: @escaping (String) -> Bool) -> [SwitchReceipt] {
+    /// the pages' ticks ask every few seconds, and most of the time nothing has. An id `include` takes that is no longer
+    /// there leaves the cache, on a profile's read as on the whole list's.
+    private static func cachedList(_ include: @escaping (String) -> Bool) -> [SwitchReceipt] {
         let s = store
         let ids = s.ids(include)
         cacheLock.lock(); defer { cacheLock.unlock() }
-        if prune { cache = cache.filter { ids.contains($0.key) } }
+        cache = cache.filter { ids.contains($0.key) || !include($0.key) }
         var out: [SwitchReceipt] = []
         for id in ids {
             var st = stat()

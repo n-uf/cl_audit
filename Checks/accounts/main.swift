@@ -1685,8 +1685,13 @@ do {
     try! SwitchEngine.store.save(cx)
     let secondRead = SwitchEngine.receipts(profile: "cachex").first?.linked
     try? fm.removeItem(at: SwitchEngine.store.folder(cx.id))
-    check(firstRead == nil && secondRead == cx.linked && SwitchEngine.receipts(profile: "cachex").isEmpty && SwitchEngine.receipts().count == 2,
+    let heldBefore = SwitchEngine.cachedIDs.contains(cx.id)
+    let profileRead = SwitchEngine.receipts(profile: "cachex").isEmpty
+    let heldAfter = SwitchEngine.cachedIDs.contains(cx.id)
+    check(firstRead == nil && secondRead == cx.linked && profileRead && SwitchEngine.receipts().count == 2,
           "the receipts' cache: a change saved over one is read, one taken away is gone")
+    check(heldBefore && !heldAfter && SwitchEngine.cachedIDs.contains(sw[0].id),
+          "…and a profile's own read lets go of its receipt taken away, not only the whole list's; other profiles' stay (held before \(heldBefore), after \(heldAfter))")
     let rid = "20261114-170329-3175-studio"
     let rs = SessionsRestore.load(rid)
     check(rs?.steps.count == 22 && rs?.steps.allSatisfy { $0.done && $0.settled } == true && rs?.importedFrom == "resume move.dmg"
