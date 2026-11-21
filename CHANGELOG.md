@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- Two changes made within the same second (two re-points of a session's folder, say) now keep their order, so Undo always takes back the later one; before, either could come first.
 
 ## 26.11.85 — 2026-11-21
 
