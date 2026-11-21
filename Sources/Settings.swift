@@ -48,7 +48,7 @@ final class SettingsModel: ObservableObject {
     /// "Isn't installed" notes on screen right now (ClaudeMissingLine counts itself in and out), and whether the window
     /// shows Settings (set by the window): the periodic look runs only while one of them is up.
     var claudeNotes = 0
-    var windowShowsSettings: () -> Bool = { true }
+    var windowShowsSettings: () -> Bool = { false }         // (no window shown yet: nothing on screen; showMain sets the real one)
 
     /// Looks for `claude` off the main thread (throttled unless `force`) and publishes what it finds. The version comes
     /// with it, from `claude --version`, when the program is new.
