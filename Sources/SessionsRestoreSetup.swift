@@ -167,7 +167,8 @@ extension SessionsRestore {
             // (the same parse as the scripts the import accepts and makes executable: hooks and the status line's command only)
             sp.hooks = Setup.commands(inSettings: d).prefix(30).map { String($0.prefix(200)) }
             if status[Setup.Unit(kind: .settings, name: "settings.json")] == .different {
-                let here = FileManager.default.contents(atPath: (t.codeDir as NSString).appendingPathComponent("settings.json"))
+                // (read with the same 8 MB cap as an export's: a crafted settings.json here is never read whole)
+                let here = SafeFiles.readPlain((t.codeDir as NSString).appendingPathComponent("settings.json"), max: 8 << 20, followsLink: true)
                 sp.settingsDiffer = here.map { Setup.settingsDifferences(here: $0, there: d) } ?? []
             }
             // absolute paths in its commands that are not on this Mac (and that this plan wouldn't put there either)
@@ -180,7 +181,8 @@ extension SessionsRestore {
 
     /// After settings.json was added by a run: the hook and status-line paths in it that aren't on this Mac.
     static func setupMissingPaths(_ t: Target) -> [String] {
-        guard let d = FileManager.default.contents(atPath: (t.codeDir as NSString).appendingPathComponent("settings.json")) else { return [] }
+        // (read only, through its own link when it is one, as before; capped like an export's)
+        guard let d = SafeFiles.readPlain((t.codeDir as NSString).appendingPathComponent("settings.json"), max: 8 << 20, followsLink: true) else { return [] }
         return Setup.commandPaths(inSettings: d, home: NSHomeDirectory()).filter { !FileManager.default.fileExists(atPath: $0) }.map { "hook points to \(tilde($0)): not here" }
     }
 }
