@@ -2913,19 +2913,26 @@ MainActor.assumeIsolated {
     let ids = (0..<3000).map { _ in SessionsBackup.newID(second) }
     check(Set(ids).count == ids.count && ids.allSatisfy(SessionsBackup.validID) && Set(ids.map { $0.prefix(15) }).count == 1,
           "3000 names for one second: all different, all in the usual form, all of that second")
-    // as a switch does (the name taken first and written down) and as Back up now does (make picks it), in one second
+    // as a switch does (the name taken first and written down) and as Back up now does (make picks it for its `now`), in the next
+    // second, the random part drawn from 200 values only (seam hexPool): 80 draws repeat one almost surely (all differ about once in
+    // 100 million runs), so only newID's memory of the names it gave keeps them apart
+    let second2 = second.addingTimeInterval(1)
+    SessionsBackup.hexPool = 200
     var made: [SessionsBackup.Manifest] = [], failed: [String] = []
     for i in 0..<80 {
         do {
-            made.append(i < 40 ? try SessionsBackup.make(idSrc, id: SessionsBackup.newID(second), kind: .manual, window: false, place: idPlace, now: second)
-                               : try SessionsBackup.make(idSrc, kind: .manual, window: false, place: idPlace, now: second))
+            made.append(i < 40 ? try SessionsBackup.make(idSrc, id: SessionsBackup.newID(second2), kind: .manual, window: false, place: idPlace, now: second2)
+                               : try SessionsBackup.make(idSrc, kind: .manual, window: false, place: idPlace, now: second2))
         } catch { failed.append("\(error)") }
     }
+    SessionsBackup.hexPool = nil
     let folders = names(dir.path)
     check(failed.isEmpty && Set(made.map(\.id)).count == 80 && Set(folders) == Set(made.map(\.id))
           && SessionsBackup.list(profile: "bkid", place: idPlace).count == 80,
-          "80 backups of one profile in one second: none fails, each in a folder of its own, all listed: \(failed.first ?? "")")
+          "80 backups of one profile in one second, their names' random part from 200 values: none fails, each in a folder of its own, all listed: \(failed.first ?? "")")
     check(made.allSatisfy { SessionsBackup.load(profile: "bkid", id: $0.id, place: idPlace) == $0 }, "...each manifest names its own folder")
+    check(Set(made.map { $0.id.prefix(15) }).count == 1 && made.allSatisfy { $0.created == second2 },
+          "...the names make picked carry the second of its `now`, like the ones the caller gave and every manifest's created")
 
     // the name already there (another process, an earlier run, in the same second): make picks another one; a name a caller
     // wrote down first is refused, never changed; whose folders they are is never touched

@@ -13,7 +13,7 @@ Nothing pending.
 ## 26.11.72 — 2026-11-21
 
 - The note under the account on the Dock icon's details panel ("Usage: Claude Code on …", or why Claude Code's account is shown) is drawn in the normal secondary grey instead of the faint one, so it reads on every face.
-- Two backups of one profile made in the same second (a switch right after Back up now, say) no longer fail now and then with "couldn't start a backup": each gets a name of its own.
+- Two backups of one profile made in the same second (a switch right after Back up now, say) no longer fail now and then (with "couldn't start a backup" or "a backup with that name is there already"): each gets a name of its own.
 
 ## 26.11.71 — 2026-11-20
 

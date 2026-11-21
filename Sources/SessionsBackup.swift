@@ -227,9 +227,16 @@ enum SessionsBackup {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyyMMdd-HHmmss"
         let stamp = f.string(from: d)
         while true {
-            let id = "\(stamp)-\(UUID().uuidString.prefix(4).lowercased())"
+            let id = "\(stamp)-\(randomHex())"
             if Issued.take(id) { return id }
         }
+    }
+
+    private static func randomHex() -> String {
+        #if CL_AUDIT_TESTING
+        if let n = hexPool { return String(format: "%04x", Int.random(in: 0..<n)) }
+        #endif
+        return UUID().uuidString.prefix(4).lowercased()
     }
 
     /// The names newID gave in this run: the last `cap` of them (a clash needs the same second, so older ones don't matter).
@@ -252,6 +259,9 @@ enum SessionsBackup {
     /// A check's seam: newID returns these first, whatever it gave before (as another process, or an earlier run, would). Only a
     /// test build (compiled with -D CL_AUDIT_TESTING) has it.
     nonisolated(unsafe) static var nextIDs: [String] = []
+    /// A check's seam: newID's random part is drawn from this many values (0000, 0001 …), so its draws repeat often, as 4 hex
+    /// characters do over many backups. Keep it above the number of names a check asks for in one second.
+    nonisolated(unsafe) static var hexPool: Int? = nil
     #endif
 
     static func validID(_ s: String) -> Bool {
@@ -444,8 +454,8 @@ enum SessionsBackup {
     /// encrypted export. `forExport`: the hidden copy an export
     /// is made from (and taken away again), which keeps both whole for the image (a zip leaves them out).
     /// `id`: the name a caller wrote down first (a switch's receipt names it): refused when a backup, or one being made, has it.
-    /// nil: make picks it, and picks another while the name is taken (by another process, or an earlier run, in the same second);
-    /// the name used is the returned manifest's `id`.
+    /// nil: make picks it for `now` (the name's time is the manifest's `created`), and picks another while the name is taken (by
+    /// another process, or an earlier run, in the same second); the name used is the returned manifest's `id`.
     @discardableResult
     static func make(_ s: Source, id given: String? = nil, kind: Kind, window: Bool = true, transcripts: Bool = true, setup: Bool = true,
                      receipt: SwitchReceipt? = nil, place: URL, now: Date = Date(), forExport: Bool = false) throws -> Manifest {
@@ -460,7 +470,7 @@ enum SessionsBackup {
         let tries = given == nil ? 8 : 1
         var id = "", final = profileDir, partial = profileDir
         for attempt in 1...tries {
-            id = given ?? newID()
+            id = given ?? newID(now)
             final = profileDir.appendingPathComponent(id)
             partial = profileDir.appendingPathComponent(".\(id).partial")
             if fm.fileExists(atPath: final.path) {
