@@ -2567,5 +2567,46 @@ do {
     for (_, ps) in stand { ps.forEach { if $0.isRunning { kill($0.processIdentifier, SIGKILL) } } }
 }
 
+// ============ 23. SignInFiles: a watched folder deleted and made again, or not there at first, is watched again ============
+do {
+    SignInFiles.retryEvery = 0.2
+    var changes = 0
+    let w = SignInFiles(onChange: { changes += 1 })
+    let a = expand("~/watch-a"), late = expand("~/watch-late")
+    try? fm.removeItem(atPath: a); try? fm.removeItem(atPath: late)
+    try? fm.createDirectory(atPath: a, withIntermediateDirectories: true)
+    func spin(_ s: TimeInterval) { RunLoop.main.run(until: Date().addingTimeInterval(s)) }
+    func until(_ s: TimeInterval, _ ok: () -> Bool) { let end = Date().addingTimeInterval(s); while !ok() && Date() < end { spin(0.05) } }
+    w.watch(folders: [a, late])
+    check(w.watching == [a], "a folder there is watched; one not there yet isn't (looked for again)")
+    put(a + "/.claude.json", "{}")
+    until(3) { changes > 0 }
+    check(changes >= 1, "a file written in a watched folder: a change (\(changes))")
+    // deleted and made again: let go at once, watched again by its path, and a write in the new one is seen
+    try? fm.removeItem(atPath: a)
+    until(3) { !w.watching.contains(a) }
+    check(!w.watching.contains(a), "the folder deleted: its watch let go")
+    try? fm.createDirectory(atPath: a, withIntermediateDirectories: true)
+    until(3) { w.watching.contains(a) }
+    check(w.watching.contains(a), "…made again: watched again by its path")
+    spin(1.3); changes = 0
+    put(a + "/.claude.json", #"{"x":1}"#)
+    until(3) { changes > 0 }
+    check(changes >= 1, "…and a write in the new folder is seen (\(changes))")
+    // not there at first: watched once it comes, and its coming is a change
+    spin(1.3); changes = 0
+    try? fm.createDirectory(atPath: late, withIntermediateDirectories: true)
+    until(3) { w.watching.contains(late) && changes > 0 }
+    check(w.watching == [a, late] && changes >= 1, "a folder not there at first: watched once it comes, as a change (\(changes))")
+    // moved away: let go, the path looked for again
+    try? fm.moveItem(atPath: late, toPath: late + "-moved")
+    until(3) { !w.watching.contains(late) }
+    check(w.watching == [a], "a watched folder moved away: let go, its path looked for again")
+    w.watch(folders: [])
+    check(w.watching.isEmpty, "watching nothing: every watch closed")
+    try? fm.removeItem(atPath: a); try? fm.removeItem(atPath: late + "-moved")
+    SignInFiles.retryEvery = 5
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
