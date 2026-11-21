@@ -1850,13 +1850,21 @@ do {
         return (try! JSONSerialization.data(withJSONObject: source, options: [.withoutEscapingSlashes]),
                 try! JSONSerialization.data(withJSONObject: target, options: [.withoutEscapingSlashes]), movingIDs.count)
     }
+    // compared as parsed JSON: a dictionary's key order isn't fixed from one run to the next, so the bytes may differ in order
+    func sameJSON(_ a: Data?, _ b: Data?) -> Bool {
+        guard let a, let b, let x = try? JSONSerialization.jsonObject(with: a), let y = try? JSONSerialization.jsonObject(with: b) else { return false }
+        return (x as AnyObject).isEqual(y)
+    }
+    func unescaped(_ d: Data?) -> Bool { d.map { !String(decoding: $0, as: UTF8.self).contains("\\/") } ?? false }
     let old = before(srcJSON, dstJSON)
     let j = TaskRegistry.joined(source: srcJSON, target: dstJSON)
-    check((try? TaskRegistry.encode(j.source)) == old.0 && (try? TaskRegistry.encode(j.target)) == old.1 && j.moved.count == old.2,
-          "the joined files are byte for byte what the switch wrote before (slashes unescaped, state with its tasks)")
+    let js = try? TaskRegistry.encode(j.source), jt = try? TaskRegistry.encode(j.target)
+    check(sameJSON(js, old.0) && sameJSON(jt, old.1) && j.moved.count == old.2 && unescaped(js) && unescaped(jt),
+          "the joined files are what the switch wrote before (the same JSON, slashes unescaped, state with its tasks)")
     let none = before(srcJSON, ["scheduledTasks": [[String: Any]]()])
     let jn = TaskRegistry.joined(source: srcJSON, target: ["scheduledTasks": [[String: Any]]()])
-    check((try? TaskRegistry.encode(jn.target)) == none.1, "…and into an account with no task file")
+    let jnt = try? TaskRegistry.encode(jn.target)
+    check(sameJSON(jnt, none.1) && unescaped(jnt), "…and into an account with no task file")
     let base = Data(#"{"scheduledTasks":[],"version":2}"#.utf8)
     let pausedOld = try! JSONSerialization.data(withJSONObject: ["scheduledTasks": [a, b].map { t -> [String: Any] in var t = t; t["enabled"] = false; return t },
                                                                  "version": 2], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
