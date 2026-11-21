@@ -324,6 +324,18 @@ enum ClaudeCLI {
         case terminalFailed         // the script couldn't be written, or Terminal didn't open it
     }
 
+    /// Why Claude Code's sign-in didn't open, for any page that starts one (the switch, the default profile, first run);
+    /// the folder by its short path. "" for opened.
+    static func loginWords(_ s: LoginStart, folder: String) -> String {
+        switch s {
+        case .opened: return ""
+        case .alreadyOpen: return "A sign-in is already open for \(tilde(folder)): finish or close that sign-in first."
+        case .cantTell: return "cl_audit couldn't tell whether a sign-in is already open for \(tilde(folder)), so it didn't open another."
+        case .folderNotReady: return goneLine(folder) ?? "Its Claude Code folder (\(tilde(folder))) isn't ready: nothing was signed in."
+        case .terminalFailed: return "Terminal didn't open."
+        }
+    }
+
     /// openLogin, saying why when nothing was opened.
     static func startLogin(_ claude: String, account: Account, email: String?, marker: URL? = nil, creating: Bool = false) -> LoginStart {
         // one sign-in at a time on a folder: refused while this app's sign-in window (SignInWindow) runs there, or the
@@ -362,7 +374,11 @@ enum ClaudeCLI {
     /// The processes loginState looks through, for a check (a hand-made table, or none: can't be read). A seam only a test
     /// build has (-D CL_AUDIT_TESTING): the shipped app always reads the kernel's table.
     nonisolated(unsafe) static var loginTableSeam: (() -> [ProcessTable.Entry]?)?
-    private static func loginTable() -> [ProcessTable.Entry]? { loginTableSeam.map { $0() } ?? ProcessTable.table() }
+    // (a seam that returns nil stays nil, the table that can't be read; only a missing seam reads the kernel's)
+    private static func loginTable() -> [ProcessTable.Entry]? {
+        if let seam = loginTableSeam { return seam() }
+        return ProcessTable.table()
+    }
     #else
     private static func loginTable() -> [ProcessTable.Entry]? { ProcessTable.table() }
     #endif

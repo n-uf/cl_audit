@@ -104,7 +104,8 @@ final class DefaultProfileRunner: ObservableObject {
         guard let claude = m.requireClaude() else { phase = .failed(m.noClaudeWhy); return }
         let email = old.seat?.email ?? Account.expectedEmail(configDir: old.configDir)
         let probe = AccountEntry(id: "default", name: "default", label: "DEFAULT", configDir: "~/.claude")
-        guard ClaudeCLI.openLogin(claude, account: Account(probe), email: email, creating: true) else { phase = .failed("Terminal didn't open."); return }
+        let started = ClaudeCLI.startLogin(claude, account: Account(probe), email: email, creating: true)
+        guard started == .opened else { phase = .failed(ClaudeCLI.loginWords(started, folder: probe.configDir)); return }
         seatAtAsk = Account.signedInSeat(configDir: "~/.claude")
         signInStarted = Date()
         phase = .signingIn

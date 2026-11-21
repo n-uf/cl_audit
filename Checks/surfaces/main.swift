@@ -3966,10 +3966,14 @@ do {
           "startLogin says why: already open, can't tell, Terminal failed, opened, folder gone (Terminal asked only twice): \(already) \(cantTell) \(terminal) \(ok) \(gone) \(opened)")
     check(ClaudeCLI.openLogin("/usr/bin/false", account: acct, email: nil) == true, "openLogin is startLogin's .opened")
     let w = { (s: ClaudeCLI.LoginStart) in SwitchRunner.loginWords(s, folder: dir) }
-    check(w(.alreadyOpen).contains("already open for ~/.claude-refusal") && w(.cantTell).contains("couldn't tell")
-          && w(.terminalFailed) == "Terminal didn't open." && !w(.alreadyOpen).contains("Terminal didn't open")
-          && w(.folderNotReady).contains("~/.claude-refusal"),
+    check(w(.alreadyOpen).contains("already open for ~/.claude-refusal") && w(.alreadyOpen).hasSuffix("Then Try again.")
+          && w(.cantTell).contains("couldn't tell") && w(.terminalFailed) == "Terminal didn't open." && !w(.alreadyOpen).contains("Terminal didn't open"),
           "the switch's step says each reason, never \"Terminal didn't open\" for a sign-in already open: \(w(.alreadyOpen))")
+    // the shared words (the default profile and first run say them too): no switch key named; a gone folder by goneLine
+    let goneDir = "~/.claude-refusal-gone"
+    check(!ClaudeCLI.loginWords(.alreadyOpen, folder: dir).contains("Try again")
+          && ClaudeCLI.loginWords(.folderNotReady, folder: goneDir) == ClaudeCLI.goneLine(goneDir) && ClaudeCLI.goneLine(goneDir) != nil,
+          "the shared words name no page's key; a folder that's gone says goneLine's words")
     try? fm.removeItem(atPath: expand(dir))
 }
 

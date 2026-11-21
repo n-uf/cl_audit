@@ -451,21 +451,13 @@ final class SwitchRunner: ObservableObject {
         windowNote = entry?.claudeWindow == true ? Self.windowOpenAgain : nil
     }
 
-    /// Why Claude Code's sign-in didn't open (ClaudeCLI.startLogin), in the step's words; the folder by its short path.
+    /// Why Claude Code's sign-in didn't open, in the switch step's words (ClaudeCLI.loginWords, then its Try again key).
     static func loginWords(_ s: ClaudeCLI.LoginStart, folder: String) -> String {
-        switch s {
-        case .opened: return ""
-        case .alreadyOpen:
-            return "A sign-in is already open for \(tilde(folder)): finish it in its Terminal window (or close that window), then Try again."
-        case .cantTell:
-            return "cl_audit couldn't tell whether a sign-in is already open for \(tilde(folder)), so it didn't open another. Try again."
-        case .folderNotReady:
-            return ClaudeCLI.goneLine(folder) ?? "Its Claude Code folder (\(tilde(folder))) isn't ready: nothing was signed in."
-        case .terminalFailed: return "Terminal didn't open."
-        }
+        let w = ClaudeCLI.loginWords(s, folder: folder)
+        return s == .alreadyOpen || s == .cantTell ? w + " Then Try again." : w
     }
 
-    static let windowLateClose ="The Claude window was already asked to quit: if it closes, cl_audit opens it again."
+    static let windowLateClose = "The Claude window was already asked to quit: if it closes, cl_audit opens it again."
 
     /// Back to the start, for another switch from the page.
     func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
