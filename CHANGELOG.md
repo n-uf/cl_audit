@@ -16,7 +16,7 @@ the notes before updating.
 - After a sign-in ends on another account than the one wanted, or one cl_audit couldn't confirm, Settings says what happened: Claude Code is now on that account, the profile uses it, and the account before is on standby to switch back to. A second sign-in on a folder waits for the one that is open (also the switch's and the menus'), and a profile's folder that is `~`, the home folder, relative or another profile's is refused.
 - Terminal no longer collects a leftover profile for every sign-in window cl_audit opened: they are removed when cl_audit starts and quits, and when it is uninstalled.
 - Settings ▸ Claude window: an older profile's window that's on with no data folder named says "none named yet", not "none yet (made when the window is turned on)".
-- Switch account keeps the scheduled tasks (and their sessions) with the old account, and says why, when either account's tasks file holds task state it can't read, or the new account has the same task with `enabled` set to anything but `false` (a `0` used to count as paused and was replaced).
+- Switch account keeps the scheduled tasks (and their sessions) with the old account, and says why, when the new account's tasks file, or the old one's while it has tasks to move, holds task state it can't read (anything but an object or null), or the new account has the same task with `enabled` set to anything but `false` (a `0` used to count as paused and was replaced).
 
 ## 26.11.78 — 2026-11-21
 

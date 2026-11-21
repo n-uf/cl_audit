@@ -943,6 +943,8 @@ do {
           && stateWords(#","runRetries":7"#, "") == "the old account's scheduled tasks file has task state that can't be read"
           && stateWords(#","recordedSkips":{"t1":{"n":1}}"#, #","runRetries":{}"#) == nil,
           "a task state key that isn't an object is refused on either side; objects move (\(String(describing: stateWords("", #","recordedSkips":[]"#))))")
+    check(stateWords(#","recordedSkips":null"#, #","runRetries":null"#) == nil,
+          "a task state key that is null holds no state: it counts as absent on either side, not refused")
     // the old account's own file can't be read: said (its tasks count as none), with the general way out
     let broken = taskSwitch("tc11", from: tA, to: tB, srcTask: "", dstTask: #"{"id":"t1","cron":"x"}"#)
     put("\(broken.src)/scheduled-tasks.json", "{ not json")

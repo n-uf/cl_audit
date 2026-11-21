@@ -106,8 +106,8 @@ enum TaskRegistry {
         guard ids.count == list.count, !ids.contains(where: \.isEmpty) else { return TwinProblem(side: .source, words: "a scheduled task has no id") }
         guard Set(ids).count == ids.count else { return TwinProblem(side: .source, words: "two scheduled tasks share an id") }
         // a task state key (recordedSkips, runRetries) that is there but isn't an object: joined would drop it or put an
-        // object in its place, so the state isn't moved blind
-        func oddState(_ j: [String: Any]) -> Bool { stateKeys.contains { k in j[k].map { !($0 is [String: Any]) } ?? false } }
+        // object in its place, so the state isn't moved blind; a null holds no state, so it counts as absent (as before)
+        func oddState(_ j: [String: Any]) -> Bool { stateKeys.contains { k in j[k].map { !($0 is [String: Any]) && !($0 is NSNull) } ?? false } }
         if !ids.isEmpty, oddState(src) { return TwinProblem(side: .source, words: "the old account's scheduled tasks file has task state that can't be read") }
         guard targetThere else { return nil }
         guard let dst else { return TwinProblem(side: .target, words: "the new account's scheduled tasks file can't be read") }
