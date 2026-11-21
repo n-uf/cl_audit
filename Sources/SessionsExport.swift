@@ -1146,6 +1146,20 @@ enum SessionsExport {
                        checklistCarried: checklistCarried, side: sideCarried)
     }
 
+    /// `rel` when no file of the export has that name yet, else the first free "name 2.ext", "name 3.ext" … beside it (the folder
+    /// stays); the name given is added to `taken`, compared without case (the file system's way).
+    static func uniqueName(_ rel: String, taken: inout Set<String>) -> String {
+        if taken.insert(rel.lowercased()).inserted { return rel }
+        let dir = (rel as NSString).deletingLastPathComponent, leaf = (rel as NSString).lastPathComponent
+        let ext = (leaf as NSString).pathExtension, stem = (leaf as NSString).deletingPathExtension
+        for n in 2... {
+            let name = "\(stem) \(n)" + (ext.isEmpty ? "" : ".\(ext)")
+            let candidate = dir.isEmpty ? name : (dir as NSString).appendingPathComponent(name)
+            if taken.insert(candidate.lowercased()).inserted { return candidate }
+        }
+        return rel
+    }
+
     private static func write(_ data: Data, to url: URL) throws {
         do { try data.write(to: url, options: .withoutOverwriting) } catch { throw ArchiveError("couldn't write \(url.lastPathComponent)") }
         chmod(url.path, 0o600)
@@ -1203,6 +1217,10 @@ enum SessionsExport {
 
         guard let reader = SessionsRestore.Reader(path: b.dir.path) else { throw ArchiveError("The backup's folder isn't a plain folder.") }
         var made = Set<String>()
+        // the names given in the file so far: two of the backup's names that become the same one once an id or address in them is
+        // replaced (a tool result named for an address beside one already named for its fingerprint) get a free name, never a refusal
+        var taken = Set<String>()
+        func free(_ rel: String) -> String { uniqueName(rel, taken: &taken) }
         func create(_ rel: String) throws -> String {
             let path = (out.path as NSString).appendingPathComponent(rel)
             let dir = (path as NSString).deletingLastPathComponent
@@ -1360,7 +1378,7 @@ enum SessionsExport {
                 let src = b.dir.appendingPathComponent(it.path).path
                 // the name it gets in the file: a known account id or address in a path (a tool result named for it, a project
                 // folder named for an address) becomes its fingerprint, so the file's own names carry nothing known either
-                let rel = scrubber.name(it.path)
+                let rel = free(scrubber.name(it.path))
                 let dst = try create(rel)
                 var bytes = it.bytes
                 if rel.hasSuffix(".jsonl"), !endsOnLine(src) {
@@ -1392,7 +1410,7 @@ enum SessionsExport {
             close(f.fd)
             if !SecretScan.scan(raw).isEmpty, keys == .leaveOut { po.markersLeftOut += 1; leftOut += 1; continue }
             let data = scrubber.data(raw)
-            let mrel = scrubber.name(it.path)
+            let mrel = free(scrubber.name(it.path))
             try write(data, to: URL(fileURLWithPath: create(mrel)))
             items.append(SessionsBackup.Item(role: .transcript, original: mrel, path: mrel, bytes: Int64(data.count)))
             cloned += 1; po.bytes += Int64(data.count)
