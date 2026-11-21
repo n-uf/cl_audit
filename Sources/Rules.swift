@@ -80,6 +80,18 @@ final class AgentRules {
         observers.append(dn.addObserver(forName: Installer.appsChangedNote, object: nil, queue: .main) { [weak self] _ in
             self?.applyDockSwitches()
         })
+        // the Dock tile's own menu (its app not running): what it asks, the agent does (DockTileMenu)
+        observers.append(dn.addObserver(forName: DockTile.menuNote, object: nil, queue: .main) { [weak self] note in
+            guard let self, let (act, id) = DockTileMenu.parse(note.object), let e = self.accounts.first(where: { $0.id == id }) else { return }
+            agentLog.log("agent: \(id, privacy: .public): Dock tile menu: \(act.rawValue, privacy: .public)")
+            switch act {
+            case .openWindow: if e.claudeWindow { Launcher.openClaude(Account(e)) }
+            case .quitWindow: _ = ClaudeWindow.quit(Account(e))
+            case .dashboard: Installer.openDashboard()
+            case .settings: Installer.openSettings(account: id)
+            case .quickChat, .refresh: break        // (the plug-in posts their own notices)
+            }
+        })
         observers.append(dn.addObserver(forName: Installer.quietQuitNote, object: nil, queue: .main) { [weak self] note in
             if let id = note.object as? String { self?.quietAt[id] = Date() }
         })

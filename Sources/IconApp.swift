@@ -412,6 +412,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func tick() {
         refreshWindowState()
         loadStatus()                  // also redraws: the staleness and the agent's state change with time
+        quitIfLeft()
+    }
+
+    /// When this Dock icon app was last in use: in front, or a panel or window of it shown.
+    var lastBusy = Date()
+
+    /// Started by you (a click on its tile) while the Dock draws the icon itself: once you've left it for a minute (no
+    /// panel shown, not in front) it quits, its Claude window left alone, and the Dock draws the tile again (DockTile).
+    func quitIfLeft() {
+        guard !isSettingsApp, let id = accountID else { return }
+        let inFront = NSApp.isActive, shown = NSApp.windows.contains { $0.isVisible }
+        if inFront || shown { lastBusy = Date() }
+        guard DockTile.quitsWhenIdle(agentStarted: DockTile.agentStarted(CommandLine.arguments), drawn: DockTile.drawn(id),
+                                     inFront: inFront, windowShown: shown, idleFor: Date().timeIntervalSince(lastBusy)) else { return }
+        quietQuit = true
+        NSApp.terminate(nil)
     }
 
     // MARK: opening Claude

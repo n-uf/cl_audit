@@ -63,6 +63,46 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.redraw("timer") }
     }
 
+    /// The right-click menu while the Dock icon app isn't running (DockTileMenu): the usage and the actions, each a notice
+    /// (the plug-in starts nothing itself). No menu without a profile.
+    func dockMenu() -> NSMenu? {
+        guard let id,
+              let list = SafeRead.whole(Store.configURL.path, max: 4 << 20).flatMap({ try? JSONDecoder().decode(ConfigFile.self, from: $0) }),
+              let e = list.accounts.first(where: { $0.id == id }) else { return nil }
+        let record = SafeRead.whole(Store.statusFolder.appendingPathComponent("\(id).json").path, max: SafeRead.recordMax)
+            .flatMap(StatusCodec.decode)
+        let m = NSMenu(); m.autoenablesItems = false
+        for row in DockTileMenu.rows(e, ProfileShow.of(e, raw: record?.current()), windowOpen: DockTile.windowOpen(id)) {
+            switch row {
+            case .separator: m.addItem(.separator())
+            case .info(let s):
+                let i = NSMenuItem(title: s, action: nil, keyEquivalent: ""); i.isEnabled = false; m.addItem(i)
+            case .full(let s):
+                let i = NSMenuItem(title: s, action: nil, keyEquivalent: ""); i.isEnabled = false
+                i.attributedTitle = NSAttributedString(string: s, attributes: [
+                    .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: Painter.crimson])
+                m.addItem(i)
+            case .action(let s, let act):
+                let i = NSMenuItem(title: s, action: #selector(picked(_:)), keyEquivalent: "")
+                i.target = self; i.representedObject = act.rawValue; m.addItem(i)
+            }
+        }
+        log("menu asked")
+        return m
+    }
+
+    /// A menu action: Quick chat and Refresh now as the Dock icon app sends them; the rest to the agent.
+    @objc func picked(_ sender: NSMenuItem) {
+        guard let id, let raw = sender.representedObject as? String, let act = DockTileMenu.Act(rawValue: raw) else { return }
+        let center = DistributedNotificationCenter.default()
+        switch act {
+        case .quickChat: center.postNotificationName(QuickChat.openNote, object: id, userInfo: nil, deliverImmediately: true)
+        case .refresh: center.postNotificationName(Installer.refreshAllNote, object: id, userInfo: nil, deliverImmediately: true)
+        default: center.postNotificationName(DockTile.menuNote, object: DockTileMenu.object(act, id), userInfo: nil, deliverImmediately: true)
+        }
+        log("menu: \(act.rawValue)")
+    }
+
     /// An update replaced the copy with another build: the code running here is the old one, and the Dock loads the new one
     /// only in a new process. So this one ends (the Dock starts it again), once the copy and its app both say the new build
     /// and still do 10 s later (an install writes the plug-in's Info.plist before the app's and signs both after). A copy

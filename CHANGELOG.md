@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- A Dock icon's right-click menu now works while its app isn't running: the profile's usage, Quick chat, Open or Quit Claude window, Refresh now, Dashboard and Profile settings. A Dock icon app you open with a click quits by itself about a minute after you leave it, while the Dock draws its icon, its Claude window left as it is.
 
 ## 26.11.81 — 2026-11-21
 

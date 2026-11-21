@@ -87,6 +87,18 @@ if args.count >= 3, args[1] == "--child" {
         RunLoop.main.run(until: Date().addingTimeInterval(12))
         p.redraw("timer")
     }
+    if scenario == "menu" {
+        // the Dock asks for the menu, then a click on Open Claude window: a notice to the agent, nothing started here
+        var heard: [String] = []
+        let o = dn.addObserver(forName: DockTile.menuNote, object: nil, queue: .main) { heard.append($0.object as? String ?? "?") }
+        guard let m = p.dockMenu() else { print("no menu"); exit(6) }
+        let titles = m.items.map(\.title)
+        print("menu: \(titles.joined(separator: " | "))")
+        if let open = m.items.first(where: { $0.title == "Open Claude window" }) { p.picked(open) }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        dn.removeObserver(o)
+        print("heard: \(heard.joined(separator: ","))")
+    }
     p.setDockTile(nil)
     print("done \(scenario)")
     exit(0)
@@ -320,7 +332,52 @@ do {
     check(run([(60, facts(beat: at(-31)))], &t) == [.none], "one stale tick after a minute isn't enough (two in a row)")
 }
 
-// 4. an update: the copy is now another build, so the old code leaves and the Dock loads the new one; not mid-install
+// 4. the Dock tile's own menu (DockTileMenu): the usage and the actions, no address; its actions are notices to the agent
+do {
+    var win = e; win.claudeWindow = true
+    let show = ProfileShow.of(win, raw: record(), now: now)
+    let rows = DockTileMenu.rows(win, show, windowOpen: false, now: now)
+    let infos = rows.compactMap { if case .info(let s) = $0 { return s } else { return nil } }
+    let acts = rows.compactMap { if case .action(let s, let a) = $0 { return "\(s)=\(a.rawValue)" } else { return nil } }
+    check(infos.first == "Dock" && infos.contains { $0.hasPrefix("5-hour limit: 12% · resets ") } && infos.contains { $0.hasPrefix("Weekly limit: 40% · resets ") }
+          && infos.contains("Updated 1 min ago"),
+          "the menu: the profile's name, its limits with their resets and the reading's age (got \(infos))")
+    check(acts == ["Quick chat=quickChat", "Open Claude window=openWindow", "Refresh now=refresh", "Dashboard=dashboard", "Profile settings…=settings"],
+          "the menu's actions, in order (got \(acts))")
+    let open = DockTileMenu.rows(win, show, windowOpen: true, now: now).compactMap { if case .action(let s, _) = $0 { return s } else { return nil } }
+    check(open.contains("Show Claude window") && open.contains("Quit Claude window"), "its window open: Show and Quit Claude window")
+    var noWin = e; noWin.claudeWindow = false
+    let noWinActs = DockTileMenu.rows(noWin, show, windowOpen: false, now: now).compactMap { if case .action(_, let a) = $0 { return a } else { return nil } }
+    check(!noWinActs.contains(.openWindow) && !noWinActs.contains(.quitWindow), "no Claude window: no window actions")
+    let none = DockTileMenu.rows(win, ProfileShow.of(win, raw: nil, now: now), windowOpen: false, now: now)
+    check(none.contains(.info("No usage read yet")), "no reading yet: said so")
+    let full = DockTileMenu.rows(win, ProfileShow.of(win, raw: record(five: 100, week: 40), now: now), windowOpen: false, now: now)
+    check(full.contains { if case .full(let s) = $0 { return s.hasPrefix("5-hour full") } else { return false } }, "a full limit: its crimson line first")
+    let all = [rows, none, full].flatMap { $0 }.map { r -> String in
+        switch r { case .info(let s), .full(let s), .action(let s, _): return s; case .separator: return "" }
+    }
+    check(!all.contains { $0.contains("@") }, "the menu never shows an address")
+    check(DockTileMenu.parse(DockTileMenu.object(.openWindow, "dt1")).map { "\($0.0.rawValue) \($0.1)" } == "openWindow dt1"
+          && DockTileMenu.parse(DockTileMenu.object(.settings, "a:b")).map { $0.1 } == "a:b"
+          && DockTileMenu.parse("nonsense:dt1") == nil && DockTileMenu.parse("openWindow:") == nil && DockTileMenu.parse(nil) == nil,
+          "the agent's notice: <action>:<id>, the id may hold a colon; anything else ignored")
+    // a Dock icon app you started quits once left for a minute while the Dock draws the icon
+    check(DockTile.quitsWhenIdle(agentStarted: false, drawn: true, inFront: false, windowShown: false, idleFor: 60)
+          && !DockTile.quitsWhenIdle(agentStarted: false, drawn: true, inFront: false, windowShown: false, idleFor: 59)
+          && !DockTile.quitsWhenIdle(agentStarted: true, drawn: true, inFront: false, windowShown: false, idleFor: 600)
+          && !DockTile.quitsWhenIdle(agentStarted: false, drawn: false, inFront: false, windowShown: false, idleFor: 600)
+          && !DockTile.quitsWhenIdle(agentStarted: false, drawn: true, inFront: true, windowShown: false, idleFor: 600)
+          && !DockTile.quitsWhenIdle(agentStarted: false, drawn: true, inFront: false, windowShown: true, idleFor: 600),
+          "your Dock icon app quits after a minute left alone, only while the Dock draws the icon; never the agent's, in front or showing a panel")
+}
+plugInfo(build: "b1")
+_ = Store.writeStatus(id, record())
+let menu = child("menu")
+check(clean(menu, "menu") && menu.out.contains("menu: Dock | ") && menu.out.contains("Open Claude window")
+      && menu.out.contains("heard: openWindow:\(id)") && !menu.out.contains("@") && log().contains("menu: openWindow"),
+      "the plug-in's menu in the Dock's place: built from the record, Open Claude window asks the agent, no tripwire (got \(menu.out))")
+
+// 5. an update: the copy is now another build, so the old code leaves and the Dock loads the new one; not mid-install
 plugInfo(build: "b1")
 let half = child("half-install")
 check(clean(half, "half-install") && !log().contains("leaving"), "an install half done (the app still on b1): the plug-in stays")
