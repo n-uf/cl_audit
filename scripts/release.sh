@@ -50,6 +50,11 @@ if [ $dry = 1 ]; then echo "$next"; exit 0; fi
 [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "release from main" >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "commit or stash your changes first" >&2; exit 1; }
 if git rev-parse -q --verify "refs/tags/v$next" >/dev/null; then echo "v$next is already tagged" >&2; exit 1; fi
+# a push needs main to be ahead of origin's: found out now, not after the long build
+if [ $push = 1 ]; then
+  git fetch -q origin main || { echo "couldn't fetch origin's main" >&2; exit 1; }
+  git merge-base --is-ancestor origin/main HEAD || { echo "origin/main has commits this main doesn't: pull (rebase) first" >&2; exit 1; }
+fi
 notes="$(awk '/^## Unreleased/{f=1; next} /^## /{f=0} f' CHANGELOG.md | sed '/^[[:space:]]*$/d')"
 if [ -z "$notes" ] || [ "$notes" = "Nothing pending." ]; then
   echo "CHANGELOG.md has no Unreleased notes; add them first" >&2; exit 1
@@ -107,8 +112,9 @@ if [ $push = 1 ]; then
   echo "$checked  (update README ▸ Install and the site's checkedWith if these changed)"
 
   # the files are ready: now main and the tag go out, then the release that names the tag
-  git push -q origin main
-  git push -q origin "v$next"
+  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ "${tagged:-0}" = 1 ] || echo "main is $([ "${pushedmain:-0}" = 1 ] && echo pushed || echo "not pushed"); the tag v$next is not: push them with  git push origin main v$next  then publish" >&2' EXIT
+  git push -q origin main; pushedmain=1
+  git push -q origin "v$next"; tagged=1
   echo "pushed main and v$next"
   # a release that can't be published (gh missing, signed out, the network) leaves a pushed tag with no release: say the one
   # line that publishes it by hand, with the files already in dist/
