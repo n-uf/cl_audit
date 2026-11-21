@@ -126,13 +126,9 @@ if [ $push = 1 ]; then
   checked="Checked with Claude Code ${cc:-?} and the Claude app ${app:-?}. A newer Claude version can change how Claude Code saves its login or the usage figures; if something stops working, update cl_audit."
   echo "$checked  (update README ▸ Install and the site's checkedWith if these changed)"
 
-  # the files are ready: now main and the tag go out, then the release that names the tag
-  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ "${tagged:-0}" = 1 ] || echo "main is $([ "${pushedmain:-0}" = 1 ] && echo pushed || echo "not pushed"); the tag v$next is not: push them with  git push origin main v$next  then publish" >&2' EXIT
-  git push -q origin main; pushedmain=1
-  git push -q origin "v$next"; tagged=1
-  echo "pushed main and v$next"
   # the release's notes whole (the changelog section, the Checked with line, Download and SHA-256), in a file beside the
-  # files to publish, so a release published by hand says the same
+  # files to publish, so a release published by hand says the same. Written (and the by-hand lines made) before anything is
+  # pushed: a write that fails stops here, under the trap above, with nothing pushed
   notes_file="$PWD/dist/release-notes-v$next.md"
   printf '%s\n' "$section
 
@@ -151,7 +147,14 @@ SHA-256: \`cl_audit.zip\` $zip_sha · \`cl_audit.dmg\` $dmg_sha" > "$notes_file"
   zip_abs="$PWD/dist/cl_audit.zip" dmg_abs="$PWD/dist/cl_audit.dmg"
   manual="gh release create v$next $(printf %q "$zip_abs") $(printf %q "$dmg_abs") --repo n-uf/cl_audit --title \"cl_audit $next\" --notes-file $(printf %q "$notes_file")"
   upload="gh release upload v$next $(printf %q "$zip_abs") $(printf %q "$dmg_abs") --repo n-uf/cl_audit --clobber"
-  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ "${published:-0}" = 1 ] || echo "the GitHub Release wasn'"'"'t published; publish it by hand: $manual   (if the release is there but an upload was cut short: $upload)" >&2' EXIT
+  [ -s "$notes_file" ] || { echo "the release notes couldn't be written to $notes_file" >&2; exit 1; }
+
+  # the files are ready: now main and the tag go out, then the release that names the tag
+  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ "${tagged:-0}" = 1 ] || { echo "main is $([ "${pushedmain:-0}" = 1 ] && echo pushed || echo "not pushed"); the tag v$next is not. Push them:"; echo "git push origin main v$next"; echo "then publish the release:"; echo "$manual"; } >&2' EXIT
+  git push -q origin main; pushedmain=1
+  git push -q origin "v$next"; tagged=1
+  echo "pushed main and v$next"
+  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ "${published:-0}" = 1 ] || { echo "the GitHub Release wasn'"'"'t published; publish it by hand:"; echo "$manual"; echo "or, if the release is there but an upload was cut short:"; echo "$upload"; } >&2' EXIT
   gh release create "v$next" dist/cl_audit.zip dist/cl_audit.dmg --repo n-uf/cl_audit --title "cl_audit $next" --notes-file "$notes_file"
   published=1
   echo "published the GitHub Release v$next with cl_audit.zip and cl_audit.dmg"
