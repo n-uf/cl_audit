@@ -279,6 +279,18 @@ do {
     check(t.asBefore("p"), "as before is remembered: the rules start its Dock icon app again")
     let back = run([(180, facts(running: true, ours: true, beat: at(175)))], &t)
     check(back == [.quit] && !t.asBefore("p"), "a heartbeat comes back (Dock Tiles on again): the app the agent ran quits")
+    // a tile that beats only while its app runs: quit once, then none again → the app keeps running (no restart loop)
+    t.ready("p", now: at(190))
+    let loop = run([(220, facts(beat: at(175))), (250, facts(beat: at(175))), (280, facts(beat: at(175))), (310, facts(beat: at(175))),
+                    (340, facts(running: true, ours: true, beat: at(335))), (370, facts(running: true, ours: true, beat: at(365)))], &t)
+    check(loop == [.none, .none, .none, .asBefore, .none, .none] && t.asBefore("p"),
+          "drawn only while running: after one quit and no tile again, it runs as before and isn't quit again (got \(loop))")
+    t.forget("p")
+    check(!t.asBefore("p") && run([(400, facts()), (430, facts())], &t) == [.none, .openOnce],
+          "a new copy (another build): it starts over, its one open included")
+    check(DockTile.agentStarted(["/x", "--no-follow"]) && !DockTile.agentStarted(["/x"])
+          && !DockTile.agentStarted(["/x", "--no-follow", DockTile.startedByYou]),
+          "the agent's own start: --no-follow, and not an update's restart of one you started")
     t = TileTracker(now: t0)
     // once in a run: opened, then quit (by you, or its window's rule) with still no tile: as before, not opened again
     _ = run([(30, facts()), (60, facts())], &t)

@@ -793,13 +793,17 @@ enum Installer {
             if needsInstall(e, at: dst, source: source) {
                 let lookChanged = lookDiffers(e, at: dst)
                 let wasRunning = isRunning(e)
+                // one you started stays yours after the restart (the agent quits only its own once the Dock draws the tile)
+                let yours = running(e).contains { !DockTile.agentStarted(Processes.arguments(of: $0.processIdentifier)) }
                 stop(dst)
                 do { try install(e, at: dst, source: source); log.append("installed \(dst.deletingPathExtension().lastPathComponent)") }
                 catch { log.append("couldn't install \(e.name): \(error.localizedDescription)"); continue }
                 if lookChanged { restyled.append(dst) }
                 // as it was: running again if it ran (in the background, its window left as it is); nothing else is
                 // started here, the agent runs the opening rules
-                if wasRunning && e.runs.dockIcon { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
+                if wasRunning && e.runs.dockIcon {
+                    run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"] + (yours ? [DockTile.startedByYou] : []))
+                }
             }
         }
         return log

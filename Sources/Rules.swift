@@ -43,8 +43,10 @@ final class AgentRules {
     private var pinning: Set<String> = []
     private var quietAt: [String: Date] = [:]           // a Dock icon asked to quit without its window
     private var seeded = false
-    /// The Dock draws the tiles: each Dock icon app by its tile's heartbeat (DockTile.swift).
+    /// The Dock draws the tiles: each Dock icon app by its tile's heartbeat (DockTile.swift), and the build of each copy
+    /// it was asked about (a new one starts over).
     private var tiles = TileTracker()
+    private var copyBuilds: [String: String] = [:]
     /// What it's doing now, for the dashboard (written into the agent's mark).
     private(set) var actions: [String: AgentAction] = [:] { didSet { if actions != oldValue { onChange?() } } }
     var onChange: (() -> Void)?
@@ -249,10 +251,15 @@ final class AgentRules {
         for e in accounts where e.runs.dockIcon && !removing.contains(e.id) && !pinning.contains(e.id) {
             let app = Installer.appURL(e)
             guard FileManager.default.fileExists(atPath: app.path) else { continue }
+            // another build, or a copy made again: it starts over (its one open included)
+            let build = Installer.info(app)?["UsageBuild"] as? String ?? "-"
+            if let was = copyBuilds[e.id], was != build { tiles.forget(e.id) }
+            copyBuilds[e.id] = build
             let running = Installer.running(e)
-            // the agent's own start carries --no-follow (startDock, Installer.sync); a click doesn't
+            // the agent's own start carries --no-follow (startDock; an update's restart of one you started also says
+            // it's yours); a click carries nothing. A copy macOS reopens at login counts as yours: it stays
             let facts = TileTracker.Facts(pinned: DockManager.isPinned(app), running: !running.isEmpty,
-                                          ours: running.contains { Processes.arguments(of: $0.processIdentifier).contains("--no-follow") },
+                                          ours: running.contains { DockTile.agentStarted(Processes.arguments(of: $0.processIdentifier)) },
                                           inFront: running.contains(where: \.isActive), lastBeat: DockTile.lastBeat(e.id))
             switch tiles.step(e.id, facts, now: now) {
             case .none: break
@@ -311,6 +318,7 @@ final class AgentRules {
                 let place = defaults.object(forKey: "dockPlace.\(e.id)") as? String
                 agentLog.log("agent: \(e.id, privacy: .public): Usage in the Dock on, pinning \(place == nil ? "after the other icons" : "in its place", privacy: .public) and starting")
                 pinning.insert(e.id)
+                DockTile.setWindowOpen(e.id, lastOpen[e.id] ?? false)
                 DockManager.pinInBackground(app, after: place) { [weak self] in self?.pinning.remove(e.id); self?.tiles.ready(e.id) }
                 startDock(e, reason: "Usage in the Dock on")
             } else {
@@ -337,6 +345,7 @@ final class AgentRules {
                 self?.removing.remove(e.id)
                 guard let now = Store.loadChecked()?.first(where: { $0.id == e.id }), !now.runs.dockIcon else { return }
                 AccountRemoval.removeDockApp(id: e.id, app: app)
+                self?.tiles.forget(e.id); self?.copyBuilds[e.id] = nil
                 agentLog.log("agent: \(e.id, privacy: .public): Dock icon app removed")
             }
         }

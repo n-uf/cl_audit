@@ -42,6 +42,13 @@ enum DockTile {
         (try? FileManager.default.attributesOfItem(atPath: beatURL(id).path))?[.modificationDate] as? Date
     }
 
+    /// The argument of a Dock icon app an update restarted for you (Installer.sync): it starts quietly (--no-follow) but
+    /// stays yours, so the agent doesn't quit it once the Dock draws the tile.
+    static let startedByYou = "--started-by-you"
+
+    /// The agent's own start of a Dock icon app: quiet (--no-follow) and not restarted for you.
+    static func agentStarted(_ args: [String]) -> Bool { args.contains("--no-follow") && !args.contains(startedByYou) }
+
     // MARK: the window dot
 
     /// Whether the profile's Claude window runs, as the agent last saw it ("1" or "0" in docktile/<id>.window): the
@@ -95,7 +102,9 @@ struct TileTracker {
         case asBefore       // still no tile: the Dock icon app runs as it did before tiles, until a heartbeat comes back
     }
 
-    private struct State { var readyAt: Date; var stale = 0; var tried = false; var failed = false }
+    /// `quitOnce`: the agent quit its app once for a tile in this run; `sticky`: and then the Dock drew none again, so its
+    /// tile beats only while the app runs: the app keeps running (no quit and restart every few minutes).
+    private struct State { var readyAt: Date; var stale = 0; var tried = false; var failed = false; var quitOnce = false; var sticky = false }
     private var states: [String: State] = [:]
     private var baseline: Date
     private var lastTick: Date?
@@ -103,7 +112,10 @@ struct TileTracker {
     init(now: Date = Date()) { baseline = now }
 
     /// The Dock drew no tile for it lately: its Dock icon app runs by the rules, as before.
-    func asBefore(_ id: String) -> Bool { states[id]?.failed ?? false }
+    func asBefore(_ id: String) -> Bool { (states[id]?.failed ?? false) || (states[id]?.sticky ?? false) }
+
+    /// A new copy (another build, removed, or turned off and on): it starts over, its one open included.
+    mutating func forget(_ id: String) { states[id] = nil }
 
     /// The copy is ready to be drawn from `now` (pinned, quit): a minute's patience again.
     mutating func ready(_ id: String, now: Date = Date()) {
@@ -129,18 +141,22 @@ struct TileTracker {
         guard f.pinned else { s.stale = 0; return .none }
         let age = f.lastBeat.map { now.timeIntervalSince($0) }
         if let age, age >= 0, age < Self.fresh {
-            s.stale = 0; s.failed = false
-            return f.running && f.ours && !f.inFront ? .quit : .none
+            s.stale = 0
+            guard !s.sticky else { return .none }       // drawn only while it runs: it keeps running, as before
+            s.failed = false
+            guard f.running && f.ours && !f.inFront else { return .none }
+            s.quitOnce = true
+            return .quit
         }
         guard !s.failed else { return .none }
         s.stale += 1
         guard now.timeIntervalSince(s.readyAt) >= Self.patience, s.stale >= 2 else { return .none }
         if f.running {
             guard f.ours else { return .none }          // one you started: left alone
-            s.failed = true
+            s.failed = true; if s.quitOnce { s.sticky = true }
             return .asBefore
         }
-        if s.tried { s.failed = true; return .asBefore }
+        if s.tried { s.failed = true; if s.quitOnce { s.sticky = true }; return .asBefore }
         s.tried = true; s.readyAt = now; s.stale = 0
         return .openOnce
     }
