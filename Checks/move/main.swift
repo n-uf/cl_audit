@@ -93,7 +93,7 @@ if role == "b" {
         check(plan.create.allSatisfy { $0.entry.iconHidden } && work?.inDock == true && homeP?.inDock == false,
               "B: no Dock icon for a made profile (Usage in the Dock off); the done page knows Work had one")
         let diffs = Dictionary(uniqueKeysWithValues: plan.settings.map { ($0.key, $0) })
-        check(diffs["face"]?.fileWords == "Silver" && diffs["face"]?.hereWords == "Std" && diffs[AddressSettings.key]?.fileWords == "hidden" && diffs[BackupPrefs.lastKey]?.file == "7"
+        check(diffs["face"]?.fileWords == "Silver" && diffs["face"]?.hereWords == "Std" && diffs[AddressSettings.key]?.fileWords == "shown" && diffs[AddressSettings.key]?.hereWords == "hidden" && diffs[BackupPrefs.lastKey]?.file == "7"
               && diffs[BackupPrefs.placeKey]?.problem != nil && plan.settings.count == 4,
               "B: 4 settings differ (Face, Emails, Backups kept, Backups folder), the backups folder can't be taken (not on this Mac): \(plan.settings.map { "\($0.key)=\($0.file)" })")
         check(MoveWords.settingLines(plan).contains("Face: Std here, Silver in the file") && MoveWords.key(plan, take: true, create: true) == "Make 2 profiles and take 3 settings"
@@ -194,6 +194,19 @@ if role == "b" {
               "B: Undo takes back the profiles and the folders it made: \(Store.load().map(\.name)), left \(u.left)")
         check(SessionsMove.prefs.object(forKey: "face") == nil && BackupPrefs.store.object(forKey: BackupPrefs.lastKey) == nil,
               "B: …and the settings are as they were (nothing stored)")
+        // M2: the Emails setting after Undo took its key away: this Mac's value is hidden again (nothing stored counts as hidden), and the
+        // window's live copy follows it (MoveLive.reload's `takeStored`), not the value the import had set
+        final class MovePrefsAsAddress: AddressPrefs {
+            func addressBool(_ key: String) -> Bool? { SessionsMove.bool(SessionsMove.prefs.object(forKey: key)) }
+            func setAddressBool(_ value: Bool, _ key: String) { SessionsMove.prefs.set(value, forKey: key) }
+            func removeAddressKey(_ key: String) { SessionsMove.prefs.set(nil, forKey: key) }
+        }
+        let afterStore = AddressSettings.makeStore(prefs: MovePrefsAsAddress())
+        AddressPrivacy.shared.apply(blur: false)
+        AddressSettings.takeStored(afterStore)
+        check(SessionsMove.prefs.object(forKey: AddressSettings.key) == nil && afterStore.blurAddresses && AddressPrivacy.shared.blur,
+              "B: after Undo the key is gone, the setting reads hidden, and the live copy follows it (shown before)")
+        AddressPrivacy.shared.apply(blur: false)
         // (cl_audit's own folder, and the lock it shares with claude-transplant so one move of sessions runs at a time, stay)
         let leftOver = everything(home).filter { !$0.hasPrefix("Library/Application Support/usage-n-uf") && !$0.hasPrefix("Library/Application Support/claude-transplant") && $0 != "Library/Application Support" && $0 != "Library" }
         check(leftOver.isEmpty, "B: nothing outside cl_audit's own folder is left: \(leftOver.prefix(6))")
@@ -276,8 +289,8 @@ MainActor.assumeIsolated {
     write("\(wc)/projects/-w-project/connector-downloads/notes/brief.txt", connectorFile)
     for f in files(wc + "/projects") { try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86400)], ofItemAtPath: wc + "/projects/" + f) }
     for f in files(hc + "/projects") { try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86400)], ofItemAtPath: hc + "/projects/" + f) }
-    // this Mac's settings: Silver, emails hidden, 7 backups kept, backups in a folder of the home
-    SessionsMove.prefs.set("silver", forKey: "face"); SessionsMove.prefs.set(false, forKey: AddressSettings.key)
+    // this Mac's settings: Silver, emails shown (the other Mac, with nothing stored, counts as hidden: a difference), 7 backups kept, backups in a folder of the home
+    SessionsMove.prefs.set("silver", forKey: "face"); SessionsMove.prefs.set(true, forKey: AddressSettings.key)
     BackupPrefs.store.set(7, forKey: BackupPrefs.lastKey)
     try! fm.createDirectory(atPath: home + "/MyBackups", withIntermediateDirectories: true)
     BackupPrefs.store.set("~/MyBackups", forKey: BackupPrefs.placeKey)
@@ -679,6 +692,44 @@ MainActor.assumeIsolated {
     check(steps.count == 4 && steps[0].contains(a1) && steps[0].contains("Accounts ▸ Sign in with another account…") && steps[1].hasPrefix("Put it in the Dock") && steps[1].contains("Dock icon ▸ Usage in the Dock")
           && steps[2].contains("paused") && steps[3].contains("Sessions ▸ Import…"),
           "words: the done page lists each account to sign in, the Dock step and the paused tasks: \(steps)")
+    // M2: a move's Emails value is this Mac's setting as AddressSettings reads it: nothing stored is hidden (never "shown"), the
+    // older blurEmails alone is respected, showEmails wins; the export and the compare use that value
+    do {
+        let emailsKey = SessionsMove.known.first { $0.key == AddressSettings.key }!
+        let keep = SessionsMove.prefs
+        defer { SessionsMove.prefs = keep }
+        func here(_ set: [String: Any]) -> String {
+            let p = MemoryPrefs(); for (k, v) in set { p.set(v, forKey: k) }
+            SessionsMove.prefs = p
+            return SessionsMove.current(emailsKey)
+        }
+        check(here([:]) == "false" && emailsKey.def == "false", "M2: nothing stored: Emails reads hidden (false), not shown")
+        check(here(["blurEmails": true]) == "false" && here(["blurEmails": false]) == "true", "M2: the older blurEmails alone: true = hidden, false = shown")
+        check(here(["showEmails": true]) == "true" && here(["showEmails": false, "blurEmails": false]) == "false" && here(["showEmails": true, "blurEmails": true]) == "true",
+              "M2: showEmails wins over blurEmails")
+        // the export carries it (typed: a Bool), unset as hidden; the compare against a file that says shown is a difference, against one that says hidden none
+        SessionsMove.prefs = MemoryPrefs()
+        let exported = json(SessionsMove.make(Store.load(), parts: [:], all: Store.load(), move: true))
+        check((exported?["general"] as? [String: Any])?[AddressSettings.key] as? Bool == false, "M2: the move file holds Emails as hidden while nothing is stored")
+        let shownFile = SessionsMove.File(move: true, profiles: [], general: [AddressSettings.key: "true"], backups: [:])
+        let hiddenFile = SessionsMove.File(move: true, profiles: [], general: [AddressSettings.key: "false"], backups: [:])
+        check(SessionsMove.plan(shownFile, accounts: []).settings.contains { $0.key == AddressSettings.key && $0.hereWords == "hidden" && $0.fileWords == "shown" }
+              && !SessionsMove.plan(hiddenFile, accounts: []).settings.contains { $0.key == AddressSettings.key },
+              "M2: a file that says shown differs from a Mac with nothing stored; one that says hidden doesn't")
+        // the live copy (MoveLive.reload → takeStored) follows the store, also when the key is missing
+        final class Box: AddressPrefs {
+            var d: [String: Bool] = [:]
+            func addressBool(_ key: String) -> Bool? { d[key] }
+            func setAddressBool(_ value: Bool, _ key: String) { d[key] = value }
+            func removeAddressKey(_ key: String) { d[key] = nil }
+        }
+        let box = Box(), st = AddressSettings.makeStore(prefs: box)
+        box.d["showEmails"] = true; AddressSettings.takeStored(st)
+        let shownNow = !AddressPrivacy.shared.blur
+        box.d["showEmails"] = nil; AddressSettings.takeStored(st)
+        check(shownNow && AddressPrivacy.shared.blur, "M2: takeStored follows the stored value, and hidden once the key is gone (Undo)")
+        AddressPrivacy.shared.apply(blur: false)
+    }
     check(dockCalls == 0 && securityCalls == 0, "A: the Dock was never written, the Keychain never asked")
     try? fm.removeItem(atPath: out)
 }
