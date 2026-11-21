@@ -686,13 +686,16 @@ enum Setup {
         }
         for cmd in commands(inSettings: data) {
             // the folder a `cd` goes to, normalised once (nil: one it can't tell, or longer than any real path); each relative token
-            // after it is resolved once (a crafted `cd /<long path> && ./a ./a …` stays quick)
+            // after it is resolved once, and at most `perCd` of them (a crafted `cd /<long path> && ./1 ./2 … ./1000000` stays quick:
+            // each resolution re-reads the folder, so their number is what is capped; a real command names a handful)
+            let perCd = 2_000
             var cwd: String? = nil, afterCd = false, resolved = Set<String>()
             for raw in cmd.components(separatedBy: seps) where !raw.isEmpty {
                 if afterCd { afterCd = false; cwd = raw.utf8.count <= 1024 ? absolute(raw).map(normalize) : nil; resolved = [] }
                 if raw == "cd" { afterCd = true; continue }
                 var t = absolute(raw)
-                if t == nil, let d = cwd, raw.hasPrefix("./") || raw.hasPrefix("../"), raw.utf8.count <= 1024, resolved.insert(raw).inserted {
+                if t == nil, let d = cwd, raw.hasPrefix("./") || raw.hasPrefix("../"), raw.utf8.count <= 1024,
+                   resolved.count < perCd, resolved.insert(raw).inserted {
                     t = normalize(d + "/" + raw)
                 }
                 guard let p = t else { continue }

@@ -714,7 +714,8 @@ MainActor.assumeIsolated {
         check(named == ["p/7"] && took1 < 5, "scripts: 200,000 named paths against 20,000 files, matched by their tails quickly (\(named.count) in \(String(format: "%.2f", took1)) s)")
         // a `cd` to a folder, then ./ (or ../) in the same command: that file is named; a bare relative word and one without a cd aren't
         let cdj = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd ~/.claude/skills/guard && ./run.sh --x ../shared/lib.sh"}]},{"hooks":[{"type":"command","command":"./other.sh run.sh"}]}]}}"#.utf8)
-        let cdNamed = Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh"])
+        // (other/run.sh: no path of the first command ends in it; only the bare word "run.sh" of the second could name it, and it doesn't)
+        let cdNamed = Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh", "other/run.sh"])
         check(cdNamed == ["skills/guard/run.sh", "skills/shared/lib.sh"],
               "scripts: cd ~/.claude/skills/guard && ./run.sh names run.sh (and ../shared/lib.sh); a ./ with no cd before it, or a bare word, names nothing: \(cdNamed.sorted())")
         // a crafted settings.json of one very deep path, and a cd to a very long one followed by many ./ tokens: both quick
@@ -726,6 +727,13 @@ MainActor.assumeIsolated {
         let took2 = Date().timeIntervalSince(t2)
         check(deepNamed == ["a/x.sh"] && longNamed.isEmpty && took2 < 5,
               "scripts: one path 400,000 folders deep, and a cd to a 2 MB path followed by 200,000 ./ tokens, read quickly (\(String(format: "%.2f", took2)) s)")
+        // a cd to a 1000-character path of short folders, then 300,000 DIFFERENT ./ tokens: at most 2,000 are resolved, quickly
+        let manyCd = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd /\#(String(repeating: "c/", count: 499)) && \#((0..<300_000).map { "./\($0)" }.joined(separator: " "))"}]}]}}"#.utf8)
+        let t3 = Date()
+        let manyPaths = Setup.commandPaths(inSettings: manyCd, home: home)
+        let took3 = Date().timeIntervalSince(t3)
+        check(manyPaths.count == 2_001 && took3 < 5,
+              "scripts: after one cd, at most 2,000 different relative tokens are resolved, in a moment (\(manyPaths.count) paths in \(String(format: "%.2f", took3)) s)")
         // the setup row's ~: only where the home folder is a whole path's start
         check(SetupRow.tildeHome("node /Users/ann/a.js --log /Users/ann", home: "/Users/ann") == "node ~/a.js --log ~"
               && SetupRow.tildeHome("node /Users/anna/a.js /x/Users/ann/b", home: "/Users/ann") == "node /Users/anna/a.js /x/Users/ann/b"
