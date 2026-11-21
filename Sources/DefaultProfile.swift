@@ -158,7 +158,9 @@ enum DefaultProfile {
         let stamp = (try? FileManager.default.attributesOfItem(atPath: folder.path))?[.modificationDate] as? Date
         cacheLock.lock(); defer { cacheLock.unlock() }
         if let c = cache, c.stamp == stamp { return c.list }
-        let list: [Record] = store.ids().compactMap(store.load)          // in the order of their file names
+        // oldest first, in the order they were made (the store's: started, then its first-save key): standing() takes the last,
+        // unfinished() the newest open; the file names are UUIDs, so their order said nothing
+        let list: [Record] = store.list().reversed()
         cache = (stamp, list)
         return list
     }

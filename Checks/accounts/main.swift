@@ -1831,6 +1831,26 @@ do {
     for id in ["f9", "f1", "f5"] { try! flat.save(T(id: id, started: t)) }
     check(flat.list().map(\.id) == ["f5", "f1", "f9"], "a flat store: one second, the order made (\(flat.list().map(\.id)))")
     try? fm.removeItem(at: flat.root)
+
+    // the default-profile moves' own list (UUID names: their order said nothing) goes by the order made too: the standing
+    // move is the last made, the open one looked at first is the newest (the records kept aside and put back after)
+    let movesAside = URL(fileURLWithPath: home + "/order-moves-aside")
+    try? fm.removeItem(at: movesAside)
+    let hadMoves = (try? fm.moveItem(at: DefaultProfile.folder, to: movesAside)) != nil
+    func mv(_ id: String) -> DefaultProfile.Record {
+        DefaultProfile.Record(id: id, kind: .otherFolder, profile: "ordp", oldProfile: "ordo", created: true, backup: "b-\(id)",
+                              backupPlace: "/x", started: t, receipt: "r-\(id)")
+    }
+    for id in ["F0000000-0000-4000-8000-000000000000", "10000000-0000-4000-8000-000000000000", "80000000-0000-4000-8000-000000000000"] {
+        DefaultProfile.save(mv(id))
+    }
+    DefaultProfile.forgetCache()
+    check(DefaultProfile.all().map(\.id.first) == ["F", "1", "8"] && DefaultProfile.standing(profile: "ordp")?.id.first == "8"
+          && DefaultProfile.unfinished(involving: "ordp")?.id.first == "8",
+          "default-profile moves of one second: all() oldest first in the order made, standing and unfinished the last made (\(DefaultProfile.all().map(\.id.first)))")
+    try? fm.removeItem(at: DefaultProfile.folder)
+    if hadMoves { try? fm.moveItem(at: movesAside, to: DefaultProfile.folder) }
+    DefaultProfile.forgetCache()
     for k in kinds { try? fm.removeItem(at: Store.folder.appendingPathComponent(k)) }
 }
 
