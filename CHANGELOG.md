@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.74 — 2026-11-21
+
 - A switch no longer stops on a scheduled task the new account already has as a paused copy that differs only in whether it's on, when it last ran or which session it notifies: the task moves, and the copy in use takes the paused one's place, as claude-transplant does. A copy that is switched on is still refused (both would run), and a task's settings are now compared exactly (true and 1 are different).
 - When the scheduled-tasks file of the account being switched from can't be read, the switch now says the tasks stay and why, as it does for the new account's file; and it suggests removing one of two copies only when the reason is a task both accounts have.
 
