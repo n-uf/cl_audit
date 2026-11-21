@@ -923,6 +923,26 @@ do {
     guard case .success(let po) = SwitchEngine.plan(onTwin.e, standby: onTwin.e.standby[0], dataDir: onTwin.wd, owned: []) else { check(false, "plan tc10"); exit(1) }
     check(po.tasks == 0 && po.taskStayTwin && (SwitchRunner.stayWords(po) ?? "").contains("Remove one of the two, then switch again."),
           "…the way out is picked by the reason, not by its words")
+    // paused is JSON false exactly: a twin with enabled 0 or null (or none) isn't paused, so it is refused as switched on
+    func twinWords(_ dstEnabled: String) -> String? {
+        let parse = { (s: String) in (try? JSONSerialization.jsonObject(with: Data(s.utf8))) as? [String: Any] }
+        return TaskRegistry.twinCheck(source: parse(#"{"scheduledTasks":[{"id":"t1","cron":"x","enabled":true}]}"#), sourceThere: true,
+                                      target: parse(#"{"scheduledTasks":[{"id":"t1","cron":"x"\#(dstEnabled)}]}"#), targetThere: true)?.words
+    }
+    let onWords = "the new account has the same task, switched on"
+    check(twinWords(#","enabled":false"#) == nil && twinWords(#","enabled":0"#) == onWords && twinWords(#","enabled":1"#) == onWords
+          && twinWords(#","enabled":null"#) == onWords && twinWords("") == onWords,
+          "a twin is paused only with enabled false: 0, 1, null or none is refused (\(String(describing: twinWords(#","enabled":0"#))))")
+    // a task state key that isn't an object, on either side: refused (joined would drop it, or put an object in its place)
+    func stateWords(_ src: String, _ dst: String) -> String? {
+        let parse = { (s: String) in (try? JSONSerialization.jsonObject(with: Data(s.utf8))) as? [String: Any] }
+        return TaskRegistry.twinCheck(source: parse(#"{"scheduledTasks":[{"id":"t1","cron":"x"}]\#(src)}"#), sourceThere: true,
+                                      target: parse(#"{"scheduledTasks":[]\#(dst)}"#), targetThere: true)?.words
+    }
+    check(stateWords("", #","recordedSkips":[]"#) == "the new account's scheduled tasks file has task state that can't be read"
+          && stateWords(#","runRetries":7"#, "") == "the old account's scheduled tasks file has task state that can't be read"
+          && stateWords(#","recordedSkips":{"t1":{"n":1}}"#, #","runRetries":{}"#) == nil,
+          "a task state key that isn't an object is refused on either side; objects move (\(String(describing: stateWords("", #","recordedSkips":[]"#))))")
     // the old account's own file can't be read: said (its tasks count as none), with the general way out
     let broken = taskSwitch("tc11", from: tA, to: tB, srcTask: "", dstTask: #"{"id":"t1","cron":"x"}"#)
     put("\(broken.src)/scheduled-tasks.json", "{ not json")

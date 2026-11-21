@@ -82,8 +82,9 @@ enum TaskRegistry {
     }
 
     /// Why the source's tasks can't join the target's as they are, or nil (claude-transplant's taskSessions and taskFamilies
-    /// checks): a file that can't be read, a task without an id or an id twice, or a target that has one of their ids already
-    /// as another task (other settings, or other state): a differing twin, refused. A twin that differs only in its
+    /// checks): a file that can't be read, a task without an id or an id twice, task state (stateKeys) that isn't an object,
+    /// or a target that has one of their ids already as another task (other settings, or other state): a differing twin,
+    /// refused. A twin that differs only in its
     /// run-time fields (runTimeKeys) is the same task when the target's copy is paused (a restored copy): the source's
     /// replaces it (`joined`); switched on, both would run, so it is refused like claude-transplant does. The words follow
     /// an old account's name ("The scheduled tasks stay with ann: …"), so each file is named by whose it is, never "its",
@@ -104,12 +105,17 @@ enum TaskRegistry {
         let ids = list.compactMap { $0["id"] as? String }
         guard ids.count == list.count, !ids.contains(where: \.isEmpty) else { return TwinProblem(side: .source, words: "a scheduled task has no id") }
         guard Set(ids).count == ids.count else { return TwinProblem(side: .source, words: "two scheduled tasks share an id") }
+        // a task state key (recordedSkips, runRetries) that is there but isn't an object: joined would drop it or put an
+        // object in its place, so the state isn't moved blind
+        func oddState(_ j: [String: Any]) -> Bool { stateKeys.contains { k in j[k].map { !($0 is [String: Any]) } ?? false } }
+        if !ids.isEmpty, oddState(src) { return TwinProblem(side: .source, words: "the old account's scheduled tasks file has task state that can't be read") }
         guard targetThere else { return nil }
         guard let dst else { return TwinProblem(side: .target, words: "the new account's scheduled tasks file can't be read") }
         // a list with an element that isn't a task would read as no tasks at all, and be overwritten by the move
         if let raw = dst["scheduledTasks"], !(raw is [[String: Any]]) {
             return TwinProblem(side: .target, words: "the new account's scheduled tasks file isn't a list of tasks")
         }
+        if oddState(dst) { return TwinProblem(side: .target, words: "the new account's scheduled tasks file has task state that can't be read") }
         // a task the target has under the same id must be the same task: otherwise the move would drop one for the other,
         // and it would survive only in the backup
         let have = dst["scheduledTasks"] as? [[String: Any]] ?? []
@@ -125,7 +131,8 @@ enum TaskRegistry {
             guard sameTask(task, mine) else {
                 return TwinProblem(side: .target, twin: true, words: "the new account has a task with the same id and other settings")
             }
-            guard (mine["enabled"] as? Bool) == false else {
+            // paused is JSON false exactly: `enabled: 0` isn't (as? Bool would read it as false)
+            guard same(mine["enabled"] ?? NSNull(), false) else {
                 return TwinProblem(side: .target, twin: true, words: "the new account has the same task, switched on")
             }
         }
