@@ -485,7 +485,7 @@ struct SwitchPage: View {
             if runner.canUndo {
                 SRow(label: "Sessions", stacked: true) {
                     let w = movedWords
-                    value("\(w.prefix(1).uppercased() + w.dropFirst()) moved to \(to) already. Sign in as \(to) again, or Undo the move to put them back under \(from).")
+                    value((w.isEmpty ? "Part of the move" : w.prefix(1).uppercased() + w.dropFirst()) + " moved to \(to) already. Sign in as \(to) again, or Undo the move to put them back under \(from).")
                 }
             }
             if let w = runner.windowNote { SRowLine(text: w) }
@@ -599,7 +599,9 @@ struct SwitchPage: View {
             default: return false
             }
         }()
-        let moved = partWay ? ((plan?.tasks ?? 0) > 0 ? "the sessions and scheduled tasks" : "the sessions") : sessionWords(plan)
+        // once a receipt exists, what it wrote down (tasks that stayed at the move aren't named); the plan's words before
+        let done = runner.receipt.map(Self.receiptWords) ?? ""
+        let moved = partWay ? ((plan?.tasks ?? 0) > 0 ? "the sessions and scheduled tasks" : "the sessions") : done.isEmpty ? sessionWords(plan) : done
         return SCard(title: "Steps", info: "When the switch moves sessions: the profile's Claude window closes, a backup is made, the sessions and scheduled tasks move (with a receipt, for Undo). Then Claude Code's own sign-in, and a check of the account it signed in. cl_audit never sees a password or a token. cl_audit itself never reads or writes Keychain items during a switch; Claude Code's own sign-in updates its own item.") {
             ClaudeMissingLine(model: model)
             VStack(alignment: .leading, spacing: 0) {
