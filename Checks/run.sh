@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [core|runs|auth|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [core|runs|auth|claudesignin|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
 #
 #   core      ProfileCore's rules (Core/), compiled against the library only: ids, standby, limits, times, levels, parsing
 #   runs      Runs (Run/), compiled against it only: timeouts, SIGTERM then SIGKILL after the grace, output read while running, caps, the environment
 #   auth      ClaudeAuth (Auth/), compiled against it and ProfileCore only, with a fake Keychain tool, claude and Terminal: the folder's
 #             item names, the one answer (verified or guessed), the Keychain read, the watch, sign-in, renew, sign-out and their guards
+#   claudesignin  ClaudeSignIn (Auth/ClaudeSignIn.swift), compiled against ClaudeAuth, Runs and ProfileCore only: a stand-in Terminal and a
+#             stand-in `claude auth login` (Checks/claudesignin/bin), Terminal's preferences in memory; each outcome, the wrong account,
+#             stop, the lock and the process guard, Terminal's kept profiles swept. Lints first: no Keychain, no real Terminal preferences
 #   signin    the model, rules and page logic checks (the sign-in watch, New profile, the switch's move, menus, Restore/Export/Import pages)
 #   surfaces  the one account answer (AccountResolver) and every screen reading it alike; the Claude app's account from its log;
 #             no screen reading the sign-in files itself
@@ -33,7 +36,7 @@
 #   render  pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
 #   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       core, runs, auth, signin, backup, surfaces, docktile, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
+#   all       core, runs, auth, claudesignin, signin, backup, surfaces, docktile, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -58,15 +61,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    core|runs|auth|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(core runs auth signin backup surfaces docktile accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
+    core|runs|auth|claudesignin|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
+    all) suites+=(core runs auth claudesignin signin backup surfaces docktile accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
-    -h|--help) sed -n '2,46p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,49p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(core runs auth signin backup surfaces docktile accounts firstrun retention setup window move render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(core runs auth claudesignin signin backup surfaces docktile accounts firstrun retention setup window move render quick-chat scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -148,7 +151,7 @@ fresh_home() {
 # The checks' preference suites land in the real ~/Library/Preferences whatever CFFIXED_USER_HOME says (cfprefsd writes them,
 # sometimes a moment after the run ends). Only these names are ever removed, and only when no run of ours is alive:
 #  - cl-audit-{signin,hide,switch,plan,surfaces}-test-<pid>.plist, when that pid is dead (the suites' own domains, pid in the name);
-#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -surfaces, -docktile, -accounts, -firstrun, -retention, -setup, -window, -move, -resume, -sidefiles, -render-pages,
+#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-claudesignin, -signin, -backup, -surfaces, -docktile, -accounts, -firstrun, -retention, -setup, -window, -move, -resume, -sidefiles, -render-pages,
 #    -render-firstrun, -scan): a process's name is its preference domain, and these names belong to no other program;
 #  - cl_audit-backwatch-test.plist and cl_audit-reader-switch-test.plist (named by the suites' own code, no pid), only when
 #    they were not there before this run.
@@ -224,6 +227,49 @@ run_auth() {
   fi
   [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
   run_binary "$dir" "$bin"
+}
+
+# the claudesignin suite: ClaudeSignIn against a stand-in Terminal and a stand-in `claude auth login`, compiled against ClaudeAuth, Runs
+# and ProfileCore ONLY. Its lints come first (a lint that fails makes the suite red, the checks still run):
+#  - the Keychain: ClaudeSignIn.swift and the suite name no Keychain and carry no stored sign-in reader (Auth/Keychain.swift is the only
+#    Auth file that may; the auth suite lints the rest of Auth/);
+#  - Terminal's preferences: every ClaudeSignIn the suite makes is handed an in-memory stand-in, and the suite names no real
+#    preference domain (a sign-in sweeps Terminal's kept profiles at its start and its end: the real ones are only for the app).
+run_claudesignin() {
+  local dir="$WORK/claudesignin"; mkdir -p "$dir"
+  local main="$HERE/claudesignin/main.swift" lint=0 n
+  local keys='KeychainSignIn|/usr/bin/security|find-generic-password|SecItem|SecKeychain|kSecClass|import Security|StoredSignInReader|systemWithKeychain|KeychainSignInReader|stored:'
+  for f in "$APP/Auth/ClaudeSignIn.swift" "$main"; do
+    if grep -n -E "$keys" "$f" | grep -v -E '^[0-9]+: *//' | grep -q .; then
+      echo "FAIL keychain lint: $f names the Keychain or a stored sign-in reader: $(grep -n -E "$keys" "$f" | grep -v -E '^[0-9]+: *//' | head -2)"; lint=1
+    fi
+  done
+  [[ $lint -ne 0 ]] || echo "keychain lint: ClaudeSignIn.swift and its suite name no Keychain and pass no stored reader"
+  local made handed
+  made="$(grep -c 'ClaudeSignIn(' "$main" || true)"
+  handed="$(grep -c 'terminalProfiles: prefs.tool' "$main" || true)"
+  if [[ "$made" != "$handed" || "$made" == 0 ]]; then
+    echo "FAIL terminal lint: $made ClaudeSignIn(...) in the suite, $handed with a stand-in for Terminal's preferences"; lint=1
+  elif grep -n -E 'com\.apple\.Terminal|TerminalProfiles\.system|\.system\b.*terminalProfiles' "$main" | grep -v -E '^[0-9]+: *//' | grep -q .; then
+    echo "FAIL terminal lint: the suite names Terminal's real preferences"; lint=1
+  else
+    echo "terminal lint: $made/$made sign-ins in the suite are handed Terminal-preferences stand-ins"
+  fi
+  local bin="$dir/cl_audit-checks-claudesignin"
+  if [[ $build -eq 1 ]]; then
+    rm -f "$bin"
+    /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos13.0 \
+      -o "$bin" "$main" "${auth_lib[@]}" "${core_lib[@]}" 2>&1 | grep -E "error" || true
+    # the ad-hoc stand-in for the environment branch (bash, a platform binary, shows the kernel no environment)
+    mkdir -p "$dir/adhoc"; rm -f "$dir/adhoc/claude"
+    clang -O0 -o "$dir/adhoc/claude" "$HERE/claudesignin/adhoc.c" 2>&1 | grep -E "error" || true
+  fi
+  [[ -x "$bin" && -x "$dir/adhoc/claude" ]] || { echo "compile failed: $bin or its stand-in claude" >&2; return 1; }
+  [[ -x "$HERE/claudesignin/bin/claude" ]] || chmod +x "$HERE/claudesignin/bin/claude"
+  local status=0
+  CL_SIGNIN_CLAUDE="$HERE/claudesignin/bin/claude" CL_SIGNIN_ADHOC="$dir/adhoc/claude" run_binary "$dir" "$bin" || status=$?
+  [[ $lint -eq 0 ]] || status=1
+  return $status
 }
 
 # the signin suite (its blocks whose subject left the app are fenced off; signin/PROVENANCE.md says where their rules are checked)
