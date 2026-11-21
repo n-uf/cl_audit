@@ -118,11 +118,10 @@ if [ $push = 1 ]; then
   git push -q origin main; pushedmain=1
   git push -q origin "v$next"; tagged=1
   echo "pushed main and v$next"
-  # a release that can't be published (gh missing, signed out, the network) leaves a pushed tag with no release: say the one
-  # line that publishes it by hand, with the files already in dist/
-  manual="gh release create v$next dist/cl_audit.zip dist/cl_audit.dmg --repo n-uf/cl_audit --title \"cl_audit $next\" --notes-file <(awk -v h=\"## $next \" 'index(\$0, h) == 1 {f=1; next} /^## /{f=0} f' CHANGELOG.md)"
-  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ "${published:-0}" = 1 ] || echo "the GitHub Release wasn'"'"'t published; publish it by hand: $manual" >&2' EXIT
-  gh release create "v$next" dist/cl_audit.zip dist/cl_audit.dmg --repo n-uf/cl_audit --title "cl_audit $next" --notes "$section
+  # the release's notes whole (the changelog section, the Checked with line, Download and SHA-256), in a file beside the
+  # files to publish, so a release published by hand says the same
+  notes_file="$PWD/dist/release-notes-v$next.md"
+  printf '%s\n' "$section
 
 ---
 
@@ -132,7 +131,15 @@ $checked
 
 Also as a disk image: \`cl_audit.dmg\` below. Open it and drag cl_audit onto Applications.
 
-SHA-256: \`cl_audit.zip\` $zip_sha · \`cl_audit.dmg\` $dmg_sha"
+SHA-256: \`cl_audit.zip\` $zip_sha · \`cl_audit.dmg\` $dmg_sha" > "$notes_file"
+  # a release that can't be published (gh missing, signed out, the network) leaves a pushed tag with no release: say the one
+  # line that publishes it by hand (full paths: it runs from any folder), and the one that finishes a release made but
+  # whose upload was cut short
+  zip_abs="$PWD/dist/cl_audit.zip" dmg_abs="$PWD/dist/cl_audit.dmg"
+  manual="gh release create v$next $(printf %q "$zip_abs") $(printf %q "$dmg_abs") --repo n-uf/cl_audit --title \"cl_audit $next\" --notes-file $(printf %q "$notes_file")"
+  upload="gh release upload v$next $(printf %q "$zip_abs") $(printf %q "$dmg_abs") --repo n-uf/cl_audit --clobber"
+  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ "${published:-0}" = 1 ] || echo "the GitHub Release wasn'"'"'t published; publish it by hand: $manual   (if the release is there but an upload was cut short: $upload)" >&2' EXIT
+  gh release create "v$next" dist/cl_audit.zip dist/cl_audit.dmg --repo n-uf/cl_audit --title "cl_audit $next" --notes-file "$notes_file"
   published=1
   echo "published the GitHub Release v$next with cl_audit.zip and cl_audit.dmg"
 fi
