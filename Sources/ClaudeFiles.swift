@@ -88,6 +88,18 @@ enum ClaudeFiles {
         record(at: recordPath(folder: folder, isDefault: isDefault, home: home))
     }
 
+    /// The record in one file as ClaudeAuth's record reader hands it over (AuthTools.readRecord: the oauthAccount block's
+    /// string fields), so the app's Authenticator reads .claude.json here too, with the same bounds and cache.
+    static func oauthBlock(at path: String) -> [String: Any]? {
+        guard let r = record(at: path) else { return nil }
+        let fields: [(String, String?)] = [("accountUuid", r.accountUuid), ("organizationUuid", r.organizationUuid), ("emailAddress", r.emailAddress),
+                                           ("organizationType", r.organizationType), ("organizationName", r.organizationName),
+                                           ("planDisplayName", r.planDisplayName)]
+        var out: [String: Any] = [:]
+        for (k, v) in fields { if let v { out[k] = v } }
+        return out
+    }
+
     /// The account a folder's record names, guessed from the file (cl_quick's "guessed from file"); nil when it names none.
     static func identity(folder: String, isDefault: Bool, home: String = NSHomeDirectory()) -> AccountIdentity? {
         record(folder: folder, isDefault: isDefault, home: home)?.identity

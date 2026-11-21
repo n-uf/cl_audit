@@ -10,6 +10,7 @@
 // an app, the Dock or Terminal, and nothing touches the Keychain.
 
 import AppKit
+import ClaudeAuth
 import ProfileCore
 import SwiftUI
 
@@ -2047,6 +2048,14 @@ do {
     if let h = FileHandle(forWritingAtPath: dir + "/big/.claude.json") { try? h.truncate(atOffset: UInt64(ClaudeFiles.recordMax + 1)); try? h.close() }
     check(ClaudeFiles.tooLarge(dir + "/big/.claude.json") && ClaudeFiles.record(at: dir + "/big/.claude.json") == nil, "larger than recordMax: too large, not read")
     try? fm.removeItem(atPath: dir + "/big")
+    // ClaudeAuth's record read in the app goes through this one reader (ClaudeCLI.authTools.readRecord): the same account
+    // as ClaudeAuth's own RecordFile gives, nothing for none
+    let full = dir + "/auth/.claude.json"
+    put(full, #"{"oauthAccount":{"accountUuid":"\#(u1.account)","organizationUuid":"\#(u1.organization!)","emailAddress":"\#(u1.email!)","organizationName":"x","planDisplayName":"Ultra"},"projects":{}}"#)
+    let viaApp = SignedInAccount.record(ClaudeCLI.authTools.readRecord(full)), viaAuth = SignedInAccount.record(RecordFile.oauthAccount(full))
+    check(viaApp != nil && viaApp == viaAuth && viaApp?.accountID == u1.account && viaApp?.plan == "Ultra"
+          && ClaudeCLI.authTools.readRecord(dir + "/none/.claude.json") == nil && ClaudeCLI.authTools.readRecord(dir + "/missing/.claude.json") == nil,
+          "the app's Authenticator reads the record through ClaudeFiles: the same account as RecordFile's, none for none")
 
     // the sessions: account and organisation folders named like a UUID and real (no link), entries local_<UUID>.json and regular
     let data = dir + "/window", cs = dir + "/window/claude-code-sessions"

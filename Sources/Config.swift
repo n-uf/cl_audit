@@ -282,7 +282,7 @@ enum ClaudeCLI {
         guard FolderGuard.mayLaunch("login", account.configDir, creating: creating) else { return false }
         // ClaudeAuth writes the script (owner only from the start, never through a link) and opens it; the guard above
         // already said yes
-        var tools = AuthTools.system
+        var tools = authTools
         tools.mayLaunch = { _, _ in true }
         tools.openTerminal = { openTerminal($0) }
         return Authenticator(account.authFolder, tools: tools)
@@ -352,10 +352,12 @@ enum ClaudeCLI {
     /// (ClaudeAuth's AuthFolder.providerVariables).
     static var providerVariables: [String] { AuthFolder.providerVariables }
 
-    /// ClaudeAuth's tools with cl_audit's own guard: every run asks FolderGuard first (its log, its seam).
+    /// ClaudeAuth's tools with cl_audit's own guard: every run asks FolderGuard first (its log, its seam); the folder's
+    /// record read by cl_audit's one .claude.json reader (ClaudeFiles), not a second one.
     static var authTools: AuthTools {
         var t = AuthTools.system
         t.mayLaunch = { what, folder in FolderGuard.mayLaunch(what, folder.path) }
+        t.readRecord = { ClaudeFiles.oauthBlock(at: $0) }
         return t
     }
 
