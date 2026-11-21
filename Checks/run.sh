@@ -91,12 +91,14 @@ build_kit() {
 build_kit || exit 1
 
 # compile BIN MAIN...: through the build lock; a failed compile must not leave the last binary to run
+# (-D CL_AUDIT_CHECKS: Store.announce / announceStatus stop the suite unless it silences them, so no suite can post the real
+# config-changed or status-changed notice, which reaches every process of the user, the operator's cl_audit and agent too)
 compile() {
   local bin="$1"; shift
   [[ $build -eq 1 ]] || { [[ -x "$bin" ]] || { echo "no binary at $bin (run without --no-build)" >&2; return 1; }; return 0; }
   rm -f "$bin"
   /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos14.0 \
-    -o "$bin" -D STAGE3 "${srcs[@]}" "$@" "${core_lib[@]}" "${auth_lib[@]}" "${frameworks[@]}" 2>&1 | grep -E "error" || true
+    -o "$bin" -D STAGE3 -D CL_AUDIT_CHECKS "${srcs[@]}" "$@" "${core_lib[@]}" "${auth_lib[@]}" "${frameworks[@]}" 2>&1 | grep -E "error" || true
   [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
 }
 

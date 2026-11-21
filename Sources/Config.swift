@@ -613,6 +613,16 @@ enum Store {
 
     /// Tells every cl_audit process the profiles file changed. A check's seam: a suite in a throwaway home sets it to do nothing,
     /// so the cl_audit and agent running on the Mac (which read the real file) aren't woken by a file they never see.
+#if CL_AUDIT_CHECKS
+    // a check build (Checks/run.sh's compile): a distributed notice isn't scoped to a home, so the real one would reach the
+    // operator's running cl_audit and agent from a suite's throwaway home. Left unsilenced, the first post stops the suite here.
+    nonisolated(unsafe) static var announce: () -> Void = {
+        fatalError("a check would post the real \(Store.changed.rawValue) notice: set Store.announce in the suite")
+    }
+    nonisolated(unsafe) static var announceStatus: (String) -> Void = { _ in
+        fatalError("a check would post the real \(Store.statusChanged.rawValue) notice: set Store.announceStatus in the suite")
+    }
+#else
     nonisolated(unsafe) static var announce: () -> Void = {
         DistributedNotificationCenter.default().postNotificationName(Store.changed, object: nil, userInfo: nil, deliverImmediately: true)
     }
@@ -621,6 +631,7 @@ enum Store {
     nonisolated(unsafe) static var announceStatus: (String) -> Void = { id in
         DistributedNotificationCenter.default().postNotificationName(Store.statusChanged, object: id, userInfo: nil, deliverImmediately: true)
     }
+#endif
 
     /// Replaces the whole list (the cl_audit window, after merging its changes into the file as it is).
     static func save(_ accounts: [AccountEntry]) throws { try edit { _ in accounts } }
