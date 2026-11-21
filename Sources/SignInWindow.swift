@@ -260,8 +260,11 @@ struct SignInSaid: Equatable {
     init?(_ end: SignInWindow.End, configDir: String, owner: String? = nil) {
         self.configDir = configDir
         switch end {
-        case .signedIn: kind = .signedIn
-        case .unverified(let a): kind = .unverified; address = a.email
+        // another profile's account (`owner`) is refused whatever the sign-in was asked for or confirmed: never "Signed in."
+        case .signedIn(let a):
+            if owner != nil { kind = .wrongAccount; address = a.email; self.owner = owner } else { kind = .signedIn }
+        case .unverified(let a):
+            if owner != nil { kind = .wrongAccount; address = a.email; self.owner = owner } else { kind = .unverified; address = a.email }
         case .wrongAccount(let a, let w): kind = .wrongAccount; address = a.email; wanted = w.email; self.owner = owner
         case .declined: kind = .declined
         case .failed(let f): kind = .failed; failure = f

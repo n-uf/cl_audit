@@ -3037,7 +3037,29 @@ do {
         check(args(c2).contains("ann@example.com") && !args(c2).contains("bob@example.com"), "stage G: Settings: the other account's address was never filled in")
         term.killAll()
 
+        // a plain sign-in (no address: nobody wanted) that lands on another profile's account: the same red line, never "Signed in."
+        let g2 = folder("set-clash2"), eg2 = g2.entry(ann)
+        setList([eg2, owner])
+        _ = conf(login(as: bob))
+        SignInWindow.wordSeam = { _ in server(bob) }
+        m.startSignIn(fakeClaude, entry: eg2, email: nil)
+        settle(eg2.id)
+        check(shown(eg2.id)?.kind == .wrongAccount && shown(eg2.id)?.danger == true && shown(eg2.id)?.owner == "the account of “Other”"
+              && shown(eg2.id)?.text == "\(Privacy.masked(bob.email!)) is the account of “Other”: one profile per account." && shown(eg2.id)?.text != "Signed in.",
+              "stage G: Settings: no address wanted and Other's account signed in: the red line, never Signed in.: \(String(describing: shown(eg2.id)?.text))")
+        term.killAll()
+        let g3 = folder("set-clash3"), eg3 = g3.entry(ann)
+        setList([eg3, owner])
+        _ = conf(login(as: bob))
+        SignInWindow.wordSeam = { _ in nil }
+        m.startSignIn(fakeClaude, entry: eg3, email: nil)
+        settle(eg3.id)
+        check(shown(eg3.id)?.kind == .wrongAccount && shown(eg3.id)?.danger == true && shown(eg3.id)?.owner == "the account of “Other”",
+              "stage G: Settings: …and unconfirmed, the record naming Other's account: the red line too: \(String(describing: shown(eg3.id)?.text))")
+        term.killAll()
+
         // an account nobody has: the browser's choice, said, not refused
+        SignInWindow.wordSeam = { _ in server(bob) }
         let h = folder("set-wrong"), eh = h.entry(ann)
         setList([eh])
         _ = conf(login(as: bob))

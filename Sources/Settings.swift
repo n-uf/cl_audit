@@ -366,14 +366,20 @@ final class SettingsModel: ObservableObject {
         // (never the list being edited), and no other profile may own it
         SignInWindow.start(claude, profile: e, saved: saved, listed: true, wanted: SignInWindow.wanted(for: e, email: email)) { [weak self] end in
             guard let self, self.signInGenerations[id] == generation else { return }
-            // another profile's account that signed in is refused in words (one profile per account), never taken
+            // another profile's account that signed in is refused in words (one profile per account), never taken or called
+            // "Signed in.": whatever the sign-in was wanted for (a plain sign-in wants nobody), confirmed or not
             var owner: String?
-            if case .wrongAccount(let a, _) = end,
-               let o = FolderRules.seatOwner(a.identity, among: self.accounts, except: id) { owner = NewAccountSetup.ownerWords(o) }
-            self.signIns[id] = SignInSaid(end, configDir: folder, owner: owner).map { .said($0) }
+            var who: SignedInAccount?
+            switch end {
+            case .signedIn(let a), .unverified(let a), .wrongAccount(let a, _): who = a
+            default: break
+            }
+            if let who, let o = FolderRules.seatOwner(who.identity, among: self.saved, except: id) { owner = NewAccountSetup.ownerWords(o) }
+            let said = SignInSaid(end, configDir: folder, owner: owner)
+            self.signIns[id] = said.map { .said($0) }
             self.tick += 1
             // "Signed in." is only for the moment: the box's own lines say who is signed in from then on (never a stale one)
-            if case .signedIn = end {
+            if said?.kind == .signedIn {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
                     guard let self, self.signInGenerations[id] == generation, case .said(let s)? = self.signIns[id], s.kind == .signedIn else { return }
                     self.signIns[id] = nil
