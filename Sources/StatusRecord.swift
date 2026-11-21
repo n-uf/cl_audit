@@ -218,7 +218,20 @@ enum StatusCodec {
     /// file lacks are empty.
     static func decode(_ data: Data) -> IconStatus? {
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .secondsSince1970
-        return try? dec.decode(IconStatus.self, from: data)
+        return (try? dec.decode(IconStatus.self, from: data)).map(drawable)
+    }
+
+    /// The record with only numbers a screen can draw: a percent outside 0–1,000 or a time more than 100 years from now is
+    /// left out, as if not read. A broken or hostile file then never traps a screen (a percent or a countdown made a
+    /// whole number), the Dock tile plug-in's shared Dock process included.
+    static func drawable(_ s: IconStatus) -> IconStatus {
+        func percent(_ p: Double?) -> Double? { p.flatMap { $0.isFinite && $0 >= 0 && $0 <= 1000 ? $0 : nil } }
+        func time(_ d: Date?) -> Date? { d.flatMap { abs($0.timeIntervalSinceNow) < 100 * 365 * 86400 ? $0 : nil } }
+        var s = s
+        s.fiveHour = percent(s.fiveHour); s.weekly = percent(s.weekly)
+        s.fiveHourResets = time(s.fiveHourResets); s.weeklyResets = time(s.weeklyResets); s.updatedAt = time(s.updatedAt)
+        s.scoped = s.scoped?.map { ScopedLimit(name: $0.name, percent: percent($0.percent), resets: time($0.resets)) }
+        return s
     }
 
     /// The bytes for a record: sorted keys, dates as seconds since 1970, empty fields left out.

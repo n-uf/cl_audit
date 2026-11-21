@@ -165,7 +165,12 @@ let broken = child("bad-record")
 check(clean(broken, "bad-record") && log().contains("drew (load) #1: no numbers"), "a broken record: the blank face, no trap")
 _ = Store.writeStatus(id, record(five: 1e300, week: -1e300, fiveIn: 1e300, weekIn: -1e300))
 let absurd = child("absurd")
-check(clean(absurd, "absurd"), "absurd numbers and resets: drawn, no trap (got \(absurd.code), signal \(absurd.signal))")
+check(clean(absurd, "absurd") && log().contains("drew (load) #1: no numbers"),
+      "absurd numbers and resets: left out as not read (StatusCodec.drawable), no trap (got \(absurd.code), signal \(absurd.signal))")
+_ = Store.writeStatus(id, record(five: 1e300, week: 40, fiveIn: 3600, weekIn: 2 * 86400))
+let fullAbsurd = child("absurd-five")
+check(clean(fullAbsurd, "absurd-five") && log().contains("drew (load) #1: numbers"),
+      "an absurd 5-hour percent beside a good week: the week drawn, no trap (got \(fullAbsurd.code), signal \(fullAbsurd.signal))")
 _ = Store.writeStatus(id, record(five: 100, week: 100))
 let full = child("full")
 check(clean(full, "full") && log().contains("drew (load) #1: numbers"), "both limits full: the countdown face, no trap")
