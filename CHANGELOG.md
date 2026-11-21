@@ -11,6 +11,7 @@ the notes before updating.
 - With emails hidden, New profile's Account pop-up now shows the address in the same short form as the rest of Settings (first letter, dots, domain) under the blur. It used to blur the full address, which can be read back from a picture: screenshots or recordings of that pop-up taken with earlier versions may show the whole address.
 - A standby account brought over by a move with no organisation recorded now also gets it as soon as cl_audit finds it on this Mac, so it can be switched to.
 - When Claude Code renews its own expired sign-in, the numbers now also come back within about a minute when its only status line since came in that first minute (it waited up to 10 minutes then).
+- A setup file that disappears while an export copies it no longer leaves an empty folder in the file, which made its import refuse the whole file; a skill (or other setup item) gone whole that way is listed as left out, not counted as carried.
 
 ## 26.11.70 — 2026-11-20
 

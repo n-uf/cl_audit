@@ -446,6 +446,10 @@ enum EntryConnections {
 enum SessionsExport {
     enum Keys { case leaveOut, keep }
 
+    /// A check's seam: called with each setup file's copy (in the backup the export is made from) just before it is copied
+    /// in, so a check can make one go missing there. Never set in the app.
+    nonisolated(unsafe) static var beforeSetupCopy: ((String) -> Void)? = nil
+
     /// One profile to export: from where it is now (`source`), or from a backup of it.
     struct Part {
         var profile: String
@@ -1496,13 +1500,22 @@ enum SessionsExport {
             // refuses, the whole file with it. The import's own closure decides, over what really landed.
             var landed = Set<String>()
             var gone = false                    // a file went missing while it was copied
+            // the folders a file's going left empty go too (an import refuses a folder no manifest names), up to setup/; a folder
+            // that still holds something stays (rmdir refuses it)
+            func dropEmptyFolders(of path: String) {
+                var dir = (path as NSString).deletingLastPathComponent
+                let setupDir = (out.path as NSString).appendingPathComponent("setup")
+                while dir.hasPrefix(setupDir + "/"), rmdir(dir) == 0 { made.remove(dir); dir = (dir as NSString).deletingLastPathComponent }
+            }
             func copyUnit(_ u: Setup.Unit, _ list: [SessionsBackup.Item]) throws {
+                var any = false                 // a file of it landed
                 for it in list {
                     let src = b.dir.appendingPathComponent(it.path).path
                     let dst = try create(it.path)
+                    SessionsExport.beforeSetupCopy?(src)
                     switch SessionsBackup.copyOne(src, dst, single: true) {
                     case .cloned, .copied: break
-                    case .gone: leftOut += 1; gone = true; continue
+                    case .gone: leftOut += 1; gone = true; dropEmptyFolders(of: dst); continue
                     case .failed(let why): throw ArchiveError("couldn't copy \((src as NSString).lastPathComponent) (\(why))")
                     }
                     chmod(dst, 0o600)
@@ -1512,7 +1525,10 @@ enum SessionsExport {
                     items.append(SessionsBackup.Item(role: .setup, original: it.path, path: it.path, bytes: Int64(st.st_size), sha: h, exec: (it.exec ?? false) && Setup.execAllowed(rel)))
                     cloned += 1; po.bytes += Int64(st.st_size)
                     landed.insert(rel)
+                    any = true
                 }
+                // every file of it gone while it was copied: not carried, and said so (its files are counted as left out)
+                guard any else { setupNames.append("\(SetupRow.title(u)) (gone while it was copied)"); return }
                 if u.kind == .task { po.taskPrompts += 1 } else { po.setupUnits.append(u) }
             }
             for (u, list) in carry where u.kind != .include { if cancel() { throw ArchiveError("Stopped.") }; try copyUnit(u, list) }
@@ -1542,11 +1558,7 @@ enum SessionsExport {
                             }
                             unlink(path)
                             landed.remove(String(it.path.dropFirst(6)))
-                            // its folders, emptied now, go too (an import refuses a folder no manifest names), up to setup/; a
-                            // folder that still holds something stays (rmdir refuses it)
-                            var dir = (path as NSString).deletingLastPathComponent
-                            let setupDir = (out.path as NSString).appendingPathComponent("setup")
-                            while dir.hasPrefix(setupDir + "/"), rmdir(dir) == 0 { made.remove(dir); dir = (dir as NSString).deletingLastPathComponent }
+                            dropEmptyFolders(of: path)          // its folders, emptied now, go too
                         }
                         po.setupUnits.removeAll { $0 == u }
                         setupNames.append("\(SetupRow.title(u)) (left out with what includes it)"); leftOut += list.count

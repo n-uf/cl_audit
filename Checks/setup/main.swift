@@ -335,6 +335,28 @@ MainActor.assumeIsolated {
         let k2 = zipped("e2i-skill-key")
         check(k2.refusal == nil && k2.rels == ["CLAUDE.md", "rules/up.md"] && k2.leftOut.contains("skill k (held a key)") && k2.leftOut.contains("included file docs/x.md (left out with what includes it)"),
               "export (zip): an include reached only through a skill left out for its key stays out; an @../ back into the folder by its name is carried and imports: \(k2.refusal ?? "opened") \(k2.rels.sorted()) \(k2.leftOut)")
+        // a file gone while the export copies it (made to go missing in the backup the export is made from, just before its copy)
+        func goneWhileCopied(_ suffixes: [String], _ name: String) -> (outcome: SessionsExport.Outcome?, rels: Set<String>, leftOut: [String], count: Int, refusal: String?) {
+            SessionsExport.beforeSetupCopy = { src in if suffixes.contains(where: { src.hasSuffix("/setup/" + $0) }) { unlink(src) } }
+            defer { SessionsExport.beforeSetupCopy = nil }
+            let url = URL(fileURLWithPath: out + "/\(name).zip")
+            try? fm.removeItem(at: url)
+            let made: SessionsExport.Outcome
+            do { made = try SessionsExport.run(SessionsExport.Job(parts: [ipart], keys: .leaveOut, destination: url, rootName: name, place: eplace)) } catch { return (nil, [], [], 0, "export: \(error)") }
+            do {
+                let o = try SessionsImport.open(url, password: nil, place: eplace)
+                defer { SessionsImport.discard(o.work) }
+                let m = o.parts[0].manifest
+                return (made, Set(m.items.filter { $0.role == .setup }.map { String($0.path.dropFirst(6)) }), m.setupLeftOut ?? [], m.leftOut, nil)
+            } catch { return (made, [], [], 0, "\(error)") }
+        }
+        try? fm.removeItem(atPath: c7)
+        w(c7, "CLAUDE.md", "# rules\n"); w(c7, "skills/g/SKILL.md", "g\n"); w(c7, "skills/g/ref/notes.md", "notes\n"); w(c7, "skills/h/SKILL.md", "h\n")
+        let g0 = goneWhileCopied([], "e2i-gone-none"), g1 = goneWhileCopied(["skills/g/SKILL.md", "skills/g/ref/notes.md"], "e2i-gone-skill")
+        check(g1.refusal == nil && g1.rels == ["CLAUDE.md", "skills/h/SKILL.md"] && g1.leftOut.contains("skill g (gone while it was copied)")
+              && g1.count == g0.count + 2 && g1.outcome?.setupUnits.contains { $0.name == "g" } == false
+              && g0.outcome?.setupUnits.contains { $0.name == "g" } == true,
+              "export (zip): a skill whose every file is gone while it is copied isn't counted as carried, its files count as left out, its emptied folders go (the file imports): \(g1.refusal ?? "opened") \(g1.rels.sorted()) \(g1.leftOut) \(g0.count)→\(g1.count)")
         try? fm.removeItem(atPath: c7)
     }
 
