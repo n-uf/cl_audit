@@ -63,6 +63,35 @@ enum DesktopMode: String, Codable, Identifiable {
         !standardTaken && Account.isDefault(configDir: configDir) ? .standard : .separate
     }
 
+    /// Whether a profile's Claude window has anything kept for turning it back on: always for the usual Claude app; for an
+    /// own window only when its data folder is named and exists. A profile made with the window off never had a folder or
+    /// a sign-in, so nothing is kept for it.
+    static func hasKept(_ m: DesktopMode, dataDir: String) -> Bool {
+        switch m {
+        case .standard: return true
+        case .separate: return !dataDir.isEmpty && FileManager.default.fileExists(atPath: expand(dataDir))
+        }
+    }
+
+    /// What "off" means for the window, in a sentence's tail: what is kept (or not) and what turning it on does.
+    static func offKeptWords(kept: Bool) -> String {
+        kept ? "its folder and sign-in are kept, so turning it back on needs no new sign-in"
+             : "it has no folder and no sign-in yet; turned on, it gets its own folder and asks for a sign-in on its first start"
+    }
+
+    /// The Claude window row's help on the profile's Settings card.
+    static func switchInfo(name: String, mode: DesktopMode, dataDir: String) -> String {
+        let folder = mode == .standard ? FolderKey.standardDataDir
+            : (hasKept(mode, dataDir: dataDir) ? dataDir : "none yet (made when the window is turned on)")
+        return "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; \(offKeptWords(kept: hasKept(mode, dataDir: dataDir))). Its data folder: \(folder)."
+    }
+
+    /// The line under the Claude window key when it is off.
+    static func offColumnWords(kept: Bool) -> String {
+        kept ? "No Claude window. Its sign-in is kept, so turning it back on needs no new sign-in."
+             : "No Claude window. Turned on, it gets its own folder and asks for a sign-in on its first start."
+    }
+
     /// One plain line on the profile's Claude window card, under its switch.
     static func opensWords(_ m: DesktopMode) -> String {
         switch m {

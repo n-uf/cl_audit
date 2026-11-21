@@ -10,6 +10,12 @@ struct SettingNote: Identifiable, Equatable {
 }
 
 enum SettingNotes {
+    /// The note when a profile's Claude window is switched off.
+    static func windowOffText(_ p: String, kept: Bool) -> String {
+        kept ? "No Claude window for \(p): nothing opens one. Its sign-in is kept, so turning it back on needs no new sign-in."
+             : "No Claude window for \(p): nothing opens one. It has no folder and no sign-in yet; turned on, it gets its own folder and asks for a sign-in on its first start."
+    }
+
     /// The note for the first setting that differs between two versions of one profile, or nil when the
     /// change is visual (icon, colours, panel design, open dot, Opening and closing) or typing (name, label).
     static func note(from a: AccountEntry, to b: AccountEntry) -> SettingNote? {
@@ -68,7 +74,7 @@ enum SettingNotes {
         if a.claudeWindow != b.claudeWindow {
             return SettingNote(title: "Claude window · \(b.claudeWindow ? "on" : "off")", text: b.claudeWindow
                 ? "\(p) has a Claude window again, signed in to its account; open it from the dashboard or the Dock icon."
-                : "No Claude window for \(p): nothing opens one. Its sign-in is kept, so turning it back on needs no new sign-in.")
+                : windowOffText(p, kept: DesktopMode.hasKept(b.desktop, dataDir: b.desktopDataDir)))
         }
         if a.dockRuns != b.dockRuns {
             let text: String

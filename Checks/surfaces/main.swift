@@ -3752,5 +3752,64 @@ do {
           "resolveNow, the record read on the folder's own organisation (any case): the profile's numbers")
 }
 
+// MARK: Claude window off: what is kept. A profile made with the window off never had a folder or a sign-in, so Settings
+// must not say they are kept or show a data folder that isn't there (throwaway folder in the throwaway home).
+do {
+    let madeDir = home + "/Library/Application Support/Claude-hwinkept"
+    let neverDir = "~/Library/Application Support/Claude-hwinnever"
+    try? fm.removeItem(atPath: madeDir); try? fm.removeItem(atPath: expand(neverDir))
+    try! fm.createDirectory(atPath: madeDir, withIntermediateDirectories: true)
+    let madeTilde = "~/Library/Application Support/Claude-hwinkept"
+    check(DesktopMode.hasKept(.standard, dataDir: ""), "hasKept: the usual Claude app always has something kept")
+    check(DesktopMode.hasKept(.separate, dataDir: madeTilde), "hasKept: an own window whose folder exists (path with ~)")
+    check(!DesktopMode.hasKept(.separate, dataDir: neverDir), "hasKept: an own window whose folder was never made")
+    check(!DesktopMode.hasKept(.separate, dataDir: ""), "hasKept: an own window with no folder named")
+
+    let keptInfo = DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: madeTilde)
+    let neverInfo = DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: neverDir)
+    let stdInfo = DesktopMode.switchInfo(name: "Ann", mode: .standard, dataDir: "")
+    check(keptInfo.contains("its folder and sign-in are kept, so turning it back on needs no new sign-in")
+          && keptInfo.contains("Its data folder: \(madeTilde).") && !keptInfo.contains("none yet"),
+          "Claude window row help, folder exists: kept words and the folder's path")
+    check(!neverInfo.contains("are kept") && !neverInfo.contains("needs no new sign-in") && !neverInfo.contains("Claude-hwinnever")
+          && neverInfo.contains("asks for a sign-in on its first start")
+          && neverInfo.contains("Its data folder: none yet (made when the window is turned on)."),
+          "Claude window row help, folder never made: no kept words, no path, says it asks for a sign-in on its first start")
+    check(stdInfo.contains("are kept") && stdInfo.contains("Its data folder: \(FolderKey.standardDataDir)."),
+          "Claude window row help, the usual app: kept words and the usual data folder")
+
+    check(DesktopMode.offColumnWords(kept: true).contains("sign-in is kept")
+          && DesktopMode.offColumnWords(kept: true).contains("needs no new sign-in"),
+          "switch column when off, something kept: today's words")
+    check(!DesktopMode.offColumnWords(kept: false).contains("kept") && !DesktopMode.offColumnWords(kept: false).contains("needs no new sign-in")
+          && DesktopMode.offColumnWords(kept: false).contains("asks for a sign-in on its first start"),
+          "switch column when off, nothing kept: own folder and sign-in on the first start")
+
+    func offNote(_ e: AccountEntry) -> String? {
+        var on = e; on.claudeWindow = true
+        var off = e; off.claudeWindow = false
+        return SettingNotes.note(from: on, to: off)?.text
+    }
+    var keptEntry = profile("hwinkept", "~/.claude-hwinkept", nil); keptEntry.desktop = .separate; keptEntry.desktopDataDir = madeTilde
+    var neverEntry = profile("hwinnever", "~/.claude-hwinnever", nil); neverEntry.desktop = .separate; neverEntry.desktopDataDir = neverDir
+    let usualEntry = profile("hwinusual", "~/.claude-hwinusual", nil)
+    check(offNote(keptEntry)?.contains("Its sign-in is kept, so turning it back on needs no new sign-in.") == true,
+          "note on switching the window off, folder exists: today's words")
+    check(offNote(usualEntry)?.contains("Its sign-in is kept") == true, "note on switching the window off, the usual app: today's words")
+    let neverNote = offNote(neverEntry) ?? ""
+    check(neverNote.contains("nothing opens one") && !neverNote.contains("is kept") && !neverNote.contains("needs no new sign-in")
+          && neverNote.contains("gets its own folder and asks for a sign-in on its first start"),
+          "note on switching the window off, folder never made: no kept words, own folder and sign-in on the first start")
+
+    // on, then off, with the folder made by the switch (setClaudeWindow): the folder is there, so what the helper says follows it
+    let wm = SettingsModel()
+    var ownOff = neverEntry; ownOff.claudeWindow = false
+    wm.accounts = [ownOff]
+    check(!DesktopMode.hasKept(ownOff.desktop, dataDir: ownOff.desktopDataDir), "before the window is first turned on: nothing kept")
+    wm.setClaudeWindow(ownOff.id, true)
+    check(DesktopMode.hasKept(.separate, dataDir: neverDir), "setClaudeWindow on makes the window's folder")
+    try? fm.removeItem(atPath: madeDir); try? fm.removeItem(atPath: expand(neverDir))
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

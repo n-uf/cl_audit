@@ -778,7 +778,8 @@ final class SettingsModel: ObservableObject {
     }
 
     /// Claude window: on, the profile has a Claude window signed in to its account; off, none. Turning it off keeps
-    /// the window's folder and sign-in, so turning it back on needs no new sign-in.
+    /// the window's folder and sign-in, if it has any (DesktopMode.hasKept): a profile made with the window off has
+    /// neither until the window is turned on, which makes the folder; the sign-in comes with its first start.
     func setClaudeWindow(_ id: String, _ on: Bool) {
         guard let i = accounts.firstIndex(where: { $0.id == id }) else { return }
         let before = accounts[i]
@@ -1065,6 +1066,7 @@ struct ProfileSwitches: View {
     let usageInDock: Bool
     let claudeWindow: Bool
     var waiting = false                 // the Dock is taking an icon in or out: the keys wait
+    var windowKept = true               // DesktopMode.hasKept: the window's folder and sign-in exist to come back to
     let setUsageInDock: (Bool) -> Void
     let setClaudeWindow: (Bool) -> Void
     @Environment(\.face) private var face
@@ -1076,7 +1078,7 @@ struct ProfileSwitches: View {
                                : "No Dock icon. Usage still shows on the dashboard, in the launcher and in alerts; turn it back on and the icon returns to its place.")
             column(SwitchKey(title: "Claude window", on: claudeWindow) { setClaudeWindow(!claudeWindow) }.disabled(waiting),
                    claudeWindow ? "A Claude window for this profile, signed in to its account; open it from the dashboard or the Dock icon."
-                                : "No Claude window. Its sign-in is kept, so turning it back on needs no new sign-in.")
+                                : DesktopMode.offColumnWords(kept: windowKept))
         }
     }
 
@@ -2315,7 +2317,7 @@ struct AccountSettings: View {
     var windowCard: some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         return SCard(title: "Claude window", info: "\(name)'s Claude window: the usual Claude app, or its own (own sign-in, chats and settings). Whether it goes with the Dock icon and what may open it; the cl_audit agent does this, whether or not cl_audit is open.") {
-            SRow(label: "Claude window", info: "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; its folder and sign-in are kept, so turning it back on needs no new sign-in. Its data folder: \(entry.desktop == .standard ? FolderKey.standardDataDir : (entry.desktopDataDir.isEmpty ? "none yet" : entry.desktopDataDir)).", first: true) {
+            SRow(label: "Claude window", info: DesktopMode.switchInfo(name: name, mode: entry.desktop, dataDir: entry.desktopDataDir), first: true) {
                 SSwitch(isOn: Binding(get: { entry.claudeWindow }, set: { model.setClaudeWindow(entry.id, $0) }),
                         on: entry.desktop == .standard ? "the usual Claude app" : "its own window", off: "none",
                         onShort: entry.desktop == .standard ? "the usual app" : nil)
