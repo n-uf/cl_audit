@@ -14,6 +14,7 @@ the notes before updating.
 ## 26.11.75 — 2026-11-21
 
 - In Settings ▸ Accounts, the row of the account Claude Code in Terminal is signed in to (while the Claude app is on another) now selects on a click like every standby account, and its Switch account key opens the Switch page, when that account is on the profile's standby list. It did nothing on a click.
+- New profile with the Claude window off: Create no longer stops after making the folder and saying nothing; it goes on to sign-in, and when Create can't go on it says why. The Create key reads "Checking…" while it looks, and the Claude window switch, locked once the folder is made, says so and that Cancel starts over.
 
 ## 26.11.74 — 2026-11-21
 
