@@ -222,7 +222,8 @@ enum AccountList {
         }
         // a standby entry whose organisation isn't known yet (added from a transcript's id alone, or remembered before it
         // was): filled in once it is, by the same rule (its record's, else its newest-used session folder's in this
-        // profile's window). Only a missing one, nil or "" (not known, as StandbyTidy reads it); a known one is never changed
+        // profile's window). Only a missing one, nil or "" (not known, as StandbyTidy reads it); a known one is never changed.
+        // ("" on a standby entry means "not known" here, no longer "none, leave it": a move writes a missing organisation as "".)
         for i in out.indices {
             let window = found.window[out[i].id] ?? [:]
             for j in out[i].standby.indices {
