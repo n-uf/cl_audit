@@ -1,3 +1,4 @@
+import AddressPrivacy
 import AppKit
 import ProfileCore
 // Checks for the sessions backups (SessionsBackup.swift) and the switch that makes one. Runs in a throwaway home
@@ -11,6 +12,7 @@ import ProfileCore
 //    `allowedHomes` here and its `if BK_ROLE == "<name>"` block there.
 // a throwaway home: no running cl_audit or agent is told (a distributed notice isn't home-scoped; a check build stops if unset)
 Store.announce = {}; Store.announceStatus = { _ in }
+AddressPrivacy.shared.apply(blur: false)     // Show emails on, as every suite reads addresses in clear unless it tests the setting (nothing is written)
 let home = NSHomeDirectory()
 let allowedHomes = ["/Checks/.work/backup/home",                       // the parent run
                     "/Checks/.work/backup/other/backup-test/home",     // stage E: the import half (BK_ROLE=import)

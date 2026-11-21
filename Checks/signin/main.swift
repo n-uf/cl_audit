@@ -1,3 +1,4 @@
+import AddressPrivacy
 import AppKit
 import UserNotifications
 import ProfileCore
@@ -18,6 +19,7 @@ import Runs
 Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/signin/home") else { print("refusing: home is \(home)"); exit(1) }
+AddressPrivacy.shared.apply(blur: false)     // Show emails on, as every suite reads addresses in clear unless it tests the setting (nothing is written)
 let fm = FileManager.default
 #if STAGE3
 BackupPrefs.store = MemoryPrefs()          // never the real ~/Library/Preferences
@@ -209,16 +211,12 @@ MainActor.assumeIsolated {
 
     let list = NewAccountSetup.freeAccounts(among: accounts, folders: folders)
     check(list.count == 1 && list.first?.path == dFree && list.first?.email == free.email, "free accounts: only a signed-in folder no profile uses (not Work's, not inside it, not one without a sign-in)")
-    // NewAccountSetup.wellText, the Account pop-up's label: hidden, no more of the address than the
-    // mask form (first letter, dots, domain); shown, the address; the words that aren't an address as they are
+    // NewAccountSetup.wellAddress, the Account pop-up's label: the address (or an account id) goes to the label as it is, for
+    // AddressPrivacy to draw as the stand-in or the address; the words that aren't an address are plain text
     let wellAddr = "zedekiah@example.org"
-    let wellHidden = NewAccountSetup.wellText(wellAddr, show: false)
-    check(wellHidden == Privacy.mask(wellAddr) && !wellHidden.contains("zedekiah") && !wellHidden.contains("edekiah")
-          && wellHidden.hasPrefix("z") && wellHidden.hasSuffix("@example.org"),
-          "wellText (Account pop-up), emails hidden: the mask form only, never the address itself under the blur")
-    check(NewAccountSetup.wellText(wellAddr, show: true) == wellAddr && NewAccountSetup.wellText("Choose an account", show: false) == "Choose an account"
-          && NewAccountSetup.wellText("not signed in yet", show: false) == "not signed in yet",
-          "wellText (Account pop-up): the address while shown; its other words as they are")
+    check(NewAccountSetup.wellAddress(wellAddr) == wellAddr && NewAccountSetup.wellAddress("account 1a2b3c4d") == "account 1a2b3c4d"
+          && NewAccountSetup.wellAddress("Choose an account") == nil && NewAccountSetup.wellAddress("not signed in yet") == nil,
+          "wellAddress (Account pop-up): the real address (or an account id) for the label to hide; its other words as they are")
     check(NewAccountSetup.addressProblem("nope", among: accounts) == "Type the account's email address.", "address route: an address is needed")
     check(NewAccountSetup.addressProblem("a b@example.com", among: accounts) == "Type the account's email address.", "address route: no spaces")
     check(NewAccountSetup.addressProblem(" WORK@example.com ", among: accounts)?.contains("“Work”") == true, "address route: another profile's address is refused early, by name")
@@ -256,7 +254,7 @@ MainActor.assumeIsolated {
     let l3 = signInLine(Seat(account: "zzz", organization: "org-lab", email: "work@example.com"), typed: "work@example.com")
     check(l3?.state == .ok, "Work's address on another account id: not Work's seat (ids decide, not the email)")
     let l4 = signInLine(other, typed: "first@example.com")
-    check(l4?.state == .warn && l4?.text.contains(Privacy.masked(other.email!)) == true, "signed in to a free account, not the address typed: said, not refused")
+    check(l4?.state == .warn && l4?.text.contains(AddressSettings.words(other.email!)) == true, "signed in to a free account, not the address typed: said, not refused")
     let l5 = signInLine(other, typed: "SOMEONE@example.com")
     check(l5?.state == .ok, "the address typed, in other letter case: fine")
 
@@ -314,7 +312,7 @@ MainActor.assumeIsolated {
           "reading changes nothing: same items, links untouched")
     check(NewAccountSetup.folderWho(dst) == "not signed in", "folder pop-up: a Claude Code folder without a sign-in")
     writeClaudeJSON(dst, seat("w", "who@example.com"))
-    check(NewAccountSetup.folderWho(dst) == Privacy.masked("who@example.com"), "folder pop-up: who is signed in there")
+    check(NewAccountSetup.folderWho(dst) == AddressSettings.words("who@example.com"), "folder pop-up: who is signed in there")
 }
 
 // MARK: 8.–10. retired by the one-folder model: a standby account has no folder, no reader and no saved numbers any more
@@ -441,7 +439,7 @@ MainActor.assumeIsolated {
     check(e.bestOffer(status: { $0 == "pp~a" ? st(100, full: true) : nil }) == nil, "nothing with room: no offer")
     let parsed = SwitchOffer.parse("pp~c")
     check(offers.first?.key == "pp~c" && parsed?.profile == "pp" && parsed?.standby == "c" && SwitchOffer.parse("pp") == nil, "the switch key")
-    let s = Privacy.shared.show ? "c-8" : "c•••"
+    let s = AddressPrivacy.shared.blur ? AddressText.hidden : "c-8"
     check(offers.first?.usedWords == "\(s): week 8% used" && offers.first?.leftWords == "\(s) has 92% of its week left",
           "the offer's words")
     check(SwitchWords.button == "Switch account…" && SwitchWords.backButton == "Switch back…", "the alerts' buttons name no account (round 2: Switch account…, Switch back…)")
@@ -475,7 +473,7 @@ MainActor.assumeIsolated {
     RunLoop.main.run(until: Date().addingTimeInterval(1.5))
     lock.lock(); let got = bodies; lock.unlock()
     check(got.contains { $0.hasPrefix("Back ") && $0.hasSuffix(". The other account has 92% of its week left.") }, "the full alert says the other account has room")
-    check(!got.contains { $0.contains("@") || $0.contains("other-2") || $0.contains("o•••") }, "the alert holds no address, nor any part of one")
+    check(!got.contains { $0.contains("@") || $0.contains("other-2") }, "the alert holds no address, nor any part of one")
     UsageReader.testPoster = nil
     UserDefaults.standard.removePersistentDomain(forName: suite)
 
@@ -2128,8 +2126,8 @@ do {
     let rows = AddAccountPopup.rows(found: [f3, fOld, fWork], profile: "Main", canSignIn: true, now: now)
     check(rows.map(\.kind) == [.caption, .account, .account, .account, .divider, .signInOther], "rows: caption, the accounts, a line, Sign in to another account…")
     check(rows[0].title == "Found on this Mac" && !rows[0].enabled, "rows: the caption")
-    check(rows[1].title == Privacy.masked("ultra-3@example.com") && rows[1].detail == f3.second(profile: "Main", now: now) && rows[1].enabled, "rows: an addable account, address then grey line")
-    check(rows[3].title == Privacy.masked("you@work.example") && rows[3].detail == "Work's · one profile per account" && !rows[3].enabled, "rows: another profile's account is greyed, not addable")
+    check(rows[1].title == AddressSettings.words("ultra-3@example.com") && rows[1].detail == f3.second(profile: "Main", now: now) && rows[1].enabled, "rows: an addable account, address then grey line")
+    check(rows[3].title == AddressSettings.words("you@work.example") && rows[3].detail == "Work's · one profile per account" && !rows[3].enabled, "rows: another profile's account is greyed, not addable")
     check(rows[5].title == "Sign in to another account…" && rows[5].enabled, "rows: Sign in to another account… at the bottom")
     check(!AddAccountPopup.rows(found: [], profile: "Main", canSignIn: false).last!.enabled, "rows: Sign in to another account… off while Claude Code isn't found")
     check(AddAccountPopup.rows(found: nil, profile: "Main", canSignIn: true).map(\.title).contains("Looking…"), "rows: the first look under way says so")
@@ -2184,7 +2182,7 @@ do {
     let own4 = dseat(4, u4)
     let signing = look()
     check(signing.badge == "Signing in" && signing.tone == .mint, "signing in: the display says so, in mint")
-    check(signing.line == "Finish the sign-in in the browser, as \(Privacy.masked(u4))." && signing.keys == [.cancel, .showTerminal] && !signing.dims, "signing in: the line and its keys, Cancel and Show Terminal")
+    check(signing.line == "Finish the sign-in in the browser, as \(AddressSettings.words(u4))." && signing.keys == [.cancel, .showTerminal] && !signing.dims, "signing in: the line and its keys, Cancel and Show Terminal")
     check(look(folder: dseat(4, u4)).badge == "Signing in", "signed in to the right account, not linked yet: still signing in (the agent links it within seconds)")
     let wrongOwn = look(folder: s1, clash: .own)
     check(wrongOwn.badge == "Wrong account" && wrongOwn.tone == .amber && wrongOwn.keys == [.cancel, .signInAgain] && !wrongOwn.dims,
@@ -2369,8 +2367,8 @@ do {
     let rows = AddAccountPopup.rows(found: [f3, fOld, fWork], profile: "Main", now: now)
     check(rows.map(\.kind) == [.caption, .account, .account, .account, .divider, .other], "rows: caption, the accounts, a line, Another address…")
     check(rows[0].title == "Found on this Mac" && !rows[0].enabled, "rows: the caption")
-    check(rows[1].title == Privacy.masked("ultra-3@example.com") && rows[1].detail == f3.second(profile: "Main", now: now) && rows[1].enabled, "rows: an addable account, address then grey line")
-    check(rows[3].title == Privacy.masked("you@work.example") && rows[3].detail == "On Work · one profile per account" && !rows[3].enabled, "rows: another profile's account is greyed, not addable")
+    check(rows[1].title == AddressSettings.words("ultra-3@example.com") && rows[1].detail == f3.second(profile: "Main", now: now) && rows[1].enabled, "rows: an addable account, address then grey line")
+    check(rows[3].title == AddressSettings.words("you@work.example") && rows[3].detail == "On Work · one profile per account" && !rows[3].enabled, "rows: another profile's account is greyed, not addable")
     check(rows[5].title == "Another address…" && rows[5].enabled, "rows: Another address… at the bottom, always there")
     check(AddAccountPopup.rows(found: nil, profile: "Main").map(\.title).contains("Looking…"), "rows: the first look under way says so")
     check(AddAccountPopup.rows(found: [], profile: "Main").map(\.title).contains("Nothing else found"), "rows: nothing found says so")
@@ -2991,7 +2989,7 @@ do {
         let wrongNow = follow(.wrongAccount(signedIn: b, wanted: a), previous: ann.email)
         let unvNow = follow(.unverified(b), previous: ann.email)
         let line = "Claude Code here is now signed in to bob, so this profile uses it. ann is on standby: Switch to go back."
-        let hiddenLine = "Claude Code here is now signed in to b•••, so this profile uses it. a••• is on standby: Switch to go back."
+        let hiddenLine = "Claude Code here is now signed in to hidden address, so this profile uses it. hidden address is on standby: Switch to go back."
         check(wrongNow.text(emailsShown: true) == line && wrongNow.text(emailsShown: false) == hiddenLine && !wrongNow.danger,
               "stage G: a wrong account that isn't another profile's: the profile follows it, the account before is on standby (short names, shown and hidden): \(wrongNow.text(emailsShown: true)) | \(wrongNow.text(emailsShown: false))")
         check(unvNow.text(emailsShown: true) == "The sign-in ended, but cl_audit couldn't confirm which account it is. " + line
@@ -2999,7 +2997,7 @@ do {
               "stage G: …the same after an unconfirmed sign-in, shown and hidden: \(unvNow.text(emailsShown: true))")
         let fresh = follow(.wrongAccount(signedIn: b, wanted: a), previous: nil)
         check(fresh.text(emailsShown: true) == "Claude Code here is now signed in to bob, so this profile uses it."
-              && follow(.unverified(b), previous: nil).text(emailsShown: false).hasSuffix("signed in to b•••, so this profile uses it."),
+              && follow(.unverified(b), previous: nil).text(emailsShown: false).hasSuffix("signed in to hidden address, so this profile uses it."),
               "stage G: …with no account before (a new profile) the standby sentence is dropped")
         check(follow(.unverified(b), previous: ann.email, follows: false).text(emailsShown: true) == "The sign-in ended, but cl_audit couldn't confirm which account it is (bob). Sign in again, or Refresh now.",
               "stage G: …and New profile's draft links nothing, so it says no profile follows")
@@ -3073,7 +3071,7 @@ do {
         m.startSignIn(fakeClaude, entry: eg2, email: nil)
         settle(eg2.id)
         check(shown(eg2.id)?.kind == .wrongAccount && shown(eg2.id)?.danger == true && shown(eg2.id)?.owner == "the account of “Other”"
-              && shown(eg2.id)?.text == "\(Privacy.masked(bob.email!)) is the account of “Other”: one profile per account." && shown(eg2.id)?.text != "Signed in.",
+              && shown(eg2.id)?.text == "\(AddressSettings.words(bob.email!)) is the account of “Other”: one profile per account." && shown(eg2.id)?.text != "Signed in.",
               "stage G: Settings: no address wanted and Other's account signed in: the red line, never Signed in.: \(String(describing: shown(eg2.id)?.text))")
         term.killAll()
         let g3 = folder("set-clash3"), eg3 = g3.entry(ann)

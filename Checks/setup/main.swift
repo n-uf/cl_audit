@@ -10,6 +10,7 @@
 // addresses, obviously fake keys (cut by an empty interpolation so no whole key is committed), made-up folders. Nothing here opens an
 // app, the Dock or Terminal; the encrypted image is made and opened with hdiutil in the throwaway folder.
 
+import AddressPrivacy
 import AppKit
 import Foundation
 import ProfileCore
@@ -19,6 +20,7 @@ setbuf(stdout, nil)
 Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/setup/home") else { print("refusing: HOME is \(home)"); exit(2) }
+AddressPrivacy.shared.apply(blur: false)     // Show emails on, as every suite reads addresses in clear unless it tests the setting (nothing is written)
 BackupPrefs.store = MemoryPrefs()          // never the real ~/Library/Preferences
 let fm = FileManager.default
 var passed = 0, failed = 0

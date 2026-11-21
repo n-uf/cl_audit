@@ -9,6 +9,7 @@
 // example.com addresses, zero-pattern ids, made-up log lines and config.json files in the throwaway home. Nothing here opens
 // an app, the Dock or Terminal, and nothing touches the Keychain.
 
+import AddressPrivacy
 import AppKit
 import ClaudeAuth
 import ProfileCore
@@ -20,6 +21,7 @@ setbuf(stdout, nil)
 Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/surfaces/home"), expand("~") == home else { print("refusing: HOME is \(home)"); exit(2) }
+AddressPrivacy.shared.apply(blur: false)     // Show emails on, as every suite reads addresses in clear unless it tests the setting (nothing is written)
 let fm = FileManager.default
 SettingsModel.followsDock = false
 BackupPrefs.store = MemoryPrefs()
@@ -931,7 +933,7 @@ do {
     // in-use box: the helpers are checked on their own (tickedTitle, inUseDetail); this holds the wiring, which a headless run can't draw
     let cardTick = body("Launcher.swift", from: "private var switchMenu: some View", until: "if !standby.isEmpty")
     let pageBox = body("SwitchPage.swift", from: "private var inUseBox: some View", until: "} content: {")
-    check(cardTick.contains("Self.tickedTitle(label: Privacy.masked(label), plan: row.show.plan)") && !cardTick.contains("entry.plan") && !cardTick.contains("status?.plan"),
+    check(cardTick.contains("Self.tickedTitle(label: AddressSettings.words(label), plan: row.show.plan)") && !cardTick.contains("entry.plan") && !cardTick.contains("status?.plan"),
           "the card's Switch menu ticks the account with ProfileShow.plan (tickedTitle), never the record's or the profile's plan itself")
     check(pageBox.contains("Self.inUseDetail(plan: row.show.plan)") && pageBox.contains("detail: detail") && !pageBox.contains("entry.plan") && !pageBox.contains("status?.plan"),
           "the Switch page's in-use box draws inUseDetail(ProfileShow.plan) as its detail, never the record's or the profile's plan itself")
@@ -1525,7 +1527,7 @@ do {
     check(split?.app == pat.email && split?.code == mo.email, "the split: the app on pat, Claude Code on mo")
     // the headline record: no numbers, no plan, the line instead; nothing full, red or counting down
     check(head?.weekly == nil && head?.fiveHour == nil && head?.plan == nil && AccountView.of(head).label == pat.email
-          && AccountView.of(head).line == "cl_audit can't read \(Privacy.masked(pat.email!))'s usage: Claude Code in Terminal is signed in to \(Privacy.masked(mo.email!)).",
+          && AccountView.of(head).line == "cl_audit can't read \(AddressSettings.words(pat.email!))'s usage: Claude Code in Terminal is signed in to \(AddressSettings.words(mo.email!)).",
           "the profile's record has no numbers for pat, and its line says so: \(AccountView.of(head).line ?? "-")")
     let row = cardRow(e, now: now)
     check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
@@ -1535,14 +1537,14 @@ do {
           "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
     check(previewShowsNone(e, head) && panelShowsNone(e, head),
           "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
-    check(row.show.splitWords?.key == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && split?.loginEmail == pat.email,
+    check(row.show.splitWords?.key == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!))…" && split?.loginEmail == pat.email,
           "the key: Sign Claude Code in Terminal in to pat, with pat's address filled in")
-    check(split?.numbersHint == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!)) to see its numbers."
-          && split?.shortLine == "Can't read \(Privacy.masked(pat.email!))'s usage\nTerminal: \(Privacy.masked(mo.email!))",
+    check(split?.numbersHint == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!)) to see its numbers."
+          && split?.shortLine == "Can't read \(AddressSettings.words(pat.email!))'s usage\nTerminal: \(AddressSettings.words(mo.email!))",
           "the line under it and the short form: \(split?.numbersHint ?? "-") / \(split?.shortLine ?? "-")")
     let splitShow = ProfileShow.load(e, now: now)
     let panelInfo = dockPanelOf(e, splitShow)         // (through the Dock app's own detailsInfo)
-    check(split?.shortKey == "Sign in to \(Privacy.masked(pat.email!)) in Terminal…"
+    check(split?.shortKey == "Sign in to \(AddressSettings.words(pat.email!)) in Terminal…"
           && panelInfo.activeNote == split?.shortLine && panelInfo.splitKey == split?.shortKey && panelInfo.activeLit && !panelInfo.needsLogin,
           "the Dock panel takes the short line and the short key, the lamp lit (pat is in use): \(split?.shortKey ?? "-")")
     check(splitShow.display.none == .split && splitShow.display.lamp && splitShow.display.full == nil && splitShow.display.grey
@@ -1561,8 +1563,8 @@ do {
     check(split?.key?.hasSuffix("…") == true && split?.key?.hasSuffix("……") == false && split?.shortKey?.hasSuffix("…") == true,
           "the keys carry their ellipsis once")
     // no split surface says "No usage" or "yet" (the lines, the key, the hint, the short form), whether the addresses show or
-    // are masked (Privacy.mask: the setting itself is the operator's, never touched here) and with the app's account by id
-    for (what, app, code) in [("shown", pat.email!, mo.email!), ("masked", Privacy.mask(pat.email!), Privacy.mask(mo.email!)),
+    // are hidden (AddressText.hidden: the setting itself is the operator's, never touched here) and with the app's account by id
+    for (what, app, code) in [("shown", pat.email!, mo.email!), ("hidden", AddressText.hidden, AddressText.hidden),
                               ("by id", "account \(pat.account.prefix(8))", mo.email!)] {
         let s = SplitUsage(app: app, code: code)
         let said = [s.line, s.shortLine, s.numbersHint ?? "", s.key ?? "", s.shortKey ?? "", s.hint ?? "", AccountView.of(head).line ?? ""]
@@ -1638,7 +1640,7 @@ do {
         return ProfileShow.load(e, now: now).splitWords
     }
     // the card's after-switch words on every surface: the heading, then what's left; the short form is the heading
-    let switchedLine = "Switching to \(Privacy.masked(mo.email!)): one step left. Sign the Claude app in to \(Privacy.masked(mo.email!)) to finish."
+    let switchedLine = "Switching to \(AddressSettings.words(mo.email!)): one step left. Sign the Claude app in to \(AddressSettings.words(mo.email!)) to finish."
     for (what, r) in [("linked (Claude Code reached mo)", linkedToMo), ("still open", toMo)] {
         let s = splitWith(app: appPat, newest: r)
         check(s?.switched == true && s?.line == switchedLine && s?.key == nil && s?.loginEmail == nil
@@ -1655,12 +1657,12 @@ do {
     var leftAsIs = toMo; leftAsIs.leftAsIs = now
     for (what, r) in [("undone", undone), ("left as it is", leftAsIs)] {
         let s = splitWith(app: appPat, newest: r)
-        check(s?.switched == false && s?.key == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && s?.loginEmail == pat.email,
+        check(s?.switched == false && s?.key == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!))…" && s?.loginEmail == pat.email,
               "the switch \(what): a split by hand, the B8 line and key")
     }
     var dayOld = linkedToMo; dayOld.linked = now.addingTimeInterval(-25 * 3600)
     let dayOldSplit = splitWith(app: appPat, newest: dayOld)
-    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!))…",
+    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!))…",
           "a switch linked 25 hours ago waits no more: a split by hand, the B8 line and key")
     let older = splitWith(app: appPat, newest: nil)
     check(older?.switched == false && older?.key != nil, "no switch at all: a split by hand")
@@ -2467,7 +2469,7 @@ do {
     for (state, heading) in [("expired", "Terminal's sign-in has expired"), ("noLogin", "Terminal is signed out")] {
         let c = card(rec(state), nil, state)
         check(c.notice?.heading == heading && c.notice?.tone == .red && c.notice?.key == .signIn && c.notice?.signedOut == true
-              && c.notice?.line == "Sign in as \(Privacy.masked(u1.email!)) to read Card's usage." && c.row.limits.allSatisfy { $0.p == nil }
+              && c.notice?.line == "Sign in as \(AddressSettings.words(u1.email!)) to read Card's usage." && c.row.limits.allSatisfy { $0.p == nil }
               && c.row.tile.stale && !c.row.lit && c.row.needsLogin, "\(state): red, Sign in… to the folder's address, no numbers, grey, the lamp off")
     }
     let mixed = card(rec(login: u2.email, code: u1), nil, "another account")
@@ -2476,7 +2478,7 @@ do {
 
     // another profile's account: by its id, and by its name in a record from before the id; the profile renamed since.
     // The folder's .claude.json names Other's account (u3): the key signs Terminal in to Card's own (u1), never Other's
-    let ownLine = "Sign in as \(Privacy.masked(u1.email!)) to read Card's usage."
+    let ownLine = "Sign in as \(AddressSettings.words(u1.email!)) to read Card's usage."
     let clash = card(rec(login: u3.email, code: u3), nil, "clash by id")
     check(clash.row.display.clash == ProfileDisplay.Clash(id: "other", name: "Other") && clash.notice?.heading == "Terminal is signed in to Other's account"
           && clash.notice?.key == .signIn && clash.row.display.key == .logIn && clash.notice?.line == ownLine
@@ -3113,7 +3115,7 @@ do {
     // the folder's nor the seat's
     let appClash = #"{"expectedEmail":"ultra-3@example.com","loginEmail":"ultra-3@example.com","resolved":{"account":"\#(u2.account)","at":1800000000,"clash":"Other","clashID":"other","differs":true,"email":"ultra-2@example.com","fromApp":true,"lit":true,"numbersFor":"ultra-3@example.com"},"state":"ok","updatedAt":\#(Int(now.timeIntervalSince1970) - 60),"weekly":40}"#
     let appDecided = card(StatusCodec.decode(Data(appClash.utf8))!, nil, "clash, the app's account")
-    check(appDecided.notice?.key == .signIn && appDecided.notice?.line == "Sign in as \(Privacy.masked(u2.email!)) to read Card's usage."
+    check(appDecided.notice?.key == .signIn && appDecided.notice?.line == "Sign in as \(AddressSettings.words(u2.email!)) to read Card's usage."
           && appDecided.row.show.loginAddress == u2.email,
           "a clash with the app's account in use: Sign in… as the app's u2, never the folder's u3: \(appDecided.notice?.line ?? "-")")
     // the menu bar and the Dock icon offer the same key there (the value's), to the same address
@@ -3169,7 +3171,7 @@ do {
     let popUp = AccountSettings(entry: .constant(noSeat), model: clashModel)
     let popUpItems = popUp.loginItems
     check(popUp.popUpSignInAddress == u1.email && popUpItems.contains { $0.id == "again" }
-          && popUpItems.first { $0.id == "here" }?.title.contains(Privacy.masked(u2.email!)) == true,
+          && popUpItems.first { $0.id == "here" }?.title.contains(AddressSettings.words(u2.email!)) == true,
           "the pop-up's Sign in… on a no-seat profile signed in to another account: the folder's u1, never u2: \(popUp.popUpSignInAddress ?? "nil")")
     // …and with an address (the app's u2) the runner signs in to that one, not the seat's u1 nor the folder's u3 (on a
     // folder that isn't there: the goal is set, nothing runs)
@@ -3214,8 +3216,8 @@ do {
     }
     let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
     let split = card(splitRec(app: appPat), s, "split")
-    check(split.notice?.heading == "Terminal is signed in to \(Privacy.masked(mo.email!))" && split.notice?.tone == .red
-          && split.notice?.key == .signIn && split.notice?.line == "Sign in as \(Privacy.masked(pat.email!)) to read Csp's usage."
+    check(split.notice?.heading == "Terminal is signed in to \(AddressSettings.words(mo.email!))" && split.notice?.tone == .red
+          && split.notice?.key == .signIn && split.notice?.line == "Sign in as \(AddressSettings.words(pat.email!)) to read Csp's usage."
           && split.row.lit && split.row.full == nil && split.row.limits.allSatisfy { $0.p == nil } && split.row.status?.plan == nil
           && split.row.show.loginAddress == pat.email, "the split: red, Sign in… as pat, lit (pat is in use), no numbers or plan, nothing full")
     let anonApp = AppSignIn.Login(account: uuid(63), org: uuid(163), state: .known, source: "log", at: now)
@@ -3243,7 +3245,7 @@ do {
     // clash), then expired, then signed out, then not readable (only without numbers). Every pair that can co-occur in a record:
     let anotherAccount = "Terminal is signed in to another account", otherProfile = "Terminal is signed in to Other's account"
     let expiredHead = "Terminal's sign-in has expired", outHead = "Terminal is signed out"
-    let ownMo = "Terminal is signed in to \(Privacy.masked(mo.email!))"
+    let ownMo = "Terminal is signed in to \(AddressSettings.words(mo.email!))"
     try! Store.save([e, other, s])
     let precedence: [(String, IconStatus, AccountEntry?, String?)] = [
         // (the profile `card`: Claude Code on u1; Other's account is u3)
@@ -4040,6 +4042,176 @@ do {
           && ClaudeCLI.loginWords(.folderNotReady, folder: goneDir) == ClaudeCLI.goneLine(goneDir) && ClaudeCLI.goneLine(goneDir) != nil,
           "the shared words name no page's key; a folder that's gone says goneLine's words")
     try? fm.removeItem(atPath: expand(dir))
+}
+
+// ============ hidden addresses (AddressPrivacy): nothing of an address is drawn, spoken or put in a sentence ============
+// With Show emails off an address is one fixed stand-in (drawn) and "hidden address" (spoken, in a sentence, a menu's title):
+// never its first letter, its length, its domain or a hash. The suites read addresses in clear (the setting is applied "shown"
+// at the top); this block turns it on for a moment (AddressPrivacy.apply writes nothing) and puts it back. Sample addresses only.
+final class PickProbe: NSObject {
+    var got: String?
+    @objc func pick(_ s: NSMenuItem) { got = s.representedObject as? String }
+}
+MainActor.assumeIsolated {
+    let now = Date()
+    let a1 = "zedekiah@example.com", a2 = "orla-quinn@example.com"
+    let a3 = "a-much-longer-address-than-the-stand-in@subdomain.example.com"
+    let addrs = [a1, a2, a3]
+    func leaks(_ s: String, of a: String) -> Bool {
+        let local = String(a.split(separator: "@")[0]), domain = String(a.split(separator: "@")[1])
+        let label = String(domain.split(separator: ".")[0])
+        return s.localizedCaseInsensitiveContains(local) || s.localizedCaseInsensitiveContains(label)
+            || s.localizedCaseInsensitiveContains(domain) || s.contains("•")
+    }
+    func clean(_ s: String) -> Bool { !addrs.contains { leaks(s, of: $0) } }
+    func picture(_ v: NSView) -> Data? {
+        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return nil }
+        v.cacheDisplay(in: v.bounds, to: rep)
+        return rep.representation(using: .png, properties: [:])
+    }
+    /// Some pixel of the picture is drawn (not transparent): the hidden row is never blank.
+    func inked(_ v: NSView) -> Bool {
+        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return false }
+        v.cacheDisplay(in: v.bounds, to: rep)
+        for y in 0..<rep.pixelsHigh { for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.02 { return true } }
+        return false
+    }
+    AddressPrivacy.shared.apply(blur: true)
+    defer { AddressPrivacy.shared.apply(blur: false); try? Store.save([]); Store.removeStatus("pa") }
+
+    // the one setting: hidden unless it says shown; its key, its legacy key and its sense (a dictionary, never the real domain)
+    final class Dict: AddressPrefs {
+        var d: [String: Bool] = [:]
+        func addressBool(_ key: String) -> Bool? { d[key] }
+        func setAddressBool(_ value: Bool, _ key: String) { d[key] = value }
+        func removeAddressKey(_ key: String) { d[key] = nil }
+    }
+    let prefs = Dict(), store = AddressSettings.makeStore(prefs: prefs)
+    check(store.blurAddresses == true, "the setting: nothing stored means hidden")
+    prefs.d["showEmails"] = true
+    check(store.blurAddresses == false, "the setting: showEmails true = shown")
+    prefs.d["showEmails"] = false
+    check(store.blurAddresses == true, "the setting: showEmails false = hidden")
+    prefs.d = ["blurEmails": true]
+    check(store.blurAddresses == true, "the setting: the older blurEmails true = hidden")
+    prefs.d = ["blurEmails": false]
+    check(store.blurAddresses == false, "the setting: the older blurEmails false = shown")
+    prefs.d = ["blurEmails": true, "showEmails": true]
+    check(store.blurAddresses == false, "the setting: showEmails wins over the older key")
+    check(AddressSettings.key == "showEmails" && Installer.managerID == "local.usage-n-uf", "the setting: the key and the domain the Settings app and every process share")
+
+    // what is an address to hide: an address, an account id, an id prefix label; a phrase is no address
+    check(["zedekiah@example.com", "account 1a2b3c4d", "1a2b3c4d", "1a2b3c4d-5e6f-4a7b"].allSatisfy(AddressSettings.hides)
+          && !["another account", "Choose an account", "the sign-in", "its account", ""].contains(where: AddressSettings.hides),
+          "hides: addresses, account ids and \"account <id prefix>\"; plain words stay as they are")
+    check(addrs.allSatisfy { AddressSettings.words($0, blur: true) == "hidden address" && AddressSettings.words($0, blur: false) == $0 }
+          && AddressSettings.words("account 1a2b3c4d", blur: true) == "hidden address" && AddressSettings.words("another account", blur: true) == "another account",
+          "words: \"hidden address\" for every address and id, the address itself while shown, a phrase untouched (the override reaches it)")
+    check(addrs.allSatisfy { AccountNames.shortName($0, shown: false) == "hidden address" && AccountNames.short($0) == "hidden address" }
+          && AccountNames.shortName(a1, shown: true) == "zedekiah" && AccountNames.shortName("its account", shown: false) == "its account"
+          && AccountNames.shortName("account 1a2b3c4d", shown: false) == "hidden address",
+          "short names: the local part while shown, \"hidden address\" for every account while hidden (no first letter, no dots), a phrase as it is")
+
+    // lines, notes, alerts and keys written from addresses: none holds a part of one
+    let split = SplitUsage(app: a1, code: a2), switched = SplitUsage(app: a1, code: a2, switched: true)
+    let said = [split.line, split.shortLine, split.numbersHint ?? "", split.key ?? "", split.shortKey ?? "", switched.line, switched.shortLine,
+                SplitUsage.switchingHead(a3), AccountNote(kind: .came, email: a3, profile: "Work", at: now).words,
+                FolderChoice(path: "~/.claude-x", detail: a1).title, NewAccountSetup.folderWho("~/.claude-none")]
+    check(said.allSatisfy(clean) && split.line.contains("hidden address") && split.key == "Sign Claude Code in Terminal in to hidden address…",
+          "hidden: the usage lines, keys and notes written from addresses say \"hidden address\" and hold no part of any: \(said)")
+    func server(_ s: Seat) -> SignedInAccount { SignedInAccount(accountID: s.account, email: s.email, organizationID: s.organization, origin: .server) }
+    let wrong = SignInSaid(.wrongAccount(signedIn: server(seat(8, a1)), wanted: server(seat(9, a2))), configDir: "~/.claude-x", owner: "the account of “Other”")
+    check(wrong.map { clean($0.text(emailsShown: false)) && $0.text(emailsShown: false).hasPrefix("hidden address is the account of") } == true
+          && wrong?.text(emailsShown: true).hasPrefix(a1) == true,
+          "hidden: the sign-in window's refusal names \"hidden address\"; shown, the address")
+    AddressPrivacy.shared.apply(blur: false)
+    check(split.key == "Sign Claude Code in Terminal in to \(a1)…", "shown: the same key names the address")
+    AddressPrivacy.shared.apply(blur: true)
+
+    // the Forget… question: its text says "hidden address", the address only in an accessory view that follows the pointer
+    let standby = StandbyAccount(email: a3, seat: seat(43, a3), id: "k3")
+    let alertHidden = AccountSettings.forgetAlert(standby, profile: "Work", blur: true)
+    check(alertHidden.messageText == "Forget hidden address?" && clean(alertHidden.messageText) && clean(alertHidden.informativeText)
+          && (alertHidden.accessoryView as? AddressLabel)?.accessibilityLabel() == "hidden address"
+          && (alertHidden.accessoryView as? AddressLabel)?.drawnText == AddressText.standIn,
+          "Forget…: hidden, the alert says \"hidden address\" and holds the address in an AddressLabel (the stand-in, \"hidden address\" to accessibility)")
+    let alertShown = AccountSettings.forgetAlert(standby, profile: "Work", blur: false)
+    check(alertShown.messageText == "Forget \(a3)?" && alertShown.accessoryView == nil, "Forget…: shown, the address is in the text, no accessory")
+
+    // the switch menus: the rows of several hidden accounts are drawn (AddressMenuRow), their words are the same for all
+    var e = profile("pa", "~/.claude-pa", seat(41, a1)); e.claudeWindow = false
+    e.standby = [StandbyAccount(email: a2, seat: seat(42, a2), id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400)),
+                 StandbyAccount(email: a3, seat: seat(43, a3), id: "k3", plan: "Max", lastInUse: now.addingTimeInterval(-2 * 86400))]
+    try! Store.save([e])
+    var rec = IconStatus(state: "ok"); rec.loginEmail = a1; rec.expectedEmail = a1; rec.weekly = 100; rec.fiveHour = 12
+    rec.weeklyResets = now.addingTimeInterval(3 * 3600); rec.fiveHourResets = now.addingTimeInterval(3600)
+    rec.updatedAt = now.addingTimeInterval(-60); rec.source = "Anthropic"; rec.plan = "Max"
+    rec.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: seat(41, a1), loginEmail: a1, names: [:], now: now)
+    _ = Store.writeStatus("pa", rec)
+    let show = ProfileShow.load(e, now: now)
+    func all(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(all) ?? []) } }
+    for (what, menu) in [("the Dock icon's menu", dockOf(e, show).menu), ("the menu bar icon's menu", menuBarMenu(show))] {
+        let rows = all(menu).compactMap { i in (i.view as? AddressMenuRow).map { (i, $0) } }
+        let keys = rows.compactMap { $0.0.representedObject as? String }
+        check(rows.count >= 3 && Set(keys).isSuperset(of: ["pa~k2", "pa~k3"]),
+              "hidden \(what): the full-limit offer and the standby accounts are AddressMenuRows, each still naming its Switch page: \(keys)")
+        check(rows.allSatisfy { clean($0.0.title) && clean($0.1.accessibilityLabel() ?? "") && $0.0.title.contains("hidden address") && $0.1.accessibilityLabel() == $0.0.title }
+              && titles(menu).allSatisfy(clean),
+              "hidden \(what): no title or accessibility label holds any part of any address: \(titles(menu))")
+        check(Set(rows.filter { $0.0.title == "hidden address…" }.map { $0.1.naturalWidth }).count == 1
+              && rows.filter { $0.0.title == "hidden address…" }.count == 2,
+              "hidden \(what): the two standby rows (a short and a long address) are the same width")
+    }
+    // picking a row sends its action with the Switch page's key (as a native item does)
+    let probe = PickProbe()
+    let lines = SwitchMenu.lines(e.listed(by: show.view), now: now)
+    let best = SwitchMenu.best(lines)!
+    let bestItem = SwitchMenu.bestItem(best, target: probe, action: #selector(PickProbe.pick(_:)))
+    (bestItem.view as? AddressMenuRow)?.fire()
+    check(bestItem.view is AddressMenuRow && bestItem.title == "Switch to hidden address…" && probe.got == best.key && bestItem.representedObject as? String == best.key,
+          "hidden: \"Switch to …\" is an AddressMenuRow whose Return and click send the action with its Switch page's key: \(bestItem.title) \(probe.got ?? "nil")")
+    // shown: the usual native items with short names
+    AddressPrivacy.shared.apply(blur: false)
+    let shownItem = SwitchMenu.bestItem(SwitchMenu.lines(e.listed(by: show.view), now: now).first!, target: probe, action: #selector(PickProbe.pick(_:)))
+    check(shownItem.view == nil && shownItem.title.hasPrefix("Switch to ") && !shownItem.title.contains("@"), "shown: the usual item with the short name: \(shownItem.title)")
+    AddressPrivacy.shared.apply(blur: true)
+
+    // AddressMenuRow itself: words, width and picture
+    let short = AddressMenuRow(prefix: "Switch to ", address: "wu@example.com", suffix: "…", enabled: true) {}
+    let long = AddressMenuRow(prefix: "Switch to ", address: a3, suffix: "…", enabled: true) {}
+    let other = AddressMenuRow(prefix: "Switch to ", address: a2, suffix: "…", enabled: true) {}
+    for r in [short, long, other] { r.frame.size.width = r.naturalWidth }
+    check(short.title == "Switch to hidden address…" && long.title == short.title && short.accessibilityLabel() == short.title
+          && clean(long.title) && clean(long.accessibilityLabel() ?? ""),
+          "AddressMenuRow: the title and the accessibility label are \"Switch to hidden address…\" for every address, nothing of it")
+    check(short.naturalWidth == long.naturalWidth && long.naturalWidth == other.naturalWidth && short.drawnAddress == AddressText.standIn && long.drawnAddress == AddressText.standIn,
+          "AddressMenuRow: as wide as the stand-in and no wider, whatever the address (a short and a long one): \(short.naturalWidth) \(long.naturalWidth)")
+    check(picture(short) != nil && picture(short) == picture(other) && picture(other) == picture(long),
+          "AddressMenuRow: two hidden addresses (a short, a long, another) draw the very same picture")
+    check(inked(short), "AddressMenuRow: the hidden picture is not blank")
+    long.highlighted = true; short.highlighted = true
+    check(long.drawnAddress == a3 && picture(long) != picture(short) && inked(long), "AddressMenuRow: lit by the menu, the address itself is drawn (two addresses then differ)")
+    long.highlighted = false; short.highlighted = false
+    long.blur = false
+    check(long.title == "Switch to \(a3)…" && long.drawnAddress == a3 && long.naturalWidth > short.naturalWidth,
+          "AddressMenuRow: the blur: override reaches its words and its picture (here shown, while the setting is hidden)")
+    long.blur = true
+    check(long.title == "Switch to hidden address…" && picture(long) == picture(short), "AddressMenuRow: the override back to hidden")
+    let off = AddressMenuRow(prefix: "", address: "wu@example.com", suffix: "", enabled: false) {}
+    check(!off.lit && AddressMenuRow.item(address: a1, enabled: false) {}.action == nil && AddressMenuRow.item(address: a1) {}.isEnabled,
+          "AddressMenuRow: a dimmed row is never lit and has no action")
+
+    // no first-letter-and-dots mask left anywhere in the app's sources
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    let files = (try? FileManager.default.contentsOfDirectory(atPath: src.path))?.filter { $0.hasSuffix(".swift") } ?? []
+    var masks: [String] = []
+    for f in files {
+        let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? []
+        for (i, l) in lines.enumerated() where l.contains("•••") || l.contains("repeating: \"•\"") || l.contains("Privacy.mask") || l.contains("Privacy.masked") || l.contains("settingsEmail") {
+            masks.append("\(f):\(i + 1)")
+        }
+    }
+    check(!files.isEmpty && masks.isEmpty && !files.contains("Privacy.swift"), "no source builds the old mask (a first letter, dots, the domain) or calls Privacy: \(masks)")
 }
 
 print("checks: \(passed) passed, \(failed) failed")

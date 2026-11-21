@@ -14,6 +14,7 @@
 // calls (each must stay at zero), and the profiles file's change is announced to nobody. Fake data only: example.com addresses,
 // zero-pattern ids, made-up values.
 
+import AddressPrivacy
 import AppKit
 import Foundation
 import ProfileCore
@@ -24,6 +25,7 @@ let home = NSHomeDirectory()
 guard (role == "a" && home.hasSuffix("/Checks/.work/move/home")) || (role == "b" && home.hasSuffix("/Checks/.work/move/b/home")) else {
     print("refusing: HOME is \(home) for role \(role)"); exit(2)
 }
+AddressPrivacy.shared.apply(blur: false)     // Show emails on, as every suite reads addresses in clear unless it tests the setting (nothing is written)
 // the file goes between the two homes in Checks/.work/move/shared (made by role A)
 let sharedDir = role == "a" ? (home as NSString).deletingLastPathComponent + "/shared" : ((home as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent + "/shared"
 
@@ -91,7 +93,7 @@ if role == "b" {
         check(plan.create.allSatisfy { $0.entry.iconHidden } && work?.inDock == true && homeP?.inDock == false,
               "B: no Dock icon for a made profile (Usage in the Dock off); the done page knows Work had one")
         let diffs = Dictionary(uniqueKeysWithValues: plan.settings.map { ($0.key, $0) })
-        check(diffs["face"]?.fileWords == "Silver" && diffs["face"]?.hereWords == "Std" && diffs[Privacy.key]?.fileWords == "hidden" && diffs[BackupPrefs.lastKey]?.file == "7"
+        check(diffs["face"]?.fileWords == "Silver" && diffs["face"]?.hereWords == "Std" && diffs[AddressSettings.key]?.fileWords == "hidden" && diffs[BackupPrefs.lastKey]?.file == "7"
               && diffs[BackupPrefs.placeKey]?.problem != nil && plan.settings.count == 4,
               "B: 4 settings differ (Face, Emails, Backups kept, Backups folder), the backups folder can't be taken (not on this Mac): \(plan.settings.map { "\($0.key)=\($0.file)" })")
         check(MoveWords.settingLines(plan).contains("Face: Std here, Silver in the file") && MoveWords.key(plan, take: true, create: true) == "Make 2 profiles and take 3 settings"
@@ -275,7 +277,7 @@ MainActor.assumeIsolated {
     for f in files(wc + "/projects") { try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86400)], ofItemAtPath: wc + "/projects/" + f) }
     for f in files(hc + "/projects") { try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86400)], ofItemAtPath: hc + "/projects/" + f) }
     // this Mac's settings: Silver, emails hidden, 7 backups kept, backups in a folder of the home
-    SessionsMove.prefs.set("silver", forKey: "face"); SessionsMove.prefs.set(false, forKey: Privacy.key)
+    SessionsMove.prefs.set("silver", forKey: "face"); SessionsMove.prefs.set(false, forKey: AddressSettings.key)
     BackupPrefs.store.set(7, forKey: BackupPrefs.lastKey)
     try! fm.createDirectory(atPath: home + "/MyBackups", withIntermediateDirectories: true)
     BackupPrefs.store.set("~/MyBackups", forKey: BackupPrefs.placeKey)
@@ -436,7 +438,7 @@ MainActor.assumeIsolated {
          "settings": ["style": "nope", "pollMinutes": 100000, "notify": "true", "color": 5, "menuBarLook": ["style": [1, 2]], "peekSeconds": 1e300],
          "accounts": [["account": "not-a-uuid", "organization": sid(2), "email": "x@example.com"], ["account": sid(7), "organization": sid(8), "email": "evil\u{2028}@example.com", "inUse": true]]],
         ["name": "a/b"], ["name": ""], ["name": 5], ["name": "Clean", "accounts": [["account": sid(7), "organization": sid(8)]]], "not an object"],
-        "backups": [BackupPrefs.placeKey: "/System/Library", BackupPrefs.lastKey: 1_000_000, BackupPrefs.daysKey: "30"], "general": ["face": "bogus", Privacy.key: 1]], uniquingKeysWith: { $1 }))
+        "backups": [BackupPrefs.placeKey: "/System/Library", BackupPrefs.lastKey: 1_000_000, BackupPrefs.daysKey: "30"], "general": ["face": "bogus", AddressSettings.key: 1]], uniquingKeysWith: { $1 }))
     if let f = odd, let x = f.profiles.first {
         check(f.profiles.count == 2 && x.name == "WorkX" && x.id != "../etc" && SessionsMove.validID(x.id) && x.entry.configDir.hasPrefix("~/.claude-") && x.place == 999 && x.inDock == false,
               "hostile: a name with control and bidi characters is one plain line; a bad id, path and place are cleaned: \(x.name) \(x.id) \(x.entry.configDir) \(x.place)")
@@ -445,7 +447,7 @@ MainActor.assumeIsolated {
         check(x.accounts.count == 1 && x.accounts[0].seat.account == sid(7) && x.accounts[0].email == nil && f.profiles[1].accounts.isEmpty
               && f.profiles[1].notes.contains { $0.contains("another profile of the file has too") },
               "hostile: an account id that isn't one is dropped, a bad address is dropped, one account isn't in two profiles")
-        check(f.backups[BackupPrefs.placeKey] == "/System/Library" && f.backups[BackupPrefs.lastKey] == nil && f.backups[BackupPrefs.daysKey] == nil && f.general["face"] == nil && f.general[Privacy.key] == nil,
+        check(f.backups[BackupPrefs.placeKey] == "/System/Library" && f.backups[BackupPrefs.lastKey] == nil && f.backups[BackupPrefs.daysKey] == nil && f.general["face"] == nil && f.general[AddressSettings.key] == nil,
               "hostile: settings of the wrong type or range aren't read")
         check(SessionsMove.placeProblem("/System/Library")?.contains("system folder") == true && SessionsMove.placeProblem("~/nowhere-m0") != nil && SessionsMove.placeProblem("~/../..") != nil
               && SessionsMove.placeProblem("~/MyBackups") == nil && SessionsMove.placeProblem("~") != nil,

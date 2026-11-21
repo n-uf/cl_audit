@@ -1,3 +1,4 @@
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -13,9 +14,110 @@ let out = CommandLine.arguments[1]
 Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/render/pages/home"), expand("~") == home else { print("refusing: home is \(home)"); exit(1) }
+AddressPrivacy.shared.apply(blur: false)     // the pictures show the addresses in clear, but for the hidden-address case below (nothing is written)
 let fm = FileManager.default
 SettingsModel.followsDock = false
 RunsMonitor.preview = []
+
+// ==================================================================== a hidden address (PRIVACY_ONLY=1: this alone)
+// With emails hidden an address is drawn as AddressPrivacy's one blurred stand-in, never as itself blurred: addresses of any
+// length (shorter and much longer than the stand-in) draw the very same pixels, inside the real container too (the account
+// box's title: its chevron stays where it is), and the picture is not blank. Shown, they differ and read as themselves (so
+// neither half passes vacuously). The `blur:` override reaches what is drawn and what is spoken, so the first part never
+// touches the setting; the container follows the setting, which is applied (nothing is written) and put back.
+// Pictures pa-<case>.png. Sample addresses only. VoiceOver: SwiftUI builds its accessibility tree only for an assistive
+// client, which a headless run has none of (the walk of an offscreen NSHostingView reads nothing, hidden or shown): the walk
+// is asserted when the tree is exposed, and otherwise the words the views declare (BlurredAddress.spoken, what the view
+// attaches as its accessibility label) are, with a line saying so.
+MainActor.assumeIsolated {
+    func host(_ v: some View) -> NSHostingView<AnyView> {
+        _ = NSApplication.shared
+        let h = NSHostingView(rootView: AnyView(v.padding(16).frame(width: 420, height: 60, alignment: .topLeading).background(Color(white: 0.1))
+            .environment(\.colorScheme, .dark)))
+        h.frame = NSRect(x: 0, y: 0, width: 420, height: 60)
+        let win = NSWindow(contentRect: h.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        win.contentView = h
+        h.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        return h
+    }
+    func png(_ h: NSView, _ name: String) -> Data? {
+        guard let rep = h.bitmapImageRepForCachingDisplay(in: h.bounds) else { return nil }
+        h.cacheDisplay(in: h.bounds, to: rep)
+        let d = rep.representation(using: .png, properties: [:])
+        try? d?.write(to: URL(fileURLWithPath: out + "/\(name).png"))
+        print(name)
+        return d
+    }
+    /// Every label and value VoiceOver could read in the view (empty when SwiftUI builds no tree).
+    func spoken(_ o: Any, _ depth: Int = 0) -> [String] {
+        guard depth < 40, let a = o as? NSAccessibilityProtocol else { return [] }
+        var said = [a.accessibilityLabel(), a.accessibilityValue() as? String, a.accessibilityTitle()].compactMap { $0 }.filter { !$0.isEmpty }
+        for c in a.accessibilityChildren() ?? [] { said += spoken(c, depth + 1) }
+        return said
+    }
+    func parts(_ a: String) -> [String] {
+        let local = String(a.split(separator: "@")[0]), domain = String(a.split(separator: "@")[1])
+        return [local, domain, String(domain.split(separator: ".")[0])]
+    }
+    let short = "wu@example.com", usual = "zedekiah@example.com"
+    let long = "a-much-longer-address-than-the-stand-in@subdomain.example.com"
+    var bad: [String] = []
+    var treeExposed = false
+    func title(_ a: String) -> some View { AccountBoxTitle(text: a) }
+    func override(_ a: String, _ blur: Bool) -> some View {
+        BlurredAddress(address: a, size: 13, blur: blur).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.white).lineLimit(1)
+    }
+    // the picture of nothing, for "not blank"
+    let empty = png(host(Color.clear), "pa-empty")
+
+    // (1) the override: this Mac's setting is "shown" here, and the views are told hidden
+    let o1 = host(override(short, true)), o2 = host(override(long, true)), o3 = host(override(usual, true))
+    let p1 = png(o1, "pa-override-hidden-short"), p2 = png(o2, "pa-override-hidden-long"), p3 = png(o3, "pa-override-hidden-usual")
+    if p1 == nil || p1 != p2 || p1 != p3 { bad.append("override hidden: addresses of different length draw different pixels") }
+    if p1 == empty { bad.append("override hidden: the picture is blank") }
+    let s1 = host(override(short, false)), s2 = host(override(usual, false))
+    let q1 = png(s1, "pa-override-shown-short"), q2 = png(s2, "pa-override-shown-usual")
+    if q1 == p1 || q1 == q2 { bad.append("override shown: the addresses draw as the stand-in or alike") }
+    for (h, a) in [(o1, short), (o2, long), (o3, usual)] {
+        let said = spoken(h)
+        treeExposed = treeExposed || !said.isEmpty
+        if !said.isEmpty {
+            if parts(a).contains(where: { said.joined(separator: " | ").localizedCaseInsensitiveContains($0) }) { bad.append("VoiceOver reads part of a hidden address: \(said)") }
+            if !said.contains("hidden address") { bad.append("VoiceOver doesn't read \"hidden address\" (read: \(said))") }
+        }
+    }
+    if treeExposed {
+        if !spoken(s1).contains(short) { bad.append("VoiceOver doesn't read a shown address") }
+    }
+    // the words the view declares (what its accessibility label is): the override reaches them
+    if ![short, long, usual].allSatisfy({ BlurredAddress.spoken(address: $0, blur: true) == "hidden address" })
+        || BlurredAddress.spoken(address: short, blur: false) != short { bad.append("the views declare the wrong words") }
+    if BlurredAddress.drawn(address: long, readable: false, blur: true) != AddressText.standIn
+        || BlurredAddress.drawn(address: long, readable: true, blur: true) != long { bad.append("the views draw the wrong text") }
+
+    // (2) the real container: the account box's title with its chevron, the setting applied hidden
+    AddressPrivacy.shared.apply(blur: true)
+    let t1 = host(title(short)), t2 = host(title(usual)), t3 = host(title(long))
+    let r1 = png(t1, "pa-title-hidden-short"), r2 = png(t2, "pa-title-hidden-usual"), r3 = png(t3, "pa-title-hidden-long")
+    if r1 == nil || r1 != r2 || r1 != r3 { bad.append("hidden title: a short, a usual and a much longer address draw different pixels (the chevron moved)") }
+    if r1 == empty { bad.append("hidden title: the picture is blank") }
+    for (h, a) in [(t1, short), (t2, usual), (t3, long)] {
+        let said = spoken(h)
+        if !said.isEmpty, parts(a).contains(where: { said.joined(separator: " | ").localizedCaseInsensitiveContains($0) }) { bad.append("VoiceOver reads part of a hidden title: \(said)") }
+        if !said.isEmpty, !said.contains("hidden address") { bad.append("VoiceOver doesn't read \"hidden address\" in a title (read: \(said))") }
+    }
+    AddressPrivacy.shared.apply(blur: false)
+    let u1h = host(title(short)), u2h = host(title(long))
+    let v1 = png(u1h, "pa-title-shown-short"), v2 = png(u2h, "pa-title-shown-long")
+    if v1 == v2 || v1 == r1 { bad.append("shown title: the addresses draw alike, or as the stand-in") }
+    if treeExposed, !spoken(u1h).contains(short) { bad.append("VoiceOver doesn't read a shown title") }
+    if !treeExposed { print("privacy: (no accessibility tree offscreen: SwiftUI builds one for an assistive client only; the words the views declare were asserted instead)") }
+    for b in bad { print("privacy: FAIL \(b)") }
+    if !bad.isEmpty { exit(1) }
+    print("privacy: hidden addresses of any length draw the one stand-in (the chevron stays), never blank, and read as \"hidden address\"")
+}
+if ProcessInfo.processInfo.environment["PRIVACY_ONLY"] != nil { print("done"); exit(0) }
 
 func uuid(_ n: Int) -> String { "00000000-0000-4000-8000-" + String(format: "%012d", n) }
 func seat(_ n: Int, _ email: String) -> Seat { Seat(account: uuid(n), organization: uuid(n + 100), email: email) }
@@ -1735,7 +1837,7 @@ MainActor.assumeIsolated {
         let before = model.accounts
         model.accounts = [mvStudio, mvTravel]
         // the other Mac's settings: Silver, emails hidden, 7 backups kept
-        SessionsMove.prefs.set("silver", forKey: "face"); SessionsMove.prefs.set(false, forKey: Privacy.key); BackupPrefs.store.set(7, forKey: BackupPrefs.lastKey)
+        SessionsMove.prefs.set("silver", forKey: "face"); SessionsMove.prefs.set(false, forKey: AddressSettings.key); BackupPrefs.store.set(7, forKey: BackupPrefs.lastKey)
         let xrM = model.exportRunner(for: "mvstudio")
         xrM.movePreset()
         xrM.refresh()

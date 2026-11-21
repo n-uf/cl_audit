@@ -11,6 +11,7 @@
 // opener is a stand-in that records the script, the Trash is a stand-in that records the folder, and `claude` is a stub
 // script that is never run (the script that would run it is only written).
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -23,6 +24,7 @@ func check(_ ok: Bool, _ what: String, line: Int = #line) {
 setbuf(stdout, nil)
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/accounts/home"), expand("~") == home else { print("refusing: HOME is \(home)"); exit(2) }
+AddressPrivacy.shared.apply(blur: false)     // Show emails on, as every suite reads addresses in clear unless it tests the setting (nothing is written)
 let fm = FileManager.default
 SettingsModel.followsDock = false
 Store.announce = {}

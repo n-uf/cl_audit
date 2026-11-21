@@ -11,6 +11,7 @@
 // remote address that holds a token is never fetched). Nothing opens an app, the Dock or Terminal; Claude Code and the Claude app never
 // run: the Dock's writer and the Keychain's tool are stand-ins that count calls (both stay at zero).
 
+import AddressPrivacy
 import AppKit
 import Foundation
 import ProfileCore
@@ -21,6 +22,7 @@ let home = NSHomeDirectory()
 guard (role == "a" && home.hasSuffix("/Checks/.work/resume/home")) || (role == "b" && home.hasSuffix("/Checks/.work/resume/b/home")) else {
     print("refusing: HOME is \(home) for role \(role)"); exit(2)
 }
+AddressPrivacy.shared.apply(blur: false)     // Show emails on, as every suite reads addresses in clear unless it tests the setting (nothing is written)
 let work = role == "a" ? (home as NSString).deletingLastPathComponent : ((home as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
 let sharedDir = work + "/shared"
 let code = work + "/code"                         // the projects, at the same path for both homes

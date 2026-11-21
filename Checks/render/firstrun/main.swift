@@ -1,6 +1,7 @@
 // Renders the first-run page to PNGs, Std and Silver, width 708. Throwaway HOME only;
 // no app is launched, nothing is shown on screen (an unshown window), Terminal and the Dock aren't touched.
 
+import AddressPrivacy
 import AppKit
 import SwiftUI
 
@@ -8,6 +9,7 @@ import SwiftUI
 Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/render/firstrun/home") else { print("refusing: HOME is \(home)"); exit(2) }
+AddressPrivacy.shared.apply(blur: false)     // the pictures show the addresses in clear (nothing is written)
 let fm = FileManager.default
 func p(_ rel: String) -> String { (home as NSString).appendingPathComponent(rel) }
 func resetHome() {

@@ -4,6 +4,7 @@
 //
 // --- first run ---
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -17,6 +18,7 @@ func check(_ ok: Bool, _ what: String, file: String = #fileID, line: Int = #line
 Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/firstrun/home") else { print("refusing: HOME is \(home)"); exit(2) }
+AddressPrivacy.shared.apply(blur: false)     // Show emails on, as every suite reads addresses in clear unless it tests the setting (nothing is written)
 let fm = FileManager.default
 func p(_ rel: String) -> String { (home as NSString).appendingPathComponent(rel) }
 
