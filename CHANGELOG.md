@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- When Claude Code's sign-in can't open (in a switch, the default profile's page or first run), cl_audit now says why: a sign-in already open for that folder (finish or close it first), or cl_audit couldn't tell whether one is open, instead of always "Terminal didn't open."
 
 ## 26.11.80 — 2026-11-21
 
