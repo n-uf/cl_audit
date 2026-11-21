@@ -957,7 +957,8 @@ MainActor.assumeIsolated {
         let mp = MenuBarItems.Profile(show: ProfileShow.load(main, now: now))
         let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: st?.loginEmail, expected: nil, mismatch: false,
                                 plan: st?.plan, fiveHour: st?.fiveHour, fiveHourResets: st?.fiveHourResets, weekly: st?.weekly, weeklyResets: st?.weeklyResets,
-                                updated: now.addingTimeInterval(-60), source: nil, problem: nil, renewNote: nil, needsLogin: false).with(v)
+                                updated: now.addingTimeInterval(-60), source: nil, problem: nil, renewNote: nil, needsLogin: false,
+                                ownColor: main.ownColor).with(v)
         for f in [Face.std, .silver] { for (wn, w) in aWidths {
             let col = VStack(alignment: .leading, spacing: 12) {
                 Text("Menu bar").font(.caption.bold())
@@ -982,7 +983,7 @@ MainActor.assumeIsolated {
     for (tag, updated) in [("a3-panel-reading", Date?.none), ("a4-panel-updated", Date?.some(now.addingTimeInterval(-60)))] {
         let info = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: u1.email, expected: nil, mismatch: false,
                                plan: "Ultra", fiveHour: nil, fiveHourResets: nil, weekly: updated == nil ? nil : 42, weeklyResets: now.addingTimeInterval(3 * 86400),
-                               updated: updated, source: nil, problem: nil, renewNote: nil, needsLogin: false, noFiveHour: true)
+                               updated: updated, source: nil, problem: nil, renewNote: nil, needsLogin: false, ownColor: main.ownColor, noFiveHour: true)
             .with(AccountView(label: u1.email, numbersOwner: u1.email, line: nil, lit: true, clash: nil))
         for f in [Face.std, .silver] { for (wn, w) in aWidths {
             snapshot(framed(DetailsView(info: info, actions: noop).frame(width: min(w, 340)), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 900)
@@ -1144,7 +1145,8 @@ MainActor.assumeIsolated {
             let v = AccountView.of(Store.status(for: main))
             let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: rec.loginEmail, expected: nil, mismatch: false,
                                     plan: rec.plan, fiveHour: nil, fiveHourResets: nil, weekly: rec.weekly, weeklyResets: rec.weeklyResets,
-                                    updated: Date(), source: nil, problem: nil, renewNote: nil, needsLogin: false, noFiveHour: true).with(v)
+                                    updated: Date(), source: nil, problem: nil, renewNote: nil, needsLogin: false, ownColor: main.ownColor,
+                                    noFiveHour: true).with(v)
             let noop = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
             for f in [Face.std, .silver] {
                 let side = HStack(alignment: .top, spacing: 16) {
