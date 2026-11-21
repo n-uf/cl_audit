@@ -1109,13 +1109,26 @@ enum SessionsExport {
         if let pw = job.password {
             // hdiutil reads the password from stdin: it is never an argument, and nothing here keeps it
             // (the folder that holds the export's folder: the image's top then has that one folder, as the zip does)
-            let args = ["create", "-srcfolder", root.deletingLastPathComponent().path, "-volname", String(rootName.prefix(27)), "-fs", "APFS", "-format", "UDZO",
-                        "-encryption", "AES-256", "-stdinpass", "-quiet", tmp.path]
             // (composed form, so the same password typed on another Mac or keyboard opens it)
             let npw = pw.precomposedStringWithCanonicalMapping
-            guard let r = Tool.run("/usr/bin/hdiutil", args, stdin: Data(npw.utf8), secret: npw, cancel: cancel, poll: watch) else { throw ArchiveError("hdiutil couldn't start.") }
-            if r.cancelled { throw ArchiveError("Stopped.") }
-            guard r.status == 0 else { throw ArchiveError("The disk image couldn't be made (\(r.err.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))).") }
+            // hdiutil mounts what it makes under the volume name for a moment: two exports of the same name at once collide there and
+            // it fails, often with no reason given. Tried once more under a name of its own before giving up.
+            func make(_ volname: String) throws -> (status: Int32, err: String) {
+                let args = ["create", "-srcfolder", root.deletingLastPathComponent().path, "-volname", volname, "-fs", "APFS", "-format", "UDZO",
+                            "-encryption", "AES-256", "-stdinpass", "-quiet", tmp.path]
+                guard let r = Tool.run("/usr/bin/hdiutil", args, stdin: Data(npw.utf8), secret: npw, cancel: cancel, poll: watch) else { throw ArchiveError("hdiutil couldn't start.") }
+                if r.cancelled { throw ArchiveError("Stopped.") }
+                return (r.status, r.err.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+            var r = try make(String(rootName.prefix(27)))
+            if r.status != 0 {
+                try? fm.removeItem(at: tmp)
+                if cancel() { throw ArchiveError("Stopped.") }
+                r = try make(String(rootName.prefix(22)) + " " + String(tag.prefix(4)))
+            }
+            guard r.status == 0 else {
+                throw ArchiveError("The disk image couldn't be made (\(r.err.isEmpty ? "hdiutil gave no reason, status \(r.status)" : String(r.err.prefix(200)))).")
+            }
         } else {
             let args = ["-c", "-k", "--norsrc", "--noextattr", "--noqtn", "--noacl", "--keepParent", root.path, tmp.path]
             guard let r = Tool.run("/usr/bin/ditto", args, cancel: cancel, poll: watch) else { throw ArchiveError("ditto couldn't start.") }
