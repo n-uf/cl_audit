@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.84 — 2026-11-21
+
 - The shared modules (ProfileCore, Runs and ClaudeAuth with the shared sign-in) moved, with their history and their checks, to their own repository, [cl_kit](https://github.com/n-uf/cl_kit). cl_audit builds a tagged release of it from source, copied into `Vendor/cl_kit-<tag>/`; nothing changes in the app.
 
 ## 26.11.83 — 2026-11-21
