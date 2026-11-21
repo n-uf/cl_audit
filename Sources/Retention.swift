@@ -33,6 +33,10 @@
 // nowhere and a file that isn't a plain file are no file to Claude Code (ENOENT) or here: no skip.
 // NOT modelled: the same skip when a MANAGED document is bad and a clean-up key is set somewhere (or managed-settings.json
 // itself can't be used): that is said as "an error in the managed settings: deleted, no exemption", which is the safe side.
+// Nor the other ways a clean-up reads differently or not at all: a Claude Code started with `--setting-sources` that leaves
+// out `userSettings` (the user's settings.json isn't read, so its keys don't apply), or one that reads no stored
+// server-managed settings (no server cache). Both are invisible from here; cl_audit takes the user's settings.json and the
+// server cache as Claude Code reads them by default, and assumes the clean-up runs (the safe side: it never hides a deletion).
 
 import Foundation
 
