@@ -57,6 +57,7 @@ enum SessionTransfer {
         var deleted: [String] = []          // the target deleted a session with that id: left where they are
         var held: [String] = []             // a running Claude Code owns it (or it can't be read): left where it is
         var taskHeld: [String] = []         // the sessions of tasks that can't move, held too (a subset of `held`)
+        var unreadable: [String] = []       // the ones held because they can't be read whole (a subset of `held`): said apart
         var tasks = 0                       // scheduled tasks to move
         var taskStay: String? = nil         // why the scheduled tasks stay: then `tasks` is 0 and neither file is touched
     }
@@ -109,7 +110,7 @@ enum SessionTransfer {
         for n in entries(s) {
             let id = String(n.dropFirst("local_".count).dropLast(".json".count))
             // bounded, never blocking: one that can't be read whole is held, never moved
-            guard let data = SafeRead.whole((s.sourceDir as NSString).appendingPathComponent(n), max: SafeRead.entryMax) else { out.held.append(n); continue }
+            guard let data = SafeRead.whole((s.sourceDir as NSString).appendingPathComponent(n), max: SafeRead.entryMax) else { out.held.append(n); out.unreadable.append(n); continue }
             if fm.fileExists(atPath: (s.targetDir as NSString).appendingPathComponent(n)) { out.already.append(n); continue }
             if fm.fileExists(atPath: (s.targetDir as NSString).appendingPathComponent("deleted_\(id)")) { out.deleted.append(n); continue }
             // a session a running Claude Code owns, or one of tasks that can't move: held where it is

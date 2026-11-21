@@ -62,6 +62,7 @@ struct SwitchPlan: Equatable {
     var tasks = 0                       // scheduled tasks to move
     var taskStay: String? = nil         // why the scheduled tasks stay (taskProblem): then `tasks` is 0 and neither file is touched
     var taskHeld: [String] = []         // the sessions of those tasks, held too (a subset of `held`)
+    var unreadable: [String] = []       // held because they can't be read whole, not because Claude Code runs them (a subset of `held`)
     var odd: [SessionTransfer.Odd] = [] // names shaped like an entry that aren't one (a link, an unknown name): left in place, said
     var backupTranscripts = true        // the backup (SessionsBackup.swift) takes Claude Code's transcripts too
     var entry: AccountEntry? = nil      // cl_audit's record of the profile, for the backup
@@ -232,7 +233,7 @@ enum SwitchEngine {
         }
         let sorted = SessionTransfer.sort(p.scopes, owned: live)
         p.move = sorted.move; p.already = sorted.already; p.deleted = sorted.deleted; p.held = sorted.held
-        p.taskHeld = sorted.taskHeld; p.tasks = sorted.tasks; p.taskStay = sorted.taskStay
+        p.taskHeld = sorted.taskHeld; p.tasks = sorted.tasks; p.taskStay = sorted.taskStay; p.unreadable = sorted.unreadable
         return .success(p)
     }
 
@@ -526,9 +527,11 @@ enum SwitchEngine {
         r.leftAsIs = now
         try store.save(r)
         settled(r)
-        let moved = r.steps.filter { $0.kind == .entry && $0.done }.count
-        return "Left as it is: \(moved) Code-tab \(moved == 1 ? "session stays" : "sessions stay") under the account the switch went to, the rest under the one it came from"
-            + (r.backup != nil ? "; the backup made before it holds them all as they were." : ".")
+        // after a partial Undo only what it left where the switch put it counts (the rest is back already); the backup is
+        // not named: it may age out (the backups' keep rules), so nothing is promised about it
+        let moved = r.partlyUndone != nil ? (r.left ?? []).filter(ClaudeFiles.isEntryName).count
+                                          : r.steps.filter { $0.kind == .entry && $0.done }.count
+        return "Left as it is: \(moved) Code-tab \(moved == 1 ? "session stays" : "sessions stay") under the account the switch went to, the rest under the one it came from."
     }
 
     static func markLinked(_ id: String, now: Date = Date()) {

@@ -174,8 +174,16 @@ final class SwitchRunner: ObservableObject {
 
     /// An Undo that left some things as they were: what, and that Undo can be tried again.
     static func partlyWords(_ r: SwitchReceipt) -> String {
+        // (said by kind and count, never by file name: the receipt keeps the names, the problems list says each)
         let left = r.left ?? []
-        let shown = left.prefix(3).joined(separator: ", ") + (left.count > 3 ? " and \(left.count - 3) more" : "")
+        let entries = left.filter(ClaudeFiles.isEntryName).count
+        let tasks = left.filter { $0 == TaskRegistry.fileName }.count
+        let other = left.count - entries - tasks
+        func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
+        let kinds = [entries > 0 ? n(entries, "Code-tab session", "Code-tab sessions") : nil,
+                     tasks == 1 ? "the scheduled tasks file" : tasks > 1 ? n(tasks, "scheduled tasks file", "scheduled tasks files") : nil,
+                     other > 0 ? n(other, entries + tasks > 0 ? "other file" : "file", entries + tasks > 0 ? "other files" : "files") : nil].compactMap { $0 }
+        let shown = kinds.count > 1 ? kinds.dropLast().joined(separator: ", ") + " and " + kinds[kinds.count - 1] : kinds.first ?? "something"
         return "Partly undone: \(shown) \(left.count == 1 ? "was" : "were") left as \(left.count == 1 ? "it was" : "they were"). The rest is back; Undo again once that's sorted."
     }
 
@@ -183,8 +191,10 @@ final class SwitchRunner: ObservableObject {
     /// sessions) that can't move because of how the new account's own tasks differ. nil when nothing stays.
     static func stayWords(_ p: SwitchPlan) -> String? {
         var parts: [String] = []
-        let owned = p.held.count - p.taskHeld.count
+        // (one that can't be read is held too, but not because Claude Code runs it: said apart)
+        let owned = p.held.count - p.taskHeld.count - p.unreadable.count
         if owned > 0 { parts.append(heldWords(owned)) }
+        if !p.unreadable.isEmpty { parts.append(unreadableWords(p.unreadable.count)) }
         if let why = p.taskStay {
             // named by address: after the sign-in "the account in use" is the new one
             let old = p.from.email.map(AccountNames.short) ?? "the old account"
@@ -218,6 +228,11 @@ final class SwitchRunner: ObservableObject {
 
     static func heldWords(_ n: Int) -> String {
         "\(n) \(n == 1 ? "session stays" : "sessions stay") with the account in use: Claude Code is running \(n == 1 ? "it" : "them") now. A later switch moves \(n == 1 ? "it" : "them") once \(n == 1 ? "it's" : "they're") closed."
+    }
+
+    /// Sessions held because their Code-tab record can't be read whole (too large, or unreadable): never "Claude Code is running".
+    static func unreadableWords(_ n: Int) -> String {
+        "\(n) \(n == 1 ? "session stays" : "sessions stay") with the account in use: \(n == 1 ? "its record" : "their records") couldn't be read. A later switch moves \(n == 1 ? "it" : "them") once \(n == 1 ? "it can" : "they can") be read."
     }
 
     /// The window closes (its own quit, which may ask about work under way; only this profile's window, by its data

@@ -568,12 +568,21 @@ struct SwitchPage: View {
 
     private var stepsCard: some View {
         let k = moves ? 2 : 0
+        // stopped part way through the backup or the move (or undone): the plan's counts aren't what was done, so none is shown
+        let partWay: Bool = {
+            switch runner.phase {
+            case .failed: return runner.failedStep == .backup || runner.failedStep == .move
+            case .undone: return true
+            default: return false
+            }
+        }()
+        let moved = partWay ? ((plan?.tasks ?? 0) > 0 ? "the sessions and scheduled tasks" : "the sessions") : sessionWords(plan)
         return SCard(title: "Steps", info: "When the switch moves sessions: the profile's Claude window closes, a backup is made, the sessions and scheduled tasks move (with a receipt, for Undo). Then Claude Code's own sign-in, and a check of the account it signed in. cl_audit never sees a password or a token. cl_audit itself never reads or writes Keychain items during a switch; Claude Code's own sign-in updates its own item.") {
             ClaudeMissingLine(model: model)
             VStack(alignment: .leading, spacing: 0) {
                 if moves {
                     step(1, "\(name)'s Claude window closes", "Only that window, by its own quit; it stays closed until the sign-in ends.")
-                    step(2, "Its sessions move to \(to)", "A backup first, then \(sessionWords(plan)), each checked; a receipt keeps Undo possible.")
+                    step(2, "Its sessions move to \(to)", "A backup first, then \(moved), each checked; a receipt keeps Undo possible.")
                 }
                 step(k + 1, "Claude Code's sign-in opens in Terminal", "For \(entry.configDir), with \(Privacy.masked(runner.goal?.wantedEmail ?? standby.email)) filled in.")
                 step(k + 2, "Finish it in the browser as \(to)", "If the browser is signed in to claude.ai as someone else, switch its account there first.")
