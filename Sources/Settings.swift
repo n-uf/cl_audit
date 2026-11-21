@@ -2284,7 +2284,7 @@ struct AccountSettings: View {
                     .allowsHitTesting(model.dockRestarting == nil || model.dockRestarting == entry.id)
             }
             if !entry.iconHidden {
-                SRow(label: "Runs", info: "At login: always there, from when you sign in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard).") {
+                SRow(label: "Runs", info: Self.runsInfo(name: name)) {
                     Menu {
                         Picker("", selection: $entry.dockRuns) { ForEach(DockRuns.allCases) { Text($0.title).tag($0) } }
                             .pickerStyle(.inline).labelsHidden()
@@ -2325,13 +2325,23 @@ struct AccountSettings: View {
         }
     }
 
-    /// The grey line under Runs: what the current choice means.
-    private var runsWords: String {
-        switch entry.dockRuns {
-        case .atLogin: return "Always there, from when you sign in."
+    /// Runs' help: it applies only when the Dock can't draw the icon itself (the agent starts no Dock icon app while the
+    /// Dock draws its tile: TileTracker, Rules.swift).
+    static func runsInfo(name: String) -> String {
+        "While the Dock draws \(name)'s icon itself, its app runs only when you click it. Runs applies when the Dock can't draw the icon (Dock Tiles turned off under Login Items & Extensions in System Settings, say): At login: always there, from when you sign in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard)."
+    }
+
+    /// The grey line under Runs: what runs now. While the Dock draws the icon (its tile's heartbeat is fresh), the app runs
+    /// only when clicked, whatever Runs says; otherwise what the choice means.
+    private var runsWords: String { Self.runsWords(entry, dockDraws: DockTile.drawn(entry.id)) }
+
+    static func runsWords(_ e: AccountEntry, dockDraws: Bool) -> String {
+        if dockDraws { return "The Dock draws the icon itself, so it runs only when you click it." }
+        switch e.dockRuns {
+        case .atLogin: return "The Dock isn't drawing the icon itself, so it's always there, from when you sign in."
         case .withWindow:
-            return entry.claudeWindow ? "Starts with the Claude window, quits 10 s after it."
-                                      : "No Claude window, so it runs only when you start it."
+            return e.claudeWindow ? "The Dock isn't drawing the icon itself, so it starts with the Claude window and quits 10 s after it."
+                                  : "No Claude window, so it runs only when you start it."
         case .whenStarted: return "Only when you start it: its Dock tile, or its switch on the dashboard."
         }
     }

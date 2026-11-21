@@ -37,6 +37,11 @@ enum DockTile {
         for u in [beatURL(id), logURL(id), logURL(id).appendingPathExtension("1"), windowURL(id)] { try? FileManager.default.removeItem(at: u) }
     }
 
+    /// The Dock draws the profile's tile now: a heartbeat within TileTracker.fresh (and not in the future).
+    static func drawn(_ id: String, now: Date = Date()) -> Bool {
+        lastBeat(id).map { now.timeIntervalSince($0) }.map { $0 >= 0 && $0 < TileTracker.fresh } ?? false
+    }
+
     /// When the Dock last drew the profile's tile through the plug-in, or nil.
     static func lastBeat(_ id: String) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: beatURL(id).path))?[.modificationDate] as? Date
