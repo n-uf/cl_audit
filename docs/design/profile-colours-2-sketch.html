@@ -102,13 +102,14 @@ h3 { margin: 18px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14e
 .byu .dotc { background: #3f3f46; box-shadow: 0 0 0 1px rgba(255,255,255,.28); }
 .face-silver .byu .dotc { box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
 
-/* V4: an LED like the app's own (struct LED, Sources/Faces.swift): 5 px, lit in the profile colour with a soft glow and a dark bezel;
-   unlit (By usage) it is the face's own off colour, no glow, an inner shadow. The in-use lamp is 6 px, green, on the address line. */
+/* V4: an LED like the app's own (struct LED, Sources/Faces.swift): 7 px (V1's dot) plus a 1.5 px dark bezel, lit in the profile
+   colour with a soft glow; unlit (By usage) it is the face's own off colour, no glow, an inner shadow. It is told from the in-use
+   lamp by its place (before the name; the lamp is on the address line) and its own colour. */
 .face-std { --ledoff: #3a3532; }
 .face-silver { --ledoff: #4a4744; }   /* the app's Silver off colour is #8c8c88; drawn darker here so it reads as unlit, not grey-lit */
-.led { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--c);
-  box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 3px color-mix(in srgb, var(--c) 85%, transparent), inset 0 .5px .5px rgba(0,0,0,.25); }
-.led.off { background: var(--ledoff); box-shadow: 0 0 0 1px rgba(0,0,0,.55), inset 0 .5px .5px rgba(0,0,0,.5); }
+.led { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--c);
+  box-shadow: 0 0 0 1.5px rgba(0,0,0,.6), 0 0 6px 1px color-mix(in srgb, var(--c) 80%, transparent), inset 0 1px 1px rgba(255,255,255,.35); }
+.led.off { background: var(--ledoff); box-shadow: 0 0 0 1.5px rgba(0,0,0,.6), inset 0 1px 1.5px rgba(0,0,0,.55); }
 .limes { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .limes .tile { flex: 0 1 215px; }
 .limes .card { flex: 1 1 200px; }
@@ -165,7 +166,7 @@ h3 { margin: 18px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14e
 
 <!-- ═══════════════════ V4 ═══════════════════ -->
 <div class="variant v4">
-<p class="cap"><b>V4 · LED only.</b> Today's key, unchanged, plus a 5 px LED before the name; the in-use lamp is 6 px, always green, and sits on the address line.</p>
+<p class="cap"><b>V4 · LED only.</b> Today's key, unchanged, plus a lit LED in the profile colour before the name (7 px, as big as V1's dot, with its bezel and glow); the in-use lamp stays green on the address line.</p>
 <div class="pair">
 
 <div class="dev face-std">
