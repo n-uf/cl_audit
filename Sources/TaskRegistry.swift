@@ -53,19 +53,20 @@ enum TaskRegistry {
 
     /// Why the source's tasks can't join the target's as they are, or nil (claude-transplant's taskSessions and taskFamilies
     /// checks): a file that can't be read, a task without an id or an id twice, or a target that has one of their ids already
-    /// with other settings (the task's own entry) or other state: a differing twin, refused.
+    /// with other settings (the task's own entry) or other state: a differing twin, refused. The words follow an old account's
+    /// name ("The scheduled tasks stay with ann: …"), so each file is named by whose it is, never "its", and never by its file name.
     static func twinProblem(source: String, target: String) -> String? {
         guard exists(source) else { return nil }
-        guard let src = registry(source) else { return "its scheduled-tasks.json can't be read" }
-        if let raw = src["scheduledTasks"], !(raw is [[String: Any]]) { return "its scheduled-tasks.json isn't a task list" }
+        guard let src = registry(source) else { return "the old account's scheduled tasks file can't be read" }
+        if let raw = src["scheduledTasks"], !(raw is [[String: Any]]) { return "the old account's scheduled tasks file isn't a list of tasks" }
         let list = tasks(in: source)
         let ids = list.compactMap { $0["id"] as? String }
         guard ids.count == list.count, !ids.contains(where: \.isEmpty) else { return "a scheduled task has no id" }
         guard Set(ids).count == ids.count else { return "two scheduled tasks share an id" }
         if exists(target) {
-            guard let dst = registry(target) else { return "the new account's scheduled-tasks.json can't be read" }
+            guard let dst = registry(target) else { return "the new account's scheduled tasks file can't be read" }
             // a list with an element that isn't a task would read as no tasks at all, and be overwritten by the move
-            if let raw = dst["scheduledTasks"], !(raw is [[String: Any]]) { return "the new account's scheduled-tasks.json isn't a task list" }
+            if let raw = dst["scheduledTasks"], !(raw is [[String: Any]]) { return "the new account's scheduled tasks file isn't a list of tasks" }
             // a task the target has under the same id must be the same task, whole: otherwise the move would drop the
             // source's (the target's copy stays), and it would survive only in the backup
             let have = tasks(in: target)
