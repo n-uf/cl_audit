@@ -1399,6 +1399,10 @@ enum CodeCleanup {
     /// LF and CR, no trailing comma, no comment, no depth limit. Outside strings JSON is ASCII, so any other byte there is
     /// refused; in a string any character from U+0020 on is taken except " and \ (an escape: \" \\ \/ \b \f \n \r \t or
     /// \u and four hex digits, a lone surrogate included).
+    /// No depth limit, as JavaScriptCore's JSON.parse: macOS 27.3's JSC (22626.1.12.11.4, its jsc) takes arrays and objects
+    /// nested 2^26 levels deep, far past the deepest file the size caps let through (8 MiB: about 4 million levels).
+    /// Claude Code 2.1.326 runs Bun 1.4.4 on oven-sh's fork of the same engine; that build itself wasn't asked. A bound here
+    /// would be the unsafe side: a settings.json called unreadable is counted with 30 days while Claude Code uses its own.
     static func valid(_ b: [UInt8]) -> Bool {
         var i = 0
         var open: [UInt8] = []                                   // the containers around i: { or [

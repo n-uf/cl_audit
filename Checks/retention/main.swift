@@ -916,6 +916,10 @@ do {
         ("a trailing comma (Foundation takes it, JSON.parse doesn't)", u8("{\"cleanupPeriodDays\":7,}"), false),
         ("a no-break space between tokens", u8("{\u{00A0}\"cleanupPeriodDays\":7}"), false),
         ("600 levels of nesting in another key (Foundation stops at 512)", u8("{\"x\":" + String(repeating: "[", count: 600) + String(repeating: "]", count: 600) + ",\"cleanupPeriodDays\":7}"), true),
+        // JSC's JSON.parse has no depth limit (2^26 levels taken): the deepest a 2 MiB settings.json can hold is read too
+        ("a million levels of arrays in another key (JSC has no depth limit)", u8("{\"x\":" + String(repeating: "[", count: 1_000_000) + String(repeating: "]", count: 1_000_000) + ",\"cleanupPeriodDays\":7}"), true),
+        ("300,000 levels of objects in another key", u8("{\"x\":" + String(repeating: "{\"a\":", count: 300_000) + "{}" + String(repeating: "}", count: 300_000) + ",\"cleanupPeriodDays\":7}"), true),
+        ("a million levels, one bracket left open", u8("{\"x\":" + String(repeating: "[", count: 1_000_000) + String(repeating: "]", count: 999_999) + ",\"cleanupPeriodDays\":7}"), false),
         ("a number too big for a double in another key (JSON.parse: Infinity)", u8("{\"x\":1e400,\"cleanupPeriodDays\":7}"), true),
     ]
     for (what, bytes, reads) in cases {
