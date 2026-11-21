@@ -487,12 +487,42 @@ enum SwitchEngine {
 
     /// A profile's switches, newest first.
     static func receipts(profile: String) -> [SwitchReceipt] {
-        store.list { $0.hasSuffix("-\(profile)") }.filter { $0.profile == profile }
+        cachedList { $0.hasSuffix("-\(profile)") }.filter { $0.profile == profile }
     }
 
     /// Every profile's switches, newest first.
     static func receipts() -> [SwitchReceipt] {
-        store.list { !$0.hasPrefix(".") && !$0.hasSuffix(".json") }
+        cachedList(prune: true) { !$0.hasPrefix(".") && !$0.hasSuffix(".json") }
+    }
+
+    /// A receipt file as last read: its inode, size and modification time (a save replaces the file whole, so any change
+    /// shows here), and what it decoded to.
+    private struct Cached { let ino: UInt64; let size: Int64; let mtime: timespec; let receipt: SwitchReceipt? }
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: Cached] = [:]
+
+    /// The store's receipts `include` takes, newest first, each decoded again only when its file changed: the agent's and
+    /// the pages' ticks ask every few seconds, and most of the time nothing has. `prune`: the whole list was read, so ids
+    /// no longer there leave the cache.
+    private static func cachedList(prune: Bool = false, _ include: @escaping (String) -> Bool) -> [SwitchReceipt] {
+        let s = store
+        let ids = s.ids(include)
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if prune { cache = cache.filter { ids.contains($0.key) } }
+        var out: [SwitchReceipt] = []
+        for id in ids {
+            var st = stat()
+            guard lstat(s.url(id).path, &st) == 0 else { cache[id] = nil; continue }
+            if let c = cache[id], c.ino == st.st_ino, c.size == st.st_size,
+               c.mtime.tv_sec == st.st_mtimespec.tv_sec, c.mtime.tv_nsec == st.st_mtimespec.tv_nsec {
+                if let r = c.receipt { out.append(r) }
+                continue
+            }
+            let r = s.load(id)
+            cache[id] = Cached(ino: st.st_ino, size: st.st_size, mtime: st.st_mtimespec, receipt: r)
+            if let r { out.append(r) }
+        }
+        return out.sorted { $0.started > $1.started }
     }
 
     /// A profile's switches that moved something and were neither linked nor undone, newest first.

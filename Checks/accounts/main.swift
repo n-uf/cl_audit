@@ -1585,6 +1585,18 @@ do {
     check(sw.count == 1 && sw[0].steps.map(\.kind) == [.entry, .tasks, .pointer] && sw[0].steps[2].ino == 987_654 && sw[0].tasksMoved == 2
           && sw[0].unfinished && SwitchEngine.receipts().count == 2 && SwitchEngine.receipts(profile: "ff").first?.left?.count == 1,
           "switch: old receipts read by the flow (every step kind, a partly undone one)")
+    // the receipts are read once and kept while their file is unchanged: a change saved over one is seen at once (a save
+    // replaces the file), and one taken away is gone
+    var cx = SwitchReceipt(id: SwitchEngine.receiptID(Date(), "cachex"), profile: "cachex", standby: "k", dataDir: "/x",
+                           from: sw[0].from, to: sw[0].to, started: Date())
+    try! SwitchEngine.store.save(cx)
+    let firstRead = SwitchEngine.receipts(profile: "cachex").first?.linked
+    cx.linked = Date(timeIntervalSince1970: 1_700_000_000)
+    try! SwitchEngine.store.save(cx)
+    let secondRead = SwitchEngine.receipts(profile: "cachex").first?.linked
+    try? fm.removeItem(at: SwitchEngine.store.folder(cx.id))
+    check(firstRead == nil && secondRead == cx.linked && SwitchEngine.receipts(profile: "cachex").isEmpty && SwitchEngine.receipts().count == 2,
+          "the receipts' cache: a change saved over one is read, one taken away is gone")
     let rid = "20261114-170329-3175-studio"
     let rs = SessionsRestore.load(rid)
     check(rs?.steps.count == 22 && rs?.steps.allSatisfy { $0.done && $0.settled } == true && rs?.importedFrom == "resume move.dmg"
