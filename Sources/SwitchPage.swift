@@ -482,7 +482,7 @@ struct SwitchPage: View {
             if runner.canUndo {
                 SRow(label: "Sessions", first: true, stacked: true) {
                     // what the receipt really has moved now (the same numbers as the tile), not the whole plan
-                    let w = runner.stillMovedWords                 // counted when the receipt changed, not on each render
+                    let w = runner.movedShown                      // counted when the receipt changed, not on each render
                     value((w.isEmpty ? "Part of the move" : w.prefix(1).uppercased() + w.dropFirst()) + " moved to \(to); Claude Code on \(entry.configDir) is still on \(from). Try again, or Undo the move to put them back.")
                 }
             } else {

@@ -63,14 +63,26 @@ final class SwitchRunner: ObservableObject {
     /// The move's receipt (SwitchEngine): what moved, for Undo until Claude Code is on the new account.
     @Published private(set) var receipt: SwitchReceipt? { didSet { countStillMoved() } }
     /// What the receipt still has moved ("41 sessions, 3 tasks", movedWords), counted off the main thread whenever the
-    /// receipt changes, never on a render: the tile and the What changed card read it.
-    @Published private(set) var stillMovedWords = ""
+    /// receipt changes, never on a render: the tile and the What changed card read it. nil until the count lands (then
+    /// `movedShown` gives the receipt's own record, without reading a file).
+    @Published private(set) var stillMovedWords: String?
     private var countGeneration = 0
+
+    /// What the tile and the card say is moved: the count, or until it lands what the receipt wrote down (recordedWords).
+    var movedShown: String { stillMovedWords ?? receipt.map(Self.recordedWords) ?? "" }
+
+    /// "41 sessions, 3 tasks" from what the receipt wrote down, without looking at the files (a first paint).
+    static func recordedWords(_ r: SwitchReceipt) -> String {
+        let s = r.moved, t = r.steps.contains { $0.kind == .tasks && $0.done } ? (r.tasksMoved ?? 1) : 0
+        return [s > 0 ? "\(s) \(s == 1 ? "session" : "sessions")" : nil,
+                t > 0 ? "\(t) \(t == 1 ? "task" : "tasks")" : nil].compactMap { $0 }.joined(separator: ", ")
+    }
 
     private func countStillMoved() {
         countGeneration += 1
         let gen = countGeneration
-        guard let r = receipt else { stillMovedWords = ""; return }
+        stillMovedWords = nil
+        guard let r = receipt else { return }
         DispatchQueue.global(qos: .userInitiated).async {
             let w = Self.movedWords(r)
             DispatchQueue.main.async { [weak self] in

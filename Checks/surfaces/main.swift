@@ -1025,7 +1025,7 @@ do {
     rf.start(ef.standby[0])
     settle(failedPhase)
     check(rf.failedStep == .signIn && SwitchRunner.failedWords(rf.receipt) == ("Stopped part way", "2 sessions moved · Undo puts them back")
-          && SwitchRunner.movedWords(rf.receipt!) == "2 sessions",
+          && SwitchRunner.movedWords(rf.receipt!) == "2 sessions" && SwitchRunner.recordedWords(rf.receipt!) == "2 sessions",
           "moved, then the sign-in didn't start: the sign-in step failed; 2 sessions moved: \(SwitchRunner.failedWords(rf.receipt))")
     // the retry can't hold the window (another run has it): the sign-in it was retrying is the step marked
     let winF = Launcher.dataDirKey(of: Account(ef))

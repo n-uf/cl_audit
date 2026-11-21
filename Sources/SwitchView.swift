@@ -154,7 +154,7 @@ private struct RunnerTileDisplay: View {
         case .timedOut where open:
             TileDisplayGlass(l1: "No sign-in", l2: "try again", tone: .amber) { }
         case .failed where open:
-            let w = SwitchRunner.failedWords(runner.receipt, moved: runner.stillMovedWords)
+            let w = SwitchRunner.failedWords(runner.receipt, moved: runner.movedShown)
             TileDisplayGlass(l1: w.l1, l2: w.l2, tone: .warn) { }
         case .ready where open:
             TileDisplayGlass(l1: "Switch from", l2: AccountNames.short(AccountView.of(Store.status(for: entry)).numbersOwner ?? "its account"), tone: .normal, unlit: true) { }
