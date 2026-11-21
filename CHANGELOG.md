@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.80 — 2026-11-21
+
 - Settings ▸ Dock icon ▸ Runs now says it has no effect while the Dock draws the icon itself, and applies only when the Dock can't (Dock Tiles turned off, say); the line under it says which is the case now.
 - Settings ▸ Claude window: an older profile's window that's on with no data folder named says "none named yet", not "none yet (made when the window is turned on)".
 - Switch account keeps the scheduled tasks (and their sessions) with the old account, and says why, when the new account's tasks file, or the old one's while it has tasks to move, holds task state it can't read (anything but an object or null), or the new account has the same task with `enabled` set to anything but `false` (a `0` used to count as paused and was replaced).
