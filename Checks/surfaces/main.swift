@@ -186,6 +186,23 @@ do {
     let again = home("a2-again", log: story + ["\(at(400)) [info] [LocalSessionManager] Account logged out",
                                                "\(at(410)) [info] [account] Login-state transition (loggedOut: true \u{2192} false, loading: false)"], config: a)
     check(read(again).state == .known && read(again).account == a, "signed out, then a newer transition back to signed in: signed in to config.json's account")
+    // a sign-out undone by the app's sessions starting again for the same account (no loggedOut → false line, config.json older)
+    let reinit = home("a2-reinit", log: story + ["\(at(400)) [info] [LocalSessionManager] Account logged out",
+                                                 "\(at(420)) [info] [LocalSessionManager] Initialization succeeded in 8ms, accountId=\(a), orgId=\(oa), sessions=2"], config: a)
+    check(read(reinit).state == .known && read(reinit).account == a && read(reinit).org == oa,
+          "signed out, then a newer Initialization succeeded for config.json's account: signed in to it again")
+    let reeval = home("a2-reeval", log: story + ["\(at(400)) [info] [account] Login-state transition (loggedOut: false \u{2192} true, loading: false)",
+                                                 "\(at(420)) [info] [sessions-bridge] identity reevaluate: <none> \u{2192} \(oa):\(a)"], config: a)
+    check(read(reeval).state == .known, "signed out, then a newer identity reevaluate to config.json's account: signed in again")
+    let otherInit = home("a2-otherinit", log: story + ["\(at(400)) [info] [LocalSessionManager] Account logged out",
+                                                       "\(at(420)) [info] [LocalSessionManager] Initialization succeeded in 8ms, accountId=\(b), orgId=\(ob), sessions=0"], config: a)
+    check(read(otherInit).state == .loggedOut, "…a newer Initialization succeeded for another account: still signed out of config.json's")
+    let lookupOnly = home("a2-lookuponly", log: story + ["\(at(400)) [info] [LocalSessionManager] Account logged out",
+                                                         "\(at(420)) [info] [oauth-v2] lookup orgId=\(oa) cacheKey=acct:\(a)"], config: a)
+    check(read(lookupOnly).state == .loggedOut, "…only an oauth-v2 lookup after it: still signed out")
+    let sameStamp = home("a2-samestamp", log: story + ["\(at(400)) [info] [LocalSessionManager] Initialization succeeded in 8ms, accountId=\(a), orgId=\(oa), sessions=2",
+                                                       "\(at(400)) [info] [LocalSessionManager] Account logged out"], config: a)
+    check(read(sameStamp).state == .loggedOut, "…an init line in the same instant as the sign-out (not after it): still signed out")
     let halfOut = home("a2-half", log: story, config: a)
     put(halfOut.logs.appendingPathComponent("main.log").path, (story + ["\(at(400)) [info] [LocalSessionManager] Account logged out"]).joined(separator: "\n"))
     check(read(halfOut).state == .known, "a signed-out line still being written (the file's last, no newline): not read yet")

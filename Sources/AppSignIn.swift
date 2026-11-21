@@ -10,7 +10,8 @@
 //   data folder (names only, at most `maxListed` entries, no link followed).
 // - Signed out: the newest login-state line after the launch and newer than config.json's modification time (less
 //   `configSlack`, 2 s: the app writes both at about the same time, some stamps without milliseconds) is
-//   "[LocalSessionManager] Account logged out" or a "[account] Login-state transition" whose loggedOut part ends true.
+//   "[LocalSessionManager] Account logged out" or a "[account] Login-state transition" whose loggedOut part ends true, and
+//   no "Initialization succeeded" or identity reevaluate line for config.json's account came after it (a sign-in again).
 //   Otherwise signed in to config.json's account.
 // - No config.json (or no valid id in it): the log's own account line, as before (`judge`): the newest
 //   "Initialization succeeded" after the launch names the account; a signed-out line means signed out; another
@@ -259,6 +260,9 @@ enum AppSignIn {
         var loggedOut: Date?
         var loginDecided = false
         var done = false                // nothing older can change the answer (or a line from before the launch was reached)
+        /// The newest "Initialization succeeded" or identity reevaluate line for the account seen so far (newer than any
+        /// login-state line not yet reached): a sign-out older than it was undone by a sign-in to that account.
+        var sessionAt: Date?
     }
 
     /// One file's part of `scan`, from its end. The file's last element may be half-written: it is never read.
@@ -279,8 +283,16 @@ enum AppSignIn {
                 // the newest login-state line newer than config.json decides; one older than it (or none) leaves it signed in.
                 // `configSlack`: a sign-out logged just before config.json is rewritten (or in the same second, a stamp
                 // without milliseconds) still counts.
+                // A sign-out followed (strictly later) by the app's sessions starting again for the same account (an
+                // "Initialization succeeded" or identity reevaluate line naming it) was undone by a sign-in, even with no
+                // loggedOut → false line; an oauth-v2 lookup alone doesn't undo it (a cached token's look-up can come with
+                // the sign-out itself).
                 s.loginDecided = true
-                if t > configTime.addingTimeInterval(-configSlack), saysLoggedOut(body) { s.loggedOut = t; s.done = true; break }
+                let undone = s.sessionAt.map { $0 > t } ?? false
+                if t > configTime.addingTimeInterval(-configSlack), saysLoggedOut(body), !undone { s.loggedOut = t; s.done = true; break }
+            }
+            if named, !s.loginDecided, s.sessionAt == nil, !body.hasPrefix("[oauth-v2]"), let p = accountOrg(body), p.account == account {
+                s.sessionAt = t
             }
             if named, s.org == nil, let p = accountOrg(body), p.account == account { s.org = (p.org, t) }
             if s.org != nil, s.loginDecided { s.done = true }
