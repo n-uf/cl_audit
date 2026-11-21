@@ -17,6 +17,7 @@ Nothing pending.
 ## 26.11.72 — 2026-11-21
 
 - The note under the account on the Dock icon's details panel ("Usage: Claude Code on …", or why Claude Code's account is shown) is drawn in the normal secondary grey instead of the faint one, so it reads on every face.
+- A switch no longer stops on a scheduled task the new account already has as a paused copy that differs only in whether it's on, when it last ran or which session it notifies: the task moves, and the copy in use takes the paused one's place, as claude-transplant does. A copy that is switched on is still refused (both would run), and a task's settings are now compared exactly (true and 1 are different).
 
 ## 26.11.71 — 2026-11-20
 

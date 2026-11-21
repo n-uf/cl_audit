@@ -6,8 +6,9 @@
 // compare-and-swap (the file must still be exactly as it was read, or nothing is written), placed through a private temp
 // file, never through a link, keeping the file's own mode.
 //
-// The rule lifted out of the switch (Fix A): a task the target already has under the same id must be the same task, whole
-// (its entry and its state): a differing twin is refused, so a move never drops one task for another.
+// The rule lifted out of the switch (Fix A): a task the target already has under the same id must be the same task (its
+// entry, compared exactly but for its run-time fields, and its state): a differing twin is refused, so a move never drops
+// one task for another.
 //
 // Bytes stay as they were: the switch writes `encode` (JSONSerialization, slashes unescaped), restore writes `paused` (pretty,
 // sorted keys). A file written over keeps its mode; a new one gets 0666 under the umask, as Foundation's write made it.
@@ -51,50 +52,102 @@ enum TaskRegistry {
 
     // MARK: the twin rule
 
+    /// A task's fields that change on their own while it is the same task (claude-transplant's staleTaskProblem ignores the
+    /// same four): switched on or off (a restore adds tasks paused), the session it notifies, when it last ran or was due.
+    static let runTimeKeys: Set<String> = ["enabled", "lastRunAt", "lastScheduledFor", "notifySessionId"]
+
+    /// A JSON value's bytes with every object's keys sorted, for comparing two values exactly: true and 1 differ (unlike
+    /// NSDictionary's isEqual, where JSON true == 1). nil when it isn't JSON.
+    static func stable(_ v: Any) -> Data? {
+        let box: [String: Any] = ["v": v]
+        guard JSONSerialization.isValidJSONObject(box) else { return nil }
+        return try? JSONSerialization.data(withJSONObject: box, options: [.sortedKeys, .withoutEscapingSlashes])
+    }
+
+    /// The two values are the same JSON, exactly.
+    static func same(_ a: Any, _ b: Any) -> Bool { stable(a).map { $0 == stable(b) } ?? false }
+
+    /// The same task, its run-time fields (runTimeKeys) left out.
+    static func sameTask(_ a: [String: Any], _ b: [String: Any]) -> Bool {
+        same(a.filter { !runTimeKeys.contains($0.key) }, b.filter { !runTimeKeys.contains($0.key) })
+    }
+
+    /// Why the source's tasks can't join the target's: whose file it is about, whether it is a differing twin (the target
+    /// has one of the ids with other settings or state: removing one of the two settles it), and the words.
+    struct TwinProblem: Equatable {
+        enum Side: Equatable { case source, target }
+        let side: Side
+        var twin = false
+        let words: String
+    }
+
     /// Why the source's tasks can't join the target's as they are, or nil (claude-transplant's taskSessions and taskFamilies
     /// checks): a file that can't be read, a task without an id or an id twice, or a target that has one of their ids already
-    /// with other settings (the task's own entry) or other state: a differing twin, refused. The words follow an old account's
-    /// name ("The scheduled tasks stay with ann: …"), so each file is named by whose it is, never "its", and never by its file name.
-    static func twinProblem(source: String, target: String) -> String? {
-        guard exists(source) else { return nil }
-        guard let src = registry(source) else { return "the old account's scheduled tasks file can't be read" }
-        if let raw = src["scheduledTasks"], !(raw is [[String: Any]]) { return "the old account's scheduled tasks file isn't a list of tasks" }
-        let list = tasks(in: source)
+    /// as another task (other settings, or other state): a differing twin, refused. A twin that differs only in its
+    /// run-time fields (runTimeKeys) is the same task when the target's copy is paused (a restored copy): the source's
+    /// replaces it (`joined`); switched on, both would run, so it is refused like claude-transplant does. The words follow
+    /// an old account's name ("The scheduled tasks stay with ann: …"), so each file is named by whose it is, never "its",
+    /// and never by its file name.
+    static func twinCheck(source: String, target: String) -> TwinProblem? {
+        twinCheck(source: registry(source), sourceThere: exists(source), target: registry(target), targetThere: exists(target))
+    }
+
+    /// The same rule on files already read (the switch's move checks the very bytes it joins). `…There`: a file is at the
+    /// name (nil `source`/`target` with it there: it can't be read as a task file).
+    static func twinCheck(source src: [String: Any]?, sourceThere: Bool, target dst: [String: Any]?, targetThere: Bool) -> TwinProblem? {
+        guard sourceThere else { return nil }
+        guard let src else { return TwinProblem(side: .source, words: "the old account's scheduled tasks file can't be read") }
+        if let raw = src["scheduledTasks"], !(raw is [[String: Any]]) {
+            return TwinProblem(side: .source, words: "the old account's scheduled tasks file isn't a list of tasks")
+        }
+        let list = src["scheduledTasks"] as? [[String: Any]] ?? []
         let ids = list.compactMap { $0["id"] as? String }
-        guard ids.count == list.count, !ids.contains(where: \.isEmpty) else { return "a scheduled task has no id" }
-        guard Set(ids).count == ids.count else { return "two scheduled tasks share an id" }
-        if exists(target) {
-            guard let dst = registry(target) else { return "the new account's scheduled tasks file can't be read" }
-            // a list with an element that isn't a task would read as no tasks at all, and be overwritten by the move
-            if let raw = dst["scheduledTasks"], !(raw is [[String: Any]]) { return "the new account's scheduled tasks file isn't a list of tasks" }
-            // a task the target has under the same id must be the same task, whole: otherwise the move would drop the
-            // source's (the target's copy stays), and it would survive only in the backup
-            let have = tasks(in: target)
-            for task in list {
-                guard let id = task["id"] as? String, let mine = have.first(where: { $0["id"] as? String == id }) else { continue }
-                guard NSDictionary(dictionary: task).isEqual(to: mine) else { return "the new account has a task with the same id and other settings" }
+        guard ids.count == list.count, !ids.contains(where: \.isEmpty) else { return TwinProblem(side: .source, words: "a scheduled task has no id") }
+        guard Set(ids).count == ids.count else { return TwinProblem(side: .source, words: "two scheduled tasks share an id") }
+        guard targetThere else { return nil }
+        guard let dst else { return TwinProblem(side: .target, words: "the new account's scheduled tasks file can't be read") }
+        // a list with an element that isn't a task would read as no tasks at all, and be overwritten by the move
+        if let raw = dst["scheduledTasks"], !(raw is [[String: Any]]) {
+            return TwinProblem(side: .target, words: "the new account's scheduled tasks file isn't a list of tasks")
+        }
+        // a task the target has under the same id must be the same task: otherwise the move would drop one for the other,
+        // and it would survive only in the backup
+        let have = dst["scheduledTasks"] as? [[String: Any]] ?? []
+        for task in list {
+            guard let id = task["id"] as? String, let mine = have.first(where: { $0["id"] as? String == id }) else { continue }
+            if same(task, mine) { continue }
+            guard sameTask(task, mine) else {
+                return TwinProblem(side: .target, twin: true, words: "the new account has a task with the same id and other settings")
             }
-            for key in stateKeys {
-                let s = src[key] as? [String: Any] ?? [:], t = dst[key] as? [String: Any] ?? [:]
-                for id in ids where t[id] != nil {
-                    guard let a = s[id], NSDictionary(dictionary: ["v": a]).isEqual(to: ["v": t[id]!]) else {
-                        return "the new account has a task with the same id and other state"
-                    }
+            guard (mine["enabled"] as? Bool) == false else {
+                return TwinProblem(side: .target, twin: true, words: "the new account has the same task, switched on")
+            }
+        }
+        for key in stateKeys {
+            let s = src[key] as? [String: Any] ?? [:], t = dst[key] as? [String: Any] ?? [:]
+            for id in ids where t[id] != nil {
+                guard let a = s[id], same(a, t[id]!) else {
+                    return TwinProblem(side: .target, twin: true, words: "the new account has a task with the same id and other state")
                 }
             }
         }
         return nil
     }
 
+    /// twinCheck's words alone.
+    static func twinProblem(source: String, target: String) -> String? { twinCheck(source: source, target: target)?.words }
+
     // MARK: making the files
 
-    /// The source's tasks joined to the target's: a task the target already has by its id (the same by `twinProblem`'s rule)
-    /// stays the target's; their state (`stateKeys`) goes with them; the source keeps none. `moved`: the ids that moved.
+    /// The source's tasks joined to the target's: a task the target already has by its id (the same by `twinCheck`'s rule:
+    /// identical, or a paused copy differing only in its run-time fields) is replaced in its place by the source's, the one in
+    /// use; their state (`stateKeys`) goes with them; the source keeps none. `moved`: the ids that moved.
     static func joined(source: [String: Any], target: [String: Any]) -> (source: [String: Any], target: [String: Any], moved: [String]) {
         var source = source, target = target
         let moving = source["scheduledTasks"] as? [[String: Any]] ?? []
         let movingIDs = moving.compactMap { $0["id"] as? String }
-        var have = target["scheduledTasks"] as? [[String: Any]] ?? []
+        let byID = Dictionary(moving.compactMap { t in (t["id"] as? String).map { ($0, t) } }, uniquingKeysWith: { a, _ in a })
+        var have = (target["scheduledTasks"] as? [[String: Any]] ?? []).map { t in (t["id"] as? String).flatMap { byID[$0] } ?? t }
         let ids = Set(have.compactMap { $0["id"] as? String })
         have += moving.filter { ($0["id"] as? String).map { !ids.contains($0) } ?? true }
         target["scheduledTasks"] = have
