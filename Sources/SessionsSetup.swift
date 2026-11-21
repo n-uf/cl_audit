@@ -668,20 +668,29 @@ enum Setup {
         return s.hookCommands + (s.statusLineCommand.map { [$0] } ?? [])
     }
 
-    /// The absolute paths named in the commands of a settings.json: tokens that start with `~/`, `$HOME/`, `${HOME}/` or `/` (a
-    /// relative one depends on where the command runs, so it isn't guessed). The command is split on spaces, quotes and shell
-    /// punctuation; each token is expanded against `home`.
+    /// The absolute paths named in the commands of a settings.json: tokens that start with `~/`, `$HOME/`, `${HOME}/` or `/`, and a
+    /// `./` or `../` one after a `cd` to such a folder in the same command (`cd ~/.claude/skills/x && ./run.sh`); any other relative
+    /// one depends on where the command runs, so it isn't guessed. The command is split on spaces, quotes and shell punctuation; each
+    /// token is expanded against `home`.
     static func commandPaths(inSettings data: Data, home: String) -> [String] {
         var out: [String] = [], seen = Set<String>()     // (a set, so a crafted settings.json of a million paths stays quick)
         let seps = CharacterSet(charactersIn: " \t\n\"'`;|&()<>=,{}")
+        func absolute(_ raw: String) -> String? {
+            var t = raw
+            if t.hasPrefix("~/") { t = home + String(t.dropFirst(1)) }
+            else if t.hasPrefix("$HOME/") { t = home + String(t.dropFirst(5)) }
+            else if t.hasPrefix("${HOME}/") { t = home + String(t.dropFirst(7)) }
+            return t.hasPrefix("/") && t.count > 1 ? t : nil
+        }
         for cmd in commands(inSettings: data) {
+            var cwd: String? = nil, afterCd = false
             for raw in cmd.components(separatedBy: seps) where !raw.isEmpty {
-                var t = raw
-                if t.hasPrefix("~/") { t = home + String(t.dropFirst(1)) }
-                else if t.hasPrefix("$HOME/") { t = home + String(t.dropFirst(5)) }
-                else if t.hasPrefix("${HOME}/") { t = home + String(t.dropFirst(7)) }
-                guard t.hasPrefix("/"), t.count > 1 else { continue }
-                if seen.insert(t).inserted { out.append(t) }
+                if afterCd { afterCd = false; cwd = absolute(raw) }             // the folder a `cd` goes to (nil: one it can't tell)
+                if raw == "cd" { afterCd = true; continue }
+                var t = absolute(raw)
+                if t == nil, let d = cwd, raw.hasPrefix("./") || raw.hasPrefix("../") { t = normalize(d + "/" + raw) }
+                guard let p = t else { continue }
+                if seen.insert(p).inserted { out.append(p) }
             }
         }
         return out
