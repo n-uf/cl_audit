@@ -14,6 +14,7 @@ Nothing pending.
 
 - A restore or import that stopped half way now has "Leave it as it is" on its page, as a stopped switch does: what it wrote stays, nothing is undone, the backup isn't touched, and the profile can switch, restore and import again, also when its backup is gone and neither Finish nor Undo can complete.
 - A server-managed settings cache Claude Code can't read (one being written, cut off, too big, not a plain file) is now ignored as Claude Code ignores it, so the Claude window's sessions no longer show as deleted while it's written.
+- Clearer words in many places: the Restore page's steps no longer say the window opens when it stays as it is, and it no longer says "0 entries"; a finished move says the sign-ins never travel; a reading for another account says "sign in to read again"; a signed-out Claude Code no longer reads as "signed in to" its last account; the Claude window and Terminal say why they don't open when the profile's folder is gone; a switch says which sessions it held because their record couldn't be read, says a part-way Undo by kind and count, and no longer promises what its backup keeps; the scheduled tasks reasons name whose file it is; and the busy line no longer guesses which run holds the lock.
 
 ## 26.11.65 — 2026-11-20
 
