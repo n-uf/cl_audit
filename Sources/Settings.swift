@@ -1060,67 +1060,6 @@ struct TileKey<Content: View>: View {
     }
 }
 
-/// What a profile includes: Usage in the Dock and Claude window, two keys side by side with what the current choice
-/// does under each. Both off is "usage only". Turning one off never deletes anything.
-struct ProfileSwitches: View {
-    let usageInDock: Bool
-    let claudeWindow: Bool
-    var waiting = false                 // the Dock is taking an icon in or out: the keys wait
-    var windowKept = true               // DesktopMode.hasKept: the window's folder and sign-in exist to come back to
-    let setUsageInDock: (Bool) -> Void
-    let setClaudeWindow: (Bool) -> Void
-    @Environment(\.face) private var face
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            column(SwitchKey(title: "Usage in the Dock", on: usageInDock) { setUsageInDock(!usageInDock) }.disabled(waiting),
-                   usageInDock ? "A Dock icon shows this profile's usage; click it for details."
-                               : "No Dock icon. Usage still shows on the dashboard, in the launcher and in alerts; turn it back on and the icon returns to its place.")
-            column(SwitchKey(title: "Claude window", on: claudeWindow) { setClaudeWindow(!claudeWindow) }.disabled(waiting),
-                   claudeWindow ? "A Claude window for this profile, signed in to its account; open it from the dashboard or the Dock icon."
-                                : DesktopMode.offColumnWords(kept: windowKept))
-        }
-    }
-
-    private func column(_ key: some View, _ says: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            key
-            Text(says).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-}
-
-/// A key that's on or off, like the profile tiles: raised, with a lamp strip on top, green when on, dark when off.
-struct SwitchKey: View {
-    let title: String
-    let on: Bool
-    let action: () -> Void
-    @Environment(\.face) private var face
-    @Environment(\.isEnabled) private var enabled
-
-    var body: some View {
-        Button(action: action) {
-            Text(title).font(.system(size: 10, weight: .bold)).tracking(1).textCase(.uppercase).lineLimit(1).minimumScaleFactor(0.8)
-                .foregroundStyle(face.legend)
-                .shadow(color: face.legendShadow, radius: 0, y: face.legendShadowY)
-                .frame(maxWidth: .infinity).frame(height: 30)
-                .background(RaisedShape(finish: face.key, radius: 4, pressed: false))
-                .overlay {
-                    if on { LampStrip(color: FaceTheme.ledOn) }
-                    else {
-                        Capsule().fill(face.ledOff).frame(height: 2).padding(.horizontal, 5).padding(.top, 3)
-                            .frame(maxHeight: .infinity, alignment: .top).allowsHitTesting(false)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(PressableKey())
-        .opacity(enabled ? 1 : 0.6)
-        .accessibilityValue(on ? "on" : "off")
-    }
-}
-
 /// A tile's two lines: its name in spaced capitals and a quieter line under it.
 struct TileText: View {
     let title: String

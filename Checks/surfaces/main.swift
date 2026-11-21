@@ -3778,12 +3778,6 @@ do {
     check(stdInfo.contains("are kept") && stdInfo.contains("Its data folder: \(FolderKey.standardDataDir)."),
           "Claude window row help, the usual app: kept words and the usual data folder")
 
-    check(DesktopMode.offColumnWords(kept: true).contains("sign-in is kept")
-          && DesktopMode.offColumnWords(kept: true).contains("needs no new sign-in"),
-          "switch column when off, something kept: today's words")
-    check(!DesktopMode.offColumnWords(kept: false).contains("kept") && !DesktopMode.offColumnWords(kept: false).contains("needs no new sign-in")
-          && DesktopMode.offColumnWords(kept: false).contains("asks for a sign-in on its first start"),
-          "switch column when off, nothing kept: own folder and sign-in on the first start")
 
     func offNote(_ e: AccountEntry) -> String? {
         var on = e; on.claudeWindow = true
