@@ -2821,6 +2821,50 @@ do {
           "…Cancel again: it quits, and its folders go now")
     ClaudeCLI.logoutSeam = nil
 
+    // ---- the finish line through the real SwitchRunner: Claude Code's folder is on ben already (a switch made elsewhere)
+    // while the Claude app is still on ann, signed in to ann's Team organisation. Switch to Claude Code's own account
+    // (codeTarget) closes the window, moves the app's sessions from the app's own scope (AccountEntry.appLogin: ann's Team
+    // organisation, never the standby entry's last one) to ben's, opens no sign-in (no Terminal script) and is reached at
+    // once; the receipt is the finish line's, finished and linked, and the window it closed opens again
+    let annF = seat(46, "ann-finish@example.com"), benF = seat(47, "ben-finish@example.com")
+    let annTeam = Seat(account: annF.account, organization: uuid(246), email: annF.email)
+    let wdFL = expand("~/Library/Application Support/Claude-finl")
+    sign("~/.claude-finl", benF)
+    var fl = profile("finl", "~/.claude-finl", benF, standby: [StandbyAccount(email: annF.email!, seat: annF, id: "ka")])
+    fl.desktop = .separate; fl.desktopDataDir = wdFL; fl.claudeWindow = true
+    try! Store.save([fl])
+    let mFL = SettingsModel()
+    mFL.accounts = [fl]
+    let keepAppLogin = AccountEntry.appLogin, keepSettled = SwitchEngine.settled
+    AccountEntry.appLogin = { _ in AppSignIn.Login(account: annTeam.account, org: annTeam.organization, state: .known, source: "log", at: Date()) }
+    SwitchEngine.settled = { ClaudeWindow.afterSwitch($0, activate: false) }
+    var flRec = IconStatus(state: "ok"); flRec.loginEmail = benF.email; flRec.weekly = 12
+    flRec.resolved = AccountResolver.resolve(fl, among: [fl], app: AccountEntry.appLogin(fl), code: benF, loginEmail: benF.email, names: [:])
+    _ = Store.writeStatus(fl.id, flRec)
+    put(entry(wdFL, annTeam, 971), #"{"sessionId":"local_\#(uuid(971))"}"#)     // the app's own scope: moves
+    put(entry(wdFL, annF, 972), #"{"sessionId":"local_\#(uuid(972))"}"#)        // the standby entry's last scope: never read
+    let keyFL = Launcher.dataDirKey(of: Account(fl))
+    stand[keyFL] = [standIn()]
+    winOpened = []
+    let scriptsBefore = opened.count
+    if let flTarget = fl.codeTarget(AccountView.of(flRec)) {
+        let rFL = mFL.runner(of: "finl")
+        rFL.start(flTarget)
+        waitFor(15) { rFL.phase != .closing && rFL.phase != .moving }
+        waitFor(5) { winOpened.contains(keyFL) }
+        let rc = rFL.receipt
+        check(rFL.phase == .reached && opened.count == scriptsBefore && Account.signedInSeat(configDir: fl.configDir)?.same(benF) == true,
+              "finish line: reached at once, no sign-in opened (no Terminal script), the folder still on ben: \(rFL.phase) \(rFL.failedStep.map { "\($0)" } ?? "")")
+        check(!fm.fileExists(atPath: entry(wdFL, annTeam, 971)) && fm.fileExists(atPath: entry(wdFL, benF, 971))
+              && fm.fileExists(atPath: entry(wdFL, annF, 972)) && !fm.fileExists(atPath: entry(wdFL, benF, 972)),
+              "finish line: the session moved from the Claude app's own scope (ann's Team organisation) to ben's; the standby entry's last scope untouched")
+        check(rc?.finishLine == true && rc?.finished != nil && rc?.linked != nil && rc?.from == SeatID(annTeam) && rc?.closedWindow == true,
+              "finish line: its receipt is the finish line's, from the app's seat, finished and linked: \(String(describing: rc?.from))")
+        check(winOpened == [keyFL] && !SwitchMarker.blocks(Account(fl)), "finish line: the window closed for the move opened again once linked: \(winOpened)")
+    } else { check(false, "finish line: Claude Code's own account is a target (codeTarget)") }
+    AccountEntry.appLogin = keepAppLogin; SwitchEngine.settled = keepSettled
+    Store.removeStatus(fl.id)
+
     SettingsModel.applyInstalls = installs
     ClaudeWindow.seams = .real
     WindowHold.every = 0.5; WindowHold.stallAfter = 45; WindowHold.lateCloseFor = 60
