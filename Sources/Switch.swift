@@ -42,6 +42,26 @@ extension AccountEntry {
     /// "<profile>~<standby id>": the Switch page for that account, as the menus, the alerts and the card name it.
     static func switchKey(_ profile: String, _ standby: String) -> String { "\(profile)~\(standby)" }
 
+    /// The Switch page key's standby id for Claude Code's own account while the Claude app is on another one and no standby
+    /// entry is it (codeTarget): a switch made elsewhere (cl_quick) put the folder on it, and only the Claude app is left.
+    static let codeStandbyID = "claude-code"
+
+    /// Claude Code's own account as a switch target, the finish line: the folder's account (the profile's seat) when the
+    /// record says Claude Code is on it while the Claude app is on another (AccountView.codeRow), and no standby entry is it
+    /// (then that entry is the target). A switch to it moves the Claude app's sessions to it; there is no sign-in to open.
+    func codeTarget(_ v: AccountView) -> StandbyAccount? {
+        guard let code = v.codeRow, let s = seat, s.organization != nil, AccountID.same(v.codeAccount, s.account),
+              !standby.contains(where: { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() || ($0.seat.map { $0.same(s) } ?? false) })
+        else { return nil }
+        return StandbyAccount(email: s.email ?? code, seat: s, addedAt: nil, id: Self.codeStandbyID)
+    }
+
+    /// The Claude app's account, the active one the record names, as a seat with its organisation (a standby entry the record
+    /// names active); nil when it isn't known.
+    func appSeat(_ v: AccountView) -> Seat? {
+        standby.first { v.isActive($0) }?.seat.flatMap { $0.organization == nil ? nil : $0 }
+    }
+
     /// Its standby accounts in the order a full limit offers them (AccountBook.offerOrder: not known to be full first, the
     /// least used by its last week, then the most recently in use).
     func switchOffers(now: Date = Date()) -> [SwitchOffer] {

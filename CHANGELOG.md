@@ -15,6 +15,7 @@ the notes before updating.
 ## 26.11.75 — 2026-11-21
 
 - In Settings ▸ Accounts, the row of the account Claude Code in Terminal is signed in to (while the Claude app is on another) now selects on a click like every standby account, and its Switch account key opens the Switch page, when that account is on the profile's standby list. It did nothing on a click.
+- That row also selects when its account isn't on the standby list (Claude Code was switched to it elsewhere, for example in cl_quick): Switch account then moves the Claude window's sessions to it and opens no sign-in, since Claude Code is on it already. Only the Claude app's own sign-in is left, and the Switch page says so.
 
 ## 26.11.74 — 2026-11-21
 

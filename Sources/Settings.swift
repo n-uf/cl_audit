@@ -334,6 +334,8 @@ final class SettingsModel: ObservableObject {
         guard let k = switching, let p = SwitchOffer.parse(k), let e = accounts.first(where: { $0.id == p.profile }) else { return nil }
         if let s = e.standby.first(where: { $0.id == p.standby }) { return (e, s) }
         if let snap = runners[p.profile]?.targetSnapshot, snap.id == p.standby { return (e, snap) }
+        // Claude Code's own account with no standby entry (the finish line: the Terminal row's Switch account)
+        if p.standby == AccountEntry.codeStandbyID, let s = e.codeTarget(AccountView.of(Store.status(for: e))) { return (e, s) }
         return nil
     }
     /// One switch per profile (SwitchRunner.swift): a profile's folder holds one sign-in at a time.
@@ -1849,7 +1851,8 @@ struct AccountSettings: View {
         // a switch to it waiting for the Claude app: lit SWITCHING TO (a click opens the Switch page, which says what's
         // left); a split by hand: a standby account signed in to Claude Code in Terminal, so it shows its numbers
         let switching = target.map { $0.lowercased() == code.lowercased() } ?? false
-        let pick = entry.standby.first { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() }
+        // its standby entry, else (none: a switch made elsewhere put the folder on it) Claude Code's own account as the target
+        let pick = entry.standby.first { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() } ?? entry.codeTarget(view)
         // like every standby row: a click anywhere selects it (again: deselects), and the lit key opens the Switch page
         let chosen = !switching && pick.map { picked == $0.id } == true
         return AccountBox(lamp: nil, badge: "Standby", detail: (own?.plan).map(Account.planWords), unlit: !(switching || chosen),

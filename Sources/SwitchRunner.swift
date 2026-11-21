@@ -198,6 +198,9 @@ final class SwitchRunner: ObservableObject {
         case .success(let p):
             planned = p
             moveNote = Self.stayWords(p); leftNote = Self.leftBehind(p)
+            // the finish line: the folder is on the target already; the switch goes from the Claude app's account
+            var g = g
+            if p.finishLine { g.from = p.from }
             if p.moves { closeAndMove(e, g) } else { begin(e, g) }
         }
     }
@@ -398,6 +401,12 @@ final class SwitchRunner: ObservableObject {
         clearMarker()
         // the profile's folder deleted: never made again by a sign-in (FolderGuard), said instead
         if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; windowDone(); fail(.signIn, why); return }
+        // the folder on the account wanted already (the finish line: Claude Code was signed in to it elsewhere): there is no
+        // sign-in to open, it is reached; what's left is the Claude app's own sign-in (the page says so)
+        if g.standby != nil, let cur = Account.signedInSeat(configDir: e.configDir), Self.reached(g, cur),
+           !(g.from.map { cur.same($0) } ?? false) {
+            goal = g; end(.reached); return
+        }
         guard let claude = model?.requireClaude() else { goal = g; windowDone(); fail(.signIn, model?.noClaudeWhy ?? ClaudeInstall.missing + "."); return }
         guard ClaudeCLI.openLogin(claude, account: Account(e), email: g.wantedEmail.isEmpty ? nil : g.wantedEmail, marker: g.again ? Self.marker(for: profile) : nil) else {
             goal = g; windowDone(); fail(.signIn, "Terminal didn't open."); return

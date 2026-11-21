@@ -1189,6 +1189,55 @@ do {
               "05: Claude Code's row on a standby account of the profile: a click selects it, picked it lights Switch account: \(String(describing: idle)) / \(String(describing: chosen))")
     }
 
+    // 05, the folder followed (the profile's seat is ben's, ann on standby, ben with NO standby entry: a switch made
+    // elsewhere): Claude Code's row still selects on a click, its lit key opens the Switch page for Claude Code's own account
+    // (AccountEntry.codeStandbyID), and that switch is the finish line: the sessions go from the Claude app's account (ann),
+    // no sign-in opens (the folder is on ben already), only the Claude app's sign-in is left
+    do {
+        let e5 = r5.e
+        check(e5.seat?.same(ben) == true && !e5.standby.contains { $0.seat?.same(ben) == true } && e5.standby.contains { $0.seat?.same(ann) == true },
+              "05 followed: the seat is ben's, ann on standby, ben has no standby entry")
+        var rec = IconStatus(state: "ok"); rec.loginEmail = ben.email; rec.weekly = 12
+        rec.resolved = AccountResolver.resolve(e5, among: [e5, w0], app: app(ann), code: ben, loginEmail: ben.email, names: [:], now: t0)
+        _ = Store.writeStatus(e5.id, rec)
+        let v = AccountView.of(rec)
+        let target = e5.codeTarget(v)
+        check(v.codeRow == ben.email && target?.id == AccountEntry.codeStandbyID && target?.seat?.same(ben) == true && e5.appSeat(v)?.same(ann) == true,
+              "05 followed: Claude Code's own account is the target (no standby entry), the Claude app's is ann: \(target?.id ?? "-")")
+        func boxProps(_ v: Any) -> (tap: Bool, selected: Bool, litBadge: String?)? {
+            let m = Mirror(reflecting: v)
+            if "\(m.subjectType)".hasPrefix("AccountBox<") {
+                func val(_ k: String) -> Any? { m.children.first { $0.label == k }?.value }
+                func some(_ a: Any?) -> Any? { a.flatMap { Mirror(reflecting: $0).children.first?.value } }
+                return (some(val("tap")) != nil, val("selected") as? Bool ?? false, some(val("litBadge")) as? String)
+            }
+            for c in m.children { if let p = boxProps(c.value) { return p } }
+            return nil
+        }
+        let sm = SettingsModel(); sm.accounts = [e5, w0]
+        let idle = boxProps(AccountSettings(entry: .constant(e5), model: sm).codeBox(ben.email!))
+        let chosen = boxProps(AccountSettings(entry: .constant(e5), model: sm, picked: AccountEntry.codeStandbyID).codeBox(ben.email!))
+        check(idle?.tap == true && idle?.selected == false && chosen?.selected == true && chosen?.litBadge == "Switch account",
+              "05 followed: the row selects on a click and lights Switch account: \(String(describing: idle)) / \(String(describing: chosen))")
+        sm.showSwitch(AccountEntry.switchKey(e5.id, AccountEntry.codeStandbyID))
+        check(sm.selection == SettingsModel.switchID && sm.switchTarget?.standby.id == AccountEntry.codeStandbyID
+              && sm.switchTarget?.standby.seat?.same(ben) == true,
+              "05 followed: its Switch account opens the Switch page with ben as the target")
+        let wd = home + "/wd-finish"
+        if case .success(let p) = SwitchEngine.plan(e5, standby: target!, dataDir: wd, owned: []) {
+            check(p.finishLine && p.from.same(ann) && p.to.same(ben), "05 followed: the plan is the finish line, from ann's sessions to ben")
+        } else { check(false, "05 followed: the finish line's plan failed") }
+        // with ann on standby a real standby target: an ordinary switch (no finish line); ben again: the refusal as before
+        if case .success(let pa) = SwitchEngine.plan(e5, standby: e5.standby.first { $0.seat?.same(ann) == true }!, dataDir: wd, owned: []) {
+            check(!pa.finishLine && pa.from.same(ben) && pa.to.same(ann), "05 followed: switching to ann is an ordinary switch from ben")
+        } else { check(false, "05 followed: the switch to ann failed to plan") }
+        // the runner: Claude Code on ben already reaches the goal at once (from ann), never "the same account, waiting"
+        let g = SwitchRunner.Goal(standby: AccountEntry.codeStandbyID, wantedSeat: ben, wantedEmail: ben.email!, from: ann, started: t0)
+        check(SwitchRunner.reached(g, ben) && SwitchRunner.judge(g, now: ben, markerDone: false, at: t0) == .reached,
+              "05 followed: the folder on ben reaches the finish line's goal")
+        Store.removeStatus(e5.id)
+    }
+
     // 04a–04c: one line in the Switch page's strip words while it runs; the Sessions card never says "stopped" then
     let started = t0
     for (p, words) in [(SwitchRunner.Phase.closing, "Switching · closing the window"), (.moving, "Switching · moving sessions")] {

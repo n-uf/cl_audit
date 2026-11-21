@@ -609,8 +609,14 @@ struct SwitchPage: View {
                     step(1, "\(name)'s Claude window closes", "Only that window, by its own quit; it stays closed until the sign-in ends.")
                     step(2, "Its sessions move to \(to)", "A backup first, then \(moved), each checked; a receipt keeps Undo possible.")
                 }
-                step(k + 1, "Claude Code's sign-in opens in Terminal", "For \(entry.configDir), with \(Privacy.masked(runner.goal?.wantedEmail ?? standby.email)) filled in.")
-                step(k + 2, "Finish it in the browser as \(to)", "If the browser is signed in to claude.ai as someone else, switch its account there first.")
+                if plan?.finishLine == true {
+                    // the finish line: Claude Code signed in to it elsewhere; only the Claude app's sign-in is left
+                    step(k + 1, "Claude Code is on \(to) already", "It signed in elsewhere, so no sign-in opens for \(entry.configDir).")
+                    step(k + 2, "Sign the Claude app in to \(to)", "In \(name)'s Claude window, once it opens again: its sessions are there.")
+                } else {
+                    step(k + 1, "Claude Code's sign-in opens in Terminal", "For \(entry.configDir), with \(Privacy.masked(runner.goal?.wantedEmail ?? standby.email)) filled in.")
+                    step(k + 2, "Finish it in the browser as \(to)", "If the browser is signed in to claude.ai as someone else, switch its account there first.")
+                }
                 step(k + 3, again ? "cl_audit checks Claude Code's sign-in ended well" : "cl_audit checks the account",
                      "The folder is looked at every 2 seconds, for up to 10 minutes.", check: check)
             }

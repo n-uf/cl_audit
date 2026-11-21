@@ -66,6 +66,9 @@ struct SwitchPlan: Equatable {
     var unreadable: [String] = []       // held because they can't be read whole, not because Claude Code runs them (a subset of `held`)
     var odd: [SessionTransfer.Odd] = [] // names shaped like an entry that aren't one (a link, an unknown name): left in place, said
     var backupTranscripts = true        // the backup (SessionsBackup.swift) takes Claude Code's transcripts too
+    /// Claude Code's folder is on the target already (a switch made elsewhere): `from` is the Claude app's account, the
+    /// sessions move from it, and no sign-in is opened (the Claude app's own is what's left).
+    var finishLine = false
     var entry: AccountEntry? = nil      // cl_audit's record of the profile, for the backup
 
     var sourceDir: String { SwitchEngine.scopeDir(dataDir, SeatID(from)) }
@@ -212,10 +215,14 @@ enum SwitchEngine {
     /// What a switch to `s` would move, read without changing anything. `owned`: the session ids a running Claude Code
     /// owns (nil: read them now).
     static func plan(_ e: AccountEntry, standby s: StandbyAccount, dataDir: String? = nil, owned: Set<String>? = nil) -> Result<SwitchPlan, SwitchError> {
-        guard let from = e.seat, from.organization != nil else { return .failure(.notReady("The account in use isn't known yet.")) }
+        guard var from = e.seat, from.organization != nil else { return .failure(.notReady("The account in use isn't known yet.")) }
         guard let to = s.seat, to.organization != nil else {
             return .failure(.notReady("\(s.email) hasn't been signed in on this Mac yet, so its sessions' folder isn't known: nothing to move."))
         }
+        // the finish line: Claude Code's folder is on the target already (a switch made elsewhere) while the Claude app is on
+        // another account: the sessions move from the Claude app's account
+        var finishLine = false
+        if from.same(to), let app = e.appSeat(AccountView.of(Store.status(for: e))), !app.same(to) { from = app; finishLine = true }
         // the ids name folders: only real ids (never a path)
         guard [from.account, from.organization!, to.account, to.organization!].allSatisfy(ClaudeFiles.isUUID) else {
             return .failure(.notReady("An account id isn't one Claude would use; nothing is moved."))
@@ -224,6 +231,7 @@ enum SwitchEngine {
         let dir = dataDir ?? (e.desktop == .standard ? expand(FolderKey.standardDataDir) : Account(e).claudeUserDataDir ?? "")
         guard !dir.isEmpty else { return .failure(.notReady("The profile's Claude window has no folder.")) }
         var p = SwitchPlan(profile: e.id, standby: s.id, dataDir: expand(dir), codeDir: Account(e).configDir, from: from, to: to, entry: e)
+        p.finishLine = finishLine
         // nothing is written through a link inside the folders: refused, and said why
         if let why = linkProblem(p) { return .failure(.notReady(why)) }
         p.odd = SessionTransfer.odd(p.scopes)
