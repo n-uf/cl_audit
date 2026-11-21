@@ -3105,9 +3105,13 @@ do {
         let j = folder("set-declined"), ej = j.entry(ann)
         setList([ej])
         _ = conf(["login": "declined"])
+        SettingsModel.signInLineLife = (0.3, 0.8)
         m.startSignIn(fakeClaude, entry: ej, email: nil)
         settle(ej.id)
         check(shown(ej.id)?.kind == .declined && shown(ej.id)?.text.hasPrefix("The sign-in was declined") == true, "stage G: Settings: declined in the browser: its own line")
+        spin({ shown(ej.id) == nil }, 5)
+        check(m.signIns[ej.id] == nil, "stage G: Settings: …and the line goes after a while, never stale")
+        SettingsModel.signInLineLife = (10, 90)
         term.killAll()
 
         // a folder that isn't there: nothing starts, nothing is made, the words say so
@@ -3206,6 +3210,11 @@ do {
         spin({ m.draft?.signInRunning == false })
         check(m.draft?.signInSaid?.kind == .signedIn && m.draft?.unconfirmed == false && m.draft?.signInAsked == nil,
               "stage G: New profile: the same account signed in again, confirmed: no longer waiting")
+        var finishing = m.draft!
+        let linked = SettingsModel.seatToLink(finishing, among: [])
+        finishing.signInSaid = SignInSaid(.unverified(server(ann)), configDir: finishing.configDir, follows: false)
+        check(linked?.account == ann.account && linked?.linkedAt != nil && finishing.unconfirmed && SettingsModel.seatToLink(finishing, among: []) == nil,
+              "stage G: New profile: Finish links the folder's seat, but never one whose sign-in ended unconfirmed (the agent confirms it later)")
         term.killAll()
 
         // Cancel, and a later start's state is never taken by an earlier one's end

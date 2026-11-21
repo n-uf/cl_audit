@@ -380,15 +380,21 @@ final class SettingsModel: ObservableObject {
             let said = SignInSaid(end, configDir: folder, owner: owner, previous: previous)
             self.signIns[id] = said.map { .said($0) }
             self.tick += 1
-            // "Signed in." is only for the moment: the box's own lines say who is signed in from then on (never a stale one)
-            if said?.kind == .signedIn {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-                    guard let self, self.signInGenerations[id] == generation, case .said(let s)? = self.signIns[id], s.kind == .signedIn else { return }
+            // every line is only for a while, never a stale one: the box's own lines say who is signed in and what the agent
+            // found (the agent confirms the account on its own within seconds; "Signed in." goes first, the rest after a minute)
+            if let said {
+                let life = said.kind == .signedIn ? Self.signInLineLife.signedIn : Self.signInLineLife.other
+                DispatchQueue.main.asyncAfter(deadline: .now() + life) { [weak self] in
+                    guard let self, self.signInGenerations[id] == generation, case .said? = self.signIns[id] else { return }
                     self.signIns[id] = nil
+                    self.tick += 1
                 }
             }
         }
     }
+
+    /// How long a sign-in window's line stays in the in-use box (seconds): "Signed in." and any other (a check shortens them).
+    nonisolated(unsafe) static var signInLineLife: (signedIn: TimeInterval, other: TimeInterval) = (10, 90)
 
     /// Cancel on "Signing in": the window and its login end, the line goes.
     func cancelSignIn(_ id: String) {
@@ -724,14 +730,21 @@ final class SettingsModel: ObservableObject {
         }
     }
 
+    /// The seat a new profile is linked to when it is added: the seat its folder is signed in to (Finish is refused while another
+    /// profile has that seat). None while its last sign-in ended unconfirmed (the folder's record alone is a guess: the agent's
+    /// own confirmation links it later, as for any profile not linked yet).
+    static func seatToLink(_ d: NewAccountDraft, among accounts: [AccountEntry], now: Date = Date()) -> Seat? {
+        guard !d.unconfirmed, var s = Account.signedInSeat(configDir: d.entry.configDir),
+              FolderRules.seatOwner(s, among: accounts) == nil else { return nil }
+        s.linkedAt = now
+        return s
+    }
+
     /// Adds the new account and installs its Dock icon.
     func finishNew() {
         guard let d = draft else { return }
         var e = d.entry
-        // linked to the seat its folder is signed in to (Finish is refused while another profile has that seat)
-        if var s = Account.signedInSeat(configDir: e.configDir), FolderRules.seatOwner(s, among: accounts) == nil {
-            s.linkedAt = Date(); e.seat = s
-        }
+        e.seat = Self.seatToLink(d, among: accounts)
         accounts.append(e)
         draft = nil
         selection = d.entry.id
