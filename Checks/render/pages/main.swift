@@ -1065,6 +1065,8 @@ MainActor.assumeIsolated {
     if let h = FileHandle(forWritingAtPath: bigEntry) { try? h.truncate(atOffset: UInt64(SafeRead.entryMax + 1)); try? h.close() }
     let bigPlan: SwitchPlan? = { if case .success(let p) = SwitchEngine.plan(main, standby: k2, owned: []) { return p }; return nil }()
     print("too large to read:", bigPlan?.unreadable.count ?? -1, "held:", bigPlan?.held.count ?? -1)
+    // (the picture shows another state if the plan didn't find it: stop red, not a quiet wrong picture)
+    guard bigPlan?.unreadable.count == 1 else { print("refusing: o14's plan doesn't find the one session too large to read"); exit(1) }
     r.preview(.waiting, goal: goal, target: k2, planned: bigPlan, receipt: moved, note: bigPlan.flatMap(SwitchRunner.stayWords), seen: u1)
     page(main, k2, "o14-switch-unreadable-session")
     try? fm.removeItem(atPath: bigEntry)
