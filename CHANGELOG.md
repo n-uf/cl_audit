@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.85 — 2026-11-21
+
 - The dashboard's profile keys, the usage chart's legend and series, the Dock panel's Claude key and the card's Open window key take the profile's own colour too. A profile with none gets an unlit strip, an unlit legend light, a plain key (Open window keeps a neutral light for "window open") and a grey series in the charts (a shade of its own for each such profile), never orange.
 
 ## 26.11.84 — 2026-11-21
