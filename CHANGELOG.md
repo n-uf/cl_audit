@@ -9,6 +9,7 @@ the notes before updating.
 ## Unreleased
 
 - When Claude Code's sign-in can't open (in a switch, the default profile's page or first run), cl_audit now says why: a sign-in already open for that folder (finish or close it first), or cl_audit couldn't tell whether one is open, instead of always "Terminal didn't open."
+- The same light now stands before a profile's name in the launcher, the menu bar's menu and the Dock icon's panels, so a profile's colour reads the same everywhere; a profile with no colour of its own shows it dark there too, where those places used to show orange.
 
 ## 26.11.80 — 2026-11-21
 
@@ -26,7 +27,6 @@ the notes before updating.
 
 - Settings ▸ Claude window: a window that's on but whose data folder was deleted outside cl_audit shows that folder as missing, not "none yet".
 - Each profile's tile in Settings and its card header on the dashboard now show a small light in the profile's colour, before its name (dark for a profile with no colour of its own: none picked and its Dock icon coloured by usage or graphite). The card header's flat dot becomes that light.
-- The same light now stands before a profile's name in the launcher, the menu bar's menu and the Dock icon's panels, so a profile's colour reads the same everywhere; a profile with no colour of its own shows it dark there too, where those places used to show orange.
 
 ## 26.11.77 — 2026-11-21
 
