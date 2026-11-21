@@ -318,7 +318,7 @@ enum Processes {
     static func codeRun(_ e: Entry) -> ClaudeRun {
         let program = e.launch?.args.first ?? e.name
         let kind: ClaudeRun.Kind = program.contains("/Library/Application Support/Claude") ? .codeTab : .terminal
-        guard let l = e.launch, l.folderKnown else { return ClaudeRun(id: e.pid, kind: kind, folder: ClaudeRun.unknownFolder) }
+        guard let l = e.launch, l.folderKnown else { return ClaudeRun(id: e.pid, kind: kind, folder: ClaudeRun.unknownFolder, hidden: e.hidden) }
         return ClaudeRun(id: e.pid, kind: kind, folder: l.configDir.map(tilde) ?? "~/.claude")
     }
 

@@ -421,7 +421,7 @@ do {
                                        launch: Processes.Launch(exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: nil, environmentRead: false))
     let codeListed = Processes.codeRunList([native, nativeUnread, readDefault, unreadZsh, unreadApp, rootClaude, rootOther])
     check(codeListed == [ClaudeRun(id: 9013, kind: .terminal, folder: "/x/.claude-n"), ClaudeRun(id: 9014, kind: .terminal, folder: ClaudeRun.unknownFolder),
-                         ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude"), ClaudeRun(id: 9001, kind: .terminal, folder: ClaudeRun.unknownFolder)]
+                         ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude"), ClaudeRun(id: 9001, kind: .terminal, folder: ClaudeRun.unknownFolder, hidden: true)]
           && nativeUnread.unknown && !native.unknown
           && AccountRemoval.runsUsing(profile("rm-n", "/x/.claude-n", nil), codeListed).map(\.id) == [9013, 9014, 9001],
           "claudeRuns: a native installer's 2.1.318 is listed with its folder (unknown when its environment wasn't read), another user's unreadable claude as unknown; not zsh, the Claude app or another user's other program: \(codeListed)")
@@ -653,10 +653,15 @@ do {
           "claudeRuns: a Claude app whose arguments couldn't be read is on an unknown folder, which every own-window profile's check counts: \(apps)")
     // a hidden entry (its facts unreadable): unknown, counted against every profile's folders
     let hiddenListed = Processes.codeRunList([unreadable, readDefault])
-    check(hiddenListed == [ClaudeRun(id: 9004, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude")]
+    check(hiddenListed == [ClaudeRun(id: 9004, kind: .terminal, folder: ClaudeRun.unknownFolder, hidden: true), ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude")]
           && AccountRemoval.runsUsing(rmD, hiddenListed).map(\.id) == [9004, 9009] && AccountRemoval.runsUsing(rmW, hiddenListed).map(\.id) == [9004]
           && AccountRemoval.runsBlock(rmW, runs: hiddenListed) != nil,
           "claudeRuns: a process whose facts couldn't be read is listed once as unknown and keeps every profile's folders: \(hiddenListed)")
+    // Remove's and Uninstall's lines: an unreadable process says so (it may not be Claude Code at all), never "Terminal session"
+    check(hiddenListed.map(\.words) == ["A process cl_audit can't read (it may be Claude Code)", "Terminal session (type /exit) · ~/.claude"]
+          && unknownRun.words == "Terminal session (type /exit) · unknown"
+          && apps.map(\.words) == ["Claude window · unknown", "Claude window · ~/Library/Application Support/Claude-w", "Claude window · " + FolderKey.standardDataDir],
+          "Remove / Uninstall: a hidden process reads \"A process cl_audit can't read\"; a claude whose folder is unknown, and the app's windows, as before")
     // another user's claude (as with `sudo claude`): its folder counts only when it is one of this user's; unread, unknown
     func otherUser(_ pid: pid_t, _ l: Processes.Launch?, hidden: Bool = false) -> Processes.Entry {
         Processes.Entry(pid: pid, uid: 0, ruid: 0, name: "claude", launch: l, hidden: hidden)
@@ -673,7 +678,7 @@ do {
                                        folders: [rmD.configDir, rmW.configDir])
     check(others == [ClaudeRun(id: 9021, kind: .terminal, folder: "~/.claude-p8"), ClaudeRun(id: 9022, kind: .terminal, folder: "~/.claude"),
                      ClaudeRun(id: 9025, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9026, kind: .terminal, folder: ClaudeRun.unknownFolder),
-                     ClaudeRun(id: 9027, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9001, kind: .terminal, folder: ClaudeRun.unknownFolder)],
+                     ClaudeRun(id: 9027, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9001, kind: .terminal, folder: ClaudeRun.unknownFolder, hidden: true)],
           "another user's claude: on a profile's folder or its HOME this user's, listed with that folder; HOME or folder elsewhere, or the Claude app, not; environment unread, no HOME, an unusable CLAUDE_CONFIG_DIR or unreadable: unknown: \(others)")
     check(AccountRemoval.runsUsing(rmW, others).map(\.id) == [9021, 9025, 9026, 9027, 9001]
           && AccountRemoval.runsUsing(rmD, others).map(\.id) == [9022, 9025, 9026, 9027, 9001]

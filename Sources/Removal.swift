@@ -317,7 +317,7 @@ struct RemoveAccountSheet: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Close Claude first: it's using these folders").font(.system(size: 12, weight: .semibold)).foregroundStyle(.red)
             ForEach(running, id: \.id) { r in
-                Text((r.kind == .desktop ? "Claude window" : r.kind == .codeTab ? "Code tab session" : "Terminal session (type /exit)") + " · " + r.folder)
+                Text(r.words)
                     .font(.system(size: 11.5)).lineLimit(1).truncationMode(.middle)
             }
             HStack {

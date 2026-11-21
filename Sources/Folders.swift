@@ -201,10 +201,19 @@ struct ClaudeRun: Identifiable, Equatable {
     let id: pid_t
     let kind: Kind
     let folder: String          // data folder (desktop) or Claude Code folder (sessions), with ~; or unknownFolder
+    /// A process whose facts, or how it was started, couldn't be read (`Processes.Entry.hidden`): it may be Claude Code or
+    /// any other program, on unknownFolder.
+    var hidden = false
 
     /// A Claude Code whose folder couldn't be told (how it was started, or its environment, couldn't be read), or a Claude app
     /// whose arguments couldn't be: it may use any folder, so every folder's check counts it (AccountRemoval.runsUsing).
     static let unknownFolder = "unknown"
+
+    /// Its line in Remove's and Uninstall's "Close Claude first" box.
+    var words: String {
+        if hidden { return "A process cl_audit can't read (it may be Claude Code)" }
+        return (kind == .desktop ? "Claude window" : kind == .codeTab ? "Code tab session" : "Terminal session (type /exit)") + " · " + folder
+    }
 }
 
 enum ClaudeRuns {

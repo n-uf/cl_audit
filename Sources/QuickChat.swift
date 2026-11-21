@@ -143,7 +143,16 @@ struct QuickChatTarget: Equatable {
     /// A clash (the folder on another profile's account in use): that profile's name. Like the split, a limit or refusal
     /// Claude Code meets is the folder's account's (that profile's), never the account the header names.
     var clashName: String?
+    /// That profile's id (names needn't be unique); nil in a record from before ResolvedAccount.clashID.
+    var clashID: String?
     var clash: Bool { clashName != nil }
+
+    /// The clash is still the one `c` noted: by the profile's id when both know it, else by its name.
+    func sameClash(_ c: (id: String?, name: String)) -> Bool {
+        guard let n = clashName else { return false }
+        if let id = clashID, let was = c.id { return id == was }
+        return n == c.name
+    }
 
     /// What the `claude` process runs with: it is kept while this is the same, and replaced when it changes (the folder's
     /// account is in it, so a process on another account's sign-in is never kept).
@@ -178,6 +187,7 @@ struct QuickChatTarget: Equatable {
         account = id == nil && email == nil ? nil
             : AccountIdentity(account: id, email: email, organization: id == nil ? nil : raw?.resolved?.codeOrganization, source: .guessed)
         clashName = raw?.resolved?.clash
+        clashID = clashName == nil ? nil : raw?.resolved?.clashID
         let clashed = clashName != nil
         shownEmail = clashed ? ProfileShow.of(e, raw: raw, now: now).inUseLabel : email
         loginWords = rec?.loginWords
@@ -333,9 +343,9 @@ final class QuickChatModel: ObservableObject {
         // any other note, or none: not the clash's any more
         didSet { noteClash = nil }
     }
-    /// The note says what was typed wasn't sent because the folder is on this profile's (by its name) account, a clash
-    /// (update): it goes once the folder is no longer there.
-    private var noteClash: String?
+    /// The note says what was typed wasn't sent because the folder is on this profile's (its id, and its name) account, a
+    /// clash (update): it goes once the folder is no longer there.
+    private var noteClash: (id: String?, name: String)?
 
     var isWindow: Bool { !turns.isEmpty }
     var busy: Bool { turns.last?.busy ?? false }
@@ -447,7 +457,7 @@ final class QuickChatModel: ObservableObject {
         let before = target
         if new != target { target = new }
         // the note about a question not sent into a clash: gone once that clash is (out of it, or in another profile's)
-        if let c = noteClash, new?.clashName != c { note = nil }
+        if let c = noteClash, new?.sameClash(c) != true { note = nil }
         // Claude Code's own numbers after an answer are newer than the agent's last reading: kept where fuller, for the
         // same profile on the same account (the folder's seat), and only while the record's numbers are the profile's
         // (QuickChatLevel.kept). A refusal is kept neither in the split nor in a clash: it is the folder's account's there
@@ -477,7 +487,7 @@ final class QuickChatModel: ObservableObject {
             note = "\(t.name)'s Claude Code folder is now on \(other)'s account, so what you typed wasn't sent. "
                 + (t.shownEmail != nil ? "Move it back to \(t.name)'s own account on the Switch page."
                                        : "Pick an account for \(t.name) on the Switch page.")
-            noteClash = other
+            noteClash = (t.clashID, other)
             return
         }
         guard !blocked else { return }

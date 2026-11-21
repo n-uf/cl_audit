@@ -2835,6 +2835,17 @@ do {
     // still in the clash (another reading): the note stays
     move(w2, rec(week: nil, five: nil, login: u3.email!.uppercased(), code: u3))
     check(w2.note == clashNote && asked2() == 0, "another reading of the same clash: the note stays, nothing sent")
+    // the clash told by the profile's id: a record from before clashID (the name only) keeps the note; another profile of the
+    // same name (another id) is another clash: the note goes, nothing sent
+    var clashNoID = rec(week: nil, five: nil, login: u3.email, code: u3); clashNoID.resolved?.clashID = nil
+    move(w2, clashNoID)
+    check(w2.note == clashNote && asked2() == 0, "the same clash in a record without the profile's id: by its name, the note stays")
+    let (w11, asked11) = typedThenSwitch(fullWeek)
+    move(w11, rec(week: nil, five: nil, login: u3.email, code: u3))
+    var twinClash = rec(week: nil, five: nil, login: u3.email, code: u3); twinClash.resolved?.clashID = "other-twin"
+    move(w11, twinClash)
+    check(w11.target?.clashName == "Other" && w11.note == nil && asked11() == 0 && w11.field == "what's typed",
+          "a clash with another profile of the same name (another id): another clash, the note goes, nothing sent: \(w11.note ?? "none")")
     // …and the clash clearing later (back on u1 with room, then on u2): the note goes, nothing is sent by itself, the
     // question stays; the person sending it again: it goes
     move(w2, rec())
