@@ -1057,7 +1057,8 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   A skill, agent, command or output style that holds a script a hook runs is sensitive too: left out of a zip with the same note,
   carried whole, as itself, in an image. This holds when `settings.json` is a link too (it is then read only to learn what its
   hooks and status line run, never carried, and where it points is never written); a backup records those units by name for
-  a later export. When `settings.json` can't be read, a zip leaves out every skill, agent, command or output style that holds an
+  a later export. The scripts that `fileSuggestion.command`, `apiKeyHelper`, `awsAuthRefresh` and `otelHeadersHelper` run
+  aren't held like a hook's: a zip carries them (the key scan still runs on them). When `settings.json` can't be read, a zip leaves out every skill, agent, command or output style that holds an
   executable file. An included file goes only with what includes it: when `CLAUDE.md` (or the skill that includes it) is left
   out for a key, the file it includes is left out too.
   Each file is recorded in the manifest with its size, its SHA-256 and whether its owner-execute bit was set.
