@@ -101,7 +101,12 @@ if args.count >= 3, args[1] == "--child" {
         // the Dock asks for the menu, then a click on Open Claude window: a notice to the agent, nothing started here
         var heard: [String] = []
         let o = dn.addObserver(forName: DockTile.menuNote, object: nil, queue: .main) { heard.append($0.object as? String ?? "?") }
+        // the menu given to the Dock is the one the plug-in keeps, and it outlives the call (the Dock's process clicks it later)
+        weak var given: NSMenu?
+        autoreleasepool { given = p.dockMenu() }
+        print(given != nil && given === p.shownMenu ? "menu kept" : "menu lost")
         guard let m = p.dockMenu() else { print("no menu"); exit(6) }
+        print(m === p.shownMenu ? "menu replaced" : "menu not replaced")
         let titles = m.items.map(\.title)
         print("menu: \(titles.joined(separator: " | "))")
         if let open = m.items.first(where: { $0.title == "Open Claude window" }) { p.picked(open) }
@@ -414,6 +419,8 @@ let menu = child("menu")
 check(clean(menu, "menu") && menu.out.contains("menu: Dock | ") && menu.out.contains("Open Claude window")
       && menu.out.contains("heard: openWindow:\(id)") && !menu.out.contains("@") && log().contains("menu: openWindow"),
       "the plug-in's menu in the Dock's place: built from the record, Open Claude window asks the agent, no tripwire (got \(menu.out))")
+check(menu.out.contains("menu kept") && menu.out.contains("menu replaced"),
+      "the menu given to the Dock is the one the plug-in keeps, alive after the call (a click comes later), until the next ask")
 
 // 5. an update: the copy is now another build, so the old code leaves and the Dock loads the new one; not mid-install
 plugInfo(build: "b1")

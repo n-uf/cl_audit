@@ -26,6 +26,10 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var draws = 0
+    /// The menu last given to the Dock (dockMenu): kept, its items too, until the next one. A click comes back later, and
+    /// the Dock's process looks its item up in this very menu: an unkept one was freed by then, and the click crashed that
+    /// process (seen live in 26.11.82).
+    private(set) var shownMenu: NSMenu?
     /// Another build seen in the copy, and when first: it must still be there 10 s later (an install is done by then).
     private var newBuild: (build: String, seen: Date)?
 
@@ -90,6 +94,7 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
             }
         }
         log("menu asked")
+        shownMenu = m           // kept until the next ask (shownMenu)
         return m
     }
 
