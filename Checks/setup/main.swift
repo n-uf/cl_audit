@@ -734,6 +734,9 @@ MainActor.assumeIsolated {
               "scripts: a quoted cd folder with a space is read whole: \(cdPaths(#"cd "$HOME/.claude/skills/a b" && ./q.sh"#))")
         check(cdPaths("cd && ./h.sh") == [home + "/h.sh"] && cdPaths("bash -c 'cd' ./h.sh").isEmpty,
               "scripts: a bare cd goes home; a cd ended by its own quote isn't taken for a quoted folder")
+        // a bare relative word names nothing, with a cd before it or not (only ./ and ../ are read against a cd's folder)
+        check(cdPaths("cd ~/.claude && skills/other/run.sh") == [home + "/.claude"] && cdPaths("skills/other/run.sh").isEmpty,
+              "scripts: a bare relative word (skills/other/run.sh) names nothing, after a cd or not")
         // a crafted settings.json of one very deep path, and a cd to a very long one followed by many ./ tokens: both quick
         let deep = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/\#(String(repeating: "a/", count: 400_000))x.sh"}]}]}}"#.utf8)
         let longCd = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd /\#(String(repeating: "b", count: 2_000_000)) && \#(String(repeating: "./a ", count: 200_000))"}]}]}}"#.utf8)
