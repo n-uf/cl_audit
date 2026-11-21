@@ -1497,6 +1497,8 @@ struct AccountSettings: View {
     @Environment(\.face) private var face
     /// What the folders from before hold, counted off the main thread (Leftovers.swift).
     @ObservedObject private var leftoverCounts = LeftoverCounts.shared
+    /// Its lines and notes name the accounts by the setting (AddressSettings.words): redrawn when it changes.
+    @ObservedObject private var privacy = AddressPrivacy.shared
 
     /// `picked`: a standby account selected from the start (renders only).
     init(entry: Binding<AccountEntry>, model: SettingsModel, width: CGFloat = 1280, picked: String? = nil) {

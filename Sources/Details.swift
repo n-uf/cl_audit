@@ -146,6 +146,8 @@ struct CloseButton: View {
 struct DetailsView: View {
     let info: DetailsInfo
     let actions: DetailsActions
+    /// The mismatch line names the folder's address or not, by the setting: redrawn when it changes.
+    @ObservedObject private var privacy = AddressPrivacy.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -194,7 +196,7 @@ struct DetailsView: View {
             if info.mismatch || info.problem != nil || info.renewNote != nil {
                 VStack(alignment: .leading, spacing: 4) {
                     if info.mismatch, let want = info.expected {
-                        Label(AddressPrivacy.shared.blur ? "This folder is set up for a different account" : "This folder is set up for \(want)", systemImage: "exclamationmark.triangle.fill")
+                        Label(privacy.blur ?"This folder is set up for a different account" : "This folder is set up for \(want)", systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
                     }
                     if let p = info.problem { Label(p, systemImage: "info.circle").foregroundStyle(.orange) }

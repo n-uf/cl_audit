@@ -4,6 +4,7 @@
 //   Click an account's icon → opens Claude for that account (desktop window).
 // Both read the status the icon apps save, so they need no login of their own.
 
+import AddressPrivacy
 import AppKit
 import Combine
 import ProfileCore
@@ -959,6 +960,8 @@ struct AccountCard: View {
     let row: AccountRow
     let actions: LauncherActions
     @ObservedObject private var prefs = DashboardPrefs.shared
+    /// Its menu titles and words (terminalWords, loginWords) name accounts by the setting: redrawn when it changes.
+    @ObservedObject private var privacy = AddressPrivacy.shared
     @Environment(\.face) private var face
     @State private var fullBox: CGFloat? = nil          // the full box's width (FullBoxWidth), for Switch account under it
 
@@ -1072,13 +1075,13 @@ struct AccountCard: View {
         !row.entry.usageOnly && !showsSwitch && (notice == nil || notice?.key == UsageNotice.Key.none)
     }
     /// Terminal in ⋯, saying whose sign-in it opens on.
-    private var terminalWords: String {
+    var terminalWords: String {
         if notice?.signedOut == true { return "Terminal (asks to sign in first)" }
         if let s = row.show.splitWords, !s.switched { return "Terminal (signed in as \(AddressSettings.words(s.code)))" }
         if let other = row.display.clash { return "Terminal (on \(other.name)'s account)" }
         return "Terminal"
     }
-    private var signInHelp: String {
+    var signInHelp: String {
         guard let a = row.show.loginAddress, a.contains("@") else {
             return "Sign Claude Code in Terminal in, on \(row.entry.name)'s folder"
         }
@@ -1093,31 +1096,9 @@ struct AccountCard: View {
     /// Switch account: the account in use ticked with its plan, the standby accounts by address only (they're never read,
     /// so nothing about their usage), then Sign in to another account…. An account opens the Switch page with it picked.
     private var switchMenu: some View {
-        // (a clash: the profile's own account is on its standby list too: the one ticked row, still the way to move Claude
-        // Code back, never a second one on standby)
         let own = row.show.ownStandbyID
-        let standby = row.entry.listed(by: row.view).cardTrays().map(\.offer.standby).filter { $0.id != own }
-        return Menu {
-            if let label = row.show.named.label {
-                if let own {
-                    Toggle(isOn: Binding(get: { true }, set: { _ in actions.switchAccount(AccountEntry.switchKey(row.entry.id, own)) })) {
-                        Text(SwitchMenu.backTitle(AddressSettings.words(label)))
-                    }
-                } else {
-                    Toggle(isOn: .constant(true)) {
-                        Text(Self.tickedTitle(label: AddressSettings.words(label), plan: row.show.plan))
-                    }
-                }
-            }
-            if !standby.isEmpty {
-                Divider()
-                ForEach(standby, id: \.id) { s in
-                    Button(AddressSettings.words(s.label)) { actions.switchAccount(AccountEntry.switchKey(row.entry.id, s.id)) }
-                }
-            }
-            Divider()
-            Button("Sign in to another account…") { actions.newAccount(row) }
-        } label: {
+        let hasStandby = !switchAccountMenu.standby.isEmpty
+        return MenuPopButton(make: { switchAccountMenu }) {
             FaceKeyLabel(tint: .orange, width: fullBox) {
                 HStack(spacing: 6) {
                     Text("Switch account")
@@ -1125,8 +1106,21 @@ struct AccountCard: View {
                 }
             }
         }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-        .help(standby.isEmpty && own == nil ? "Sign in to another account for \(row.entry.name)" : "Switch \(row.entry.name) to another account")
+        .buttonStyle(.plain).fixedSize()
+        .help(!hasStandby && own == nil ? "Sign in to another account for \(row.entry.name)" : "Switch \(row.entry.name) to another account")
+    }
+
+    /// The Switch account menu, an NSMenu (SwitchAccountMenu.swift: its account rows are AddressMenuRows). (Not private: the
+    /// surfaces checks and the render.)
+    var switchAccountMenu: SwitchAccountMenu {
+        // (a clash: the profile's own account is on its standby list too: the one ticked row, still the way to move Claude
+        // Code back, never a second one on standby)
+        let own = row.show.ownStandbyID
+        let standby = row.entry.listed(by: row.view).cardTrays().map(\.offer.standby).filter { $0.id != own }
+        let id = row.entry.id, actions = actions, row = row
+        return SwitchAccountMenu(label: row.show.named.label, ownKey: own.map { AccountEntry.switchKey(id, $0) }, plan: row.show.plan,
+                                 standby: standby.map { .init(key: AccountEntry.switchKey(id, $0.id), address: $0.label) },
+                                 pick: { actions.switchAccount($0) }, newAccount: { actions.newAccount(row) })
     }
 
     /// The rest for this profile: what steps out of the row (the window, Terminal) first.

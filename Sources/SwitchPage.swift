@@ -24,6 +24,8 @@ struct SwitchPage: View {
     @ObservedObject var runner: SwitchRunner
     var width: CGFloat = 980
     @Environment(\.face) private var face
+    /// Its sentences and help name the accounts by the setting (AddressSettings.words): redrawn when it changes.
+    @ObservedObject private var privacy = AddressPrivacy.shared
     /// A switch (or its retry) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
     @State private var consent: ConsentRequest?
     /// A clash move-back as it was when the switch started, and whose account the folder was signed in to: once Claude Code is
