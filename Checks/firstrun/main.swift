@@ -448,7 +448,8 @@ do {
     for _ in 0..<5 { m.watchClaude() }
     RunLoop.main.run(until: Date().addingTimeInterval(0.4))
     check(calls() == 0, "no page, no note: no lookups (\(calls()))")
-    // an 'isn't installed' note on screen: it looks, then backs off
+    // an 'isn't installed' note on screen (in a window that shows Settings): it looks, then backs off
+    m.windowShowsSettings = { true }
     m.claudeNotes = 1
     m.watchClaude(); wait { calls() >= 1 }
     check(calls() == 1 && m.claudeKnownMissing, "a note on screen: one look")
@@ -473,6 +474,10 @@ do {
     shellCalls = 0
     let f = SettingsModel()
     check(f.isFirstRun && f.selection == SettingsModel.firstRunID, "first-run page up")
+    // (a model no window has shown yet looks for nothing: L6)
+    f.watchClaude(); RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    check(calls() == 0, "the first-run page with no window shown yet: no look (\(calls()))")
+    f.windowShowsSettings = { true }
     f.watchClaude(); wait { calls() >= 1 }
     check(calls() == 1, "the first-run page on screen: it looks")
     for _ in 0..<4 { f.watchClaude() }
