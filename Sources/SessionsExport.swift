@@ -1485,6 +1485,10 @@ enum SessionsExport {
             // executable file
             let holders = hookHeld(m, dir: b.dir)
             var carry: [(Setup.Unit, [SessionsBackup.Item])] = []
+            // the units counted in setupKeysKept: one that doesn't go after all (gone while copied, an include left out with what
+            // includes it) is taken out of that count again
+            var keysKept = Set<Setup.Unit>()
+            func notKept(_ u: Setup.Unit) { if keysKept.remove(u) != nil { po.setupKeysKept -= 1 } }
             for (u, list) in members.sorted(by: { $0.key < $1.key }) {
                 if cancel() { throw ArchiveError("Stopped.") }
                 let sensitive = u.sensitive || holders.contains(u)
@@ -1500,7 +1504,7 @@ enum SessionsExport {
                     }
                     if !kinds.isEmpty {
                         if keys == .leaveOut { po.setupKeysLeftOut += 1; setupNames.append("\(SetupRow.title(u)) (held a key)"); leftOut += list.count; continue }
-                        po.setupKeysKept += 1
+                        po.setupKeysKept += 1; keysKept.insert(u)
                     }
                 }
                 carry.append((u, list))
@@ -1538,7 +1542,7 @@ enum SessionsExport {
                     any = true
                 }
                 // every file of it gone while it was copied: not carried, and said so (its files are counted as left out)
-                guard any else { setupNames.append("\(SetupRow.title(u)) (gone while it was copied)"); return }
+                guard any else { setupNames.append("\(SetupRow.title(u)) (gone while it was copied)"); notKept(u); return }
                 if u.kind == .task { po.taskPrompts += 1 } else { po.setupUnits.append(u) }
             }
             for (u, list) in carry where u.kind != .include { if cancel() { throw ArchiveError("Stopped.") }; try copyUnit(u, list) }
@@ -1550,7 +1554,7 @@ enum SessionsExport {
                 }
                 for (u, list) in includes {
                     if cancel() { throw ArchiveError("Stopped.") }
-                    guard reached.contains(u.name) else { setupNames.append("\(SetupRow.title(u)) (left out with what includes it)"); leftOut += list.count; continue }
+                    guard reached.contains(u.name) else { setupNames.append("\(SetupRow.title(u)) (left out with what includes it)"); leftOut += list.count; notKept(u); continue }
                     try copyUnit(u, list)
                 }
                 // a file that went missing while it was copied names nothing in the file: an include only it reached would be one
@@ -1570,7 +1574,7 @@ enum SessionsExport {
                             landed.remove(String(it.path.dropFirst(6)))
                             dropEmptyFolders(of: path)          // its folders, emptied now, go too
                         }
-                        po.setupUnits.removeAll { $0 == u }
+                        po.setupUnits.removeAll { $0 == u }; notKept(u)
                         setupNames.append("\(SetupRow.title(u)) (left out with what includes it)"); leftOut += list.count
                     }
                 }

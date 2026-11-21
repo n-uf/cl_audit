@@ -386,13 +386,13 @@ MainActor.assumeIsolated {
         check(k2.refusal == nil && k2.rels == ["CLAUDE.md", "rules/up.md"] && k2.leftOut.contains("skill k (held a key)") && k2.leftOut.contains("included file docs/x.md (left out with what includes it)"),
               "export (zip): an include reached only through a skill left out for its key stays out; an @../ back into the folder by its name is carried and imports: \(k2.refusal ?? "opened") \(k2.rels.sorted()) \(k2.leftOut)")
         // a file gone while the export copies it (made to go missing in the backup the export is made from, just before its copy)
-        func goneWhileCopied(_ suffixes: [String], _ name: String) -> (outcome: SessionsExport.Outcome?, rels: Set<String>, leftOut: [String], count: Int, refusal: String?) {
+        func goneWhileCopied(_ suffixes: [String], _ name: String, keys: SessionsExport.Keys = .leaveOut) -> (outcome: SessionsExport.Outcome?, rels: Set<String>, leftOut: [String], count: Int, refusal: String?) {
             SessionsExport.beforeSetupCopy = { src in if suffixes.contains(where: { src.hasSuffix("/setup/" + $0) }) { unlink(src) } }
             defer { SessionsExport.beforeSetupCopy = nil }
             let url = URL(fileURLWithPath: out + "/\(name).zip")
             try? fm.removeItem(at: url)
             let made: SessionsExport.Outcome
-            do { made = try SessionsExport.run(SessionsExport.Job(parts: [ipart], keys: .leaveOut, destination: url, rootName: name, place: eplace)) } catch { return (nil, [], [], 0, "export: \(error)") }
+            do { made = try SessionsExport.run(SessionsExport.Job(parts: [ipart], keys: keys, destination: url, rootName: name, place: eplace)) } catch { return (nil, [], [], 0, "export: \(error)") }
             do {
                 let o = try SessionsImport.open(url, password: nil, place: eplace)
                 defer { SessionsImport.discard(o.work) }
@@ -407,6 +407,11 @@ MainActor.assumeIsolated {
               && g1.count == g0.count + 2 && g1.outcome?.setupUnits.contains { $0.name == "g" } == false
               && g0.outcome?.setupUnits.contains { $0.name == "g" } == true,
               "export (zip): a skill whose every file is gone while it is copied isn't counted as carried, its files count as left out, its emptied folders go (the file imports): \(g1.refusal ?? "opened") \(g1.rels.sorted()) \(g1.leftOut) \(g0.count)→\(g1.count)")
+        // …one kept with its key (keys kept) and gone whole: not counted as a unit kept with a key either
+        w(c7, "skills/k/SKILL.md", "key \(ghKey)\n")
+        let kk0 = goneWhileCopied([], "e2i-gone-key-none", keys: .keep), kk1 = goneWhileCopied(["skills/k/SKILL.md"], "e2i-gone-key", keys: .keep)
+        check(kk0.outcome?.setupKeysKept == 1 && kk1.outcome?.setupKeysKept == 0 && kk1.leftOut.contains("skill k (gone while it was copied)"),
+              "export (keys kept): a skill kept with its key and gone whole while copied isn't counted as kept: \(String(describing: kk0.outcome?.setupKeysKept))→\(String(describing: kk1.outcome?.setupKeysKept))")
         // an include gone after the closure was read (at its copy): the nested include only it reached was copied, and is taken
         // out again with the folders that held only it; both count as left out, and the file imports
         try? fm.removeItem(atPath: c7)
