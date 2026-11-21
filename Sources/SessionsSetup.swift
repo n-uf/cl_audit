@@ -482,8 +482,17 @@ enum Setup {
     /// The carried paths that a command of this settings.json names: the in-folder tail of a path in a hook or status-line command
     /// (`~`, `$HOME` and `${HOME}` expanded, the folder's own name not needed: the tail after it is what is compared).
     static func namedPaths(in settings: Data, among rels: [String]) -> Set<String> {
-        let paths = commandPaths(inSettings: settings, home: "/~home").map(normalize)
-        return Set(rels.filter { r in paths.contains { $0.hasSuffix("/" + r) } })
+        // every tail of every path, once (a path's tails are as many as its parts): then each carried file is one lookup, so a
+        // crafted settings.json of many paths against a folder of many files stays quick (no paths × files)
+        var tails = Set<String>()
+        for p in commandPaths(inSettings: settings, home: "/~home").map(normalize) {
+            var i = p.endIndex
+            while let slash = p[..<i].lastIndex(of: "/") {
+                tails.insert(String(p[p.index(after: slash)...]))
+                i = slash
+            }
+        }
+        return Set(rels.filter(tails.contains))
     }
 
     /// What of Claude Code's setup a Claude Code folder holds now. Nothing is written; no link is followed.
