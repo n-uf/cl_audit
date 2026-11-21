@@ -1259,7 +1259,13 @@ do {
         var fr = SwitchReceipt(id: SwitchEngine.receiptID(t0, e5.id), profile: e5.id, standby: AccountEntry.codeStandbyID, dataDir: wd,
                                from: SeatID(ann), to: SeatID(ben), started: t0)
         fr.finishLine = true
+        // one session placed (a receipt with no step is no move: not unfinished)
+        var placed = SwitchReceipt.Step(kind: .entry, path: wd + "/placed.json", sha: "x", parked: wd + "/parked.json", original: wd + "/orig.json")
+        placed.done = true
+        fr.steps = [placed]
         try! SwitchEngine.store.save(fr)
+        check(SwitchEngine.store.load(fr.id)?.unfinished == true && SwitchRunner.halfDoneFinishLine(fr),
+              "05 followed: the half-done finish line's receipt is unfinished (Try again then says Undo or Leave it, no sign-in)")
         let linkedEarly = SwitchEngine.linkReached([e5], signedIn: { _ in ben })
         check(linkedEarly.isEmpty && SwitchEngine.store.load(fr.id)?.linked == nil,
               "05 followed: a finish line's receipt mid-move (not finished) is never linked by the folder being on ben")

@@ -384,6 +384,11 @@ final class SwitchRunner: ObservableObject {
     func retry() {
         guard let g = goal, !isRunning else { return }
         if g.standby == nil { signInAgain(email: g.wantedEmail); return }
+        // a finish line's move that stopped part way: Claude Code is on the account already, so a sign-in would finish
+        // nothing and would link the half-done move; Undo, or Leave it as it is
+        if canUndo, let r = receipt, Self.halfDoneFinishLine(r) {
+            fail(.move, Self.finishLineStopped); return
+        }
         // the sessions moved already (Undo not used): only the sign-in again, the window kept closed meanwhile
         if canUndo, let e = entry {
             let h = WindowHold(e, profile: profile, run: markName)
@@ -458,10 +463,20 @@ final class SwitchRunner: ObservableObject {
 
     /// An earlier switch of this profile that stopped half way: shown as the page's own stop (its Undo below), with the
     /// window's line when it closed the window.
+    /// A finish line's move that stopped before it finished: never linked by a sign-in (none is left to make), only by Undo
+    /// or Leave it as it is.
+    static func halfDoneFinishLine(_ r: SwitchReceipt) -> Bool { r.finishLine == true && r.finished == nil }
+    static let finishLineStopped = "The move stopped part way. Claude Code is on that account already, so there's no sign-in to finish it: Undo puts the moved sessions back, or Leave it as it is (Sessions card)."
+
     private func showStopped(_ u: SwitchReceipt, _ e: AccountEntry) {
         receipt = u
         // never for good: Undo puts it back, and signing in as the account it went for finishes it (linkReached)
         let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email.map(AccountNames.short) ?? "its account"
+        if Self.halfDoneFinishLine(u) {
+            fail(.notStarted, "An earlier switch of \(e.name) stopped half way. \(Self.finishLineStopped) Then switch again.")
+            if u.closedWindow == true { windowNote = Self.windowStaysClosed(to) }
+            return
+        }
         fail(.notStarted, "An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), sign in as \(to) to finish it, or Leave it as it is (Sessions card); then switch again.")
         if u.closedWindow == true { windowNote = Self.windowStaysClosed(to) }
     }
@@ -507,7 +522,8 @@ final class SwitchRunner: ObservableObject {
         timer?.invalidate(); timer = nil
         clearMarker()
         // Claude Code on the account the sessions went to: the move is linked (the way back is a switch the other way)
-        if o == .reached, let r = receipt { SwitchEngine.markLinked(r.id); receipt = SwitchEngine.store.load(r.id) ?? r }
+        // (never a finish line's half-done move: nothing a sign-in did finished it)
+        if o == .reached, let r = receipt, !Self.halfDoneFinishLine(r) { SwitchEngine.markLinked(r.id); receipt = SwitchEngine.store.load(r.id) ?? r }
         windowDone()                                          // (linked: its settle opens the window it closed, after this turn)
         // the account now in the folder is the one the profile works on, at once (the agent would within seconds too)
         if o != .timedOut { model?.noteAccounts(); model?.resolveNow(profile) }
