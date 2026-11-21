@@ -799,7 +799,8 @@ MainActor.assumeIsolated {
         let cdNamed = Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh", "other/run.sh"])
         check(cdNamed == ["skills/guard/run.sh", "skills/shared/lib.sh"],
               "scripts: cd ~/.claude/skills/guard && ./run.sh names run.sh (and ../shared/lib.sh); a ./ with no cd before it, or a bare word, names nothing: \(cdNamed.sorted())")
-        // where a cd's folder ends: at the `)` of its subshell, after `||` (run when the cd may have failed); a quoted folder whole
+        // where a cd's folder ends: at the `)` of its subshell; never at `||` (a path named the cd failed to reach is the safe
+        // side, one missed isn't); a quoted folder whole
         func cdPaths(_ command: String) -> [String] {
             let j = try! JSONSerialization.data(withJSONObject: ["hooks": ["Stop": [["hooks": [["type": "command", "command": command]]]]]])
             return Setup.commandPaths(inSettings: j, home: home)
@@ -809,7 +810,20 @@ MainActor.assumeIsolated {
               "scripts: (cd …/a && ./x.sh); ./y.sh: x.sh in a, y.sh after the subshell nowhere: \(cdPaths("(cd ~/.claude/skills/a && ./x.sh); ./y.sh"))")
         check(cdPaths("cd ~/.claude/skills/a && (./x.sh) && ./y.sh") == [sk + "/a", sk + "/a/x.sh", sk + "/a/y.sh"],
               "scripts: a subshell after the cd keeps its folder, and so does what follows it")
-        check(cdPaths("cd ~/.claude/skills/a || ./z.sh") == [sk + "/a"], "scripts: cd …/a || ./z.sh: z.sh runs when the cd failed, so it is named nowhere")
+        check(cdPaths("cd ~/.claude/skills/a || exit 1; ./run.sh") == [sk + "/a", sk + "/a/run.sh"]
+              && cdPaths("cd ~/.claude/skills/a && ./a.sh || ./b.sh") == [sk + "/a", sk + "/a/a.sh", sk + "/a/b.sh"]
+              && cdPaths("cd ~/.claude/skills/a || ./z.sh") == [sk + "/a", sk + "/a/z.sh"],
+              "scripts: after `||` the cd's folder is kept (cd … || exit 1; ./run.sh names run.sh): \(cdPaths("cd ~/.claude/skills/a || exit 1; ./run.sh"))")
+        // a subshell's own cd: after its `)`, the same ./ token is read in the folder before it again (not taken as done)
+        check(cdPaths("cd /a && (cd /b && ./x.sh); ./x.sh") == ["/a", "/b", "/b/x.sh", "/a/x.sh"],
+              "scripts: cd /a && (cd /b && ./x.sh); ./x.sh names /b/x.sh and /a/x.sh: \(cdPaths("cd /a && (cd /b && ./x.sh); ./x.sh"))")
+        // `( … )` kept track of 64 deep: deeper, the folder isn't known until the depth kept is back; 200,000 opens stay quick
+        let deepParens = "cd /o && " + String(repeating: "(", count: 70) + "cd /d && ./x.sh" + String(repeating: ")", count: 70) + " && ./y.sh"
+        let tParens = Date()
+        let manyOpens = cdPaths(String(repeating: "(", count: 200_000) + "cd /e && ./z.sh")
+        let tookParens = Date().timeIntervalSince(tParens)
+        check(cdPaths(deepParens) == ["/o", "/d", "/d/x.sh", "/o/y.sh"] && manyOpens == ["/e", "/e/z.sh"] && tookParens < 5,
+              "scripts: 70 subshells deep the cd inside still counts and the folder before them comes back; 200,000 opens in \(String(format: "%.2f", tookParens)) s: \(cdPaths(deepParens))")
         check(cdPaths(#"cd "$HOME/.claude/skills/a b" && ./q.sh"#) == [sk + "/a b", sk + "/a b/q.sh"]
               && cdPaths("cd '/opt/x y/z' && ./q.sh") == ["/opt/x y/z", "/opt/x y/z/q.sh"],
               "scripts: a quoted cd folder with a space is read whole: \(cdPaths(#"cd "$HOME/.claude/skills/a b" && ./q.sh"#))")

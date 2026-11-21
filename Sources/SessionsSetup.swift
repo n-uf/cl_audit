@@ -673,15 +673,18 @@ enum Setup {
     /// The absolute paths named in the commands of a settings.json: tokens that start with `~/`, `$HOME/`, `${HOME}/` or `/`, and a
     /// `./` or `../` one after a `cd` to such a folder in the same command (`cd ~/.claude/skills/x && ./run.sh`); any other relative
     /// one depends on where the command runs, so it isn't guessed. The command is split on spaces, quotes and shell punctuation; each
-    /// token is expanded against `home`. A cd's folder in quotes is read whole (`cd "/a b/c"`); a cd inside `( … )` ends at its `)`,
-    /// and after `||` (run when what came before failed, the cd perhaps) the folder isn't known.
+    /// token is expanded against `home`. A cd's folder in quotes is read whole (`cd "/a b/c"`); a cd inside `( … )` ends at its `)`.
+    /// After `||` the folder is kept (`cd ~/x || exit 1; ./run.sh` runs in it): a path named that the cd failed to reach is the
+    /// safe side (a script kept out of a zip, or one more name an import checks), one missed is not.
     static func commandPaths(inSettings data: Data, home: String) -> [String] {
         var out: [String] = [], seen = Set<String>()     // (a set, so a crafted settings.json of a million paths stays quick)
         // the separators, ASCII all (the command is read as UTF-8 bytes: quick for a crafted 8 MB one)
         var sep = [Bool](repeating: false, count: 256)
         for c in " \t\n\"'`;|&()<>=,{}".utf8 { sep[Int(c)] = true }
         let blank: Set<UInt8> = [0x20, 0x09, 0x0A], quotes: Set<UInt8> = [0x22, 0x27]
-        let open = UInt8(ascii: "("), close = UInt8(ascii: ")"), bar = UInt8(ascii: "|")
+        let open = UInt8(ascii: "("), close = UInt8(ascii: ")")
+        let homeDir = normalize(home)                       // where a bare cd goes (normalised once)
+        let maxDepth = 64                                   // `( … )` kept track of this deep; deeper, the folder isn't known
         func absolute(_ raw: String) -> String? {
             var t = raw
             if t.hasPrefix("~/") { t = home + String(t.dropFirst(1)) }
@@ -697,7 +700,9 @@ enum Setup {
             // the folder a `cd` goes to, normalised once (nil: one it can't tell, or longer than any real path); each relative token
             // after it resolved once, at most `perCd` of them per cd and `inAll` for the whole file
             var cwd: String? = nil, afterCd = false, resolved = Set<String>()
-            var saved: [String?] = []           // the folder at each open `(`: a subshell's cd ends at its `)`
+            // the folder and what was resolved in it at each open `(`: a subshell's cd ends at its `)`, and what follows is read in
+            // the folder before it again (with its own resolved tokens); past `maxDepth`, `deeper` counts the opens not kept
+            var saved: [(cwd: String?, resolved: Set<String>)] = [], deeper = 0
             func take(_ raw: String) {
                 if afterCd { afterCd = false; cwd = raw.utf8.count <= 1024 ? absolute(raw).map(normalize) : nil; resolved = [] }
                 if raw == "cd" { afterCd = true; return }
@@ -722,10 +727,13 @@ enum Setup {
                     take(String(decoding: b[(i + 1)..<end], as: UTF8.self))
                     i = end + 1; start = i; continue
                 }
-                if afterCd, !blank.contains(c), !quotes.contains(c) { afterCd = false; cwd = normalize(home); resolved = [] }   // a bare cd: home
-                if c == open { saved.append(cwd) }
-                else if c == close, let s = saved.popLast() { cwd = s }
-                else if c == bar, i + 1 < b.count, b[i + 1] == bar { cwd = nil; i += 1 }       // `||`: the folder isn't known
+                if afterCd, !blank.contains(c), !quotes.contains(c) { afterCd = false; cwd = homeDir; resolved = [] }   // a bare cd: home
+                if c == open {
+                    if saved.count < maxDepth { saved.append((cwd, resolved)) } else { deeper += 1; cwd = nil }
+                } else if c == close {
+                    if deeper > 0 { deeper -= 1; cwd = nil }                             // still past the depth kept: not known
+                    else if let s = saved.popLast() { cwd = s.cwd; resolved = s.resolved }
+                }
                 i += 1; start = i
             }
             if start < b.count { take(String(decoding: b[start..<b.count], as: UTF8.self)) }
