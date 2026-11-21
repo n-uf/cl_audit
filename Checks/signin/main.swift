@@ -206,6 +206,16 @@ MainActor.assumeIsolated {
 
     let list = NewAccountSetup.freeAccounts(among: accounts, folders: folders)
     check(list.count == 1 && list.first?.path == dFree && list.first?.email == free.email, "free accounts: only a signed-in folder no profile uses (not Work's, not inside it, not one without a sign-in)")
+    // the Account pop-up's label (drawn and read as it is: the well is plain text): hidden, no more of the address than the
+    // mask form (first letter, dots, domain); shown, the address; the words that aren't an address as they are
+    let wellAddr = "zedekiah@sample.org"
+    let wellHidden = NewAccountSetup.wellText(wellAddr, show: false)
+    check(wellHidden == Privacy.mask(wellAddr) && !wellHidden.contains("zedekiah") && !wellHidden.contains("edekiah")
+          && wellHidden.hasPrefix("z") && wellHidden.hasSuffix("@sample.org"),
+          "Account pop-up, emails hidden: the mask form only, never the address itself under the blur")
+    check(NewAccountSetup.wellText(wellAddr, show: true) == wellAddr && NewAccountSetup.wellText("Choose an account", show: false) == "Choose an account"
+          && NewAccountSetup.wellText("not signed in yet", show: false) == "not signed in yet",
+          "Account pop-up: the address while shown; its other words as they are")
     check(NewAccountSetup.addressProblem("nope", among: accounts) == "Type the account's email address.", "address route: an address is needed")
     check(NewAccountSetup.addressProblem("a b@example.com", among: accounts) == "Type the account's email address.", "address route: no spaces")
     check(NewAccountSetup.addressProblem(" WORK@example.com ", among: accounts)?.contains("“Work”") == true, "address route: another profile's address is refused early, by name")

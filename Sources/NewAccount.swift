@@ -106,6 +106,12 @@ struct SetupCheck: Identifiable {
 enum NewAccountSetup {
     static func shared(_ d: NewAccountDraft) -> URL { URL(fileURLWithPath: expand(d.shareFrom)) }
 
+    /// The Account pop-up's label as drawn (and read by VoiceOver: the well is plain text): while emails are hidden, an
+    /// address in the mask form every other place shows, never the address itself under the blur.
+    static func wellText(_ text: String, show: Bool = Privacy.shared.show) -> String {
+        show || !text.contains("@") ? text : Privacy.mask(text)
+    }
+
     static func exists(_ path: String) -> Bool { !path.isEmpty && FileManager.default.fileExists(atPath: expand(path)) }
 
     /// The Claude Code folder is in place (created, or an existing one connected) and so is the window's data folder.
@@ -684,7 +690,8 @@ struct NewAccountView: View {
                 Button("Sign in to another account…") { askAddress() }
                     .disabled(model.claudeKnownMissing)      // greyed, with the line above saying why
             } label: {
-                MenuWell(text: shown.text, tint: shown.tint, icon: shown.icon, fill: true).settingsEmail(shown.text.contains("@"))
+                MenuWell(text: NewAccountSetup.wellText(shown.text), tint: shown.tint, icon: shown.icon, fill: true)
+                    .settingsEmail(shown.text.contains("@"))
             }
             .faceMenuFill()
             .disabled(draft.started && !canSignInAgain)
