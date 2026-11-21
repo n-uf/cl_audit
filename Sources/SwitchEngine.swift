@@ -224,7 +224,8 @@ enum SwitchEngine {
     static func plan(_ e: AccountEntry, standby s: StandbyAccount, dataDir: String? = nil, owned: Set<String>? = nil) -> Result<SwitchPlan, SwitchError> {
         guard var from = e.seat, from.organization != nil else { return .failure(.notReady("The account in use isn't known yet.")) }
         guard let to = s.seat, to.organization != nil else {
-            return .failure(.notReady("\(s.email) hasn't been signed in on this Mac yet, so its sessions' folder isn't known: nothing to move."))
+            // (no name in it: the text is made once and kept, and an address in it would outlive Show emails being turned off)
+            return .failure(.notReady("That account hasn't been signed in on this Mac yet, so its sessions' folder isn't known: nothing to move."))
         }
         // the finish line: Claude Code's folder is on the target already (a switch made elsewhere) while the Claude app is on
         // another account: the sessions move from the Claude app's account

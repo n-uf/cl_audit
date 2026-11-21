@@ -523,7 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let usage { m.addItem(info("Updated \(Self.ago(usage.fetchedAt)) · \(usage.source)")) }
         if let why = problem { m.addItem(info(why)) }
         if let note = status?.renewNote { m.addItem(info(note)) }
-        if !AddressPrivacy.shared.blur || loginEmail == nil { m.addItem(info("Sign-in: \(loginEmail ?? "checking…")")) }
+        if !AddressPrivacy.shared.blur || loginEmail == nil { m.addItem(info("Sign-in: \(loginEmail.map { AddressSettings.words($0) } ?? "checking…")")) }
         if d.otherAccount, let want = expectedEmail {
             m.addItem(info(AddressPrivacy.shared.blur ? "⚠︎ This folder is set up for a different account" : "⚠︎ This folder is set up for \(want)"))
         }
