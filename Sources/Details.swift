@@ -196,7 +196,7 @@ struct DetailsView: View {
             if info.mismatch || info.problem != nil || info.renewNote != nil {
                 VStack(alignment: .leading, spacing: 4) {
                     if info.mismatch, let want = info.expected {
-                        Label(privacy.blur ?"This folder is set up for a different account" : "This folder is set up for \(want)", systemImage: "exclamationmark.triangle.fill")
+                        Label(privacy.blur ? "This folder is set up for a different account" : "This folder is set up for \(want)", systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
                     }
                     if let p = info.problem { Label(p, systemImage: "info.circle").foregroundStyle(.orange) }

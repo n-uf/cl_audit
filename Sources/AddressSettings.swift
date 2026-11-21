@@ -43,10 +43,12 @@ enum AddressSettings {
     /// same domain; an app asking for a suite named like itself is not guaranteed one); every other process reads the suite.
     /// A check build keeps it in memory: no suite reads or writes the operator's own Show emails.
     #if CL_AUDIT_CHECKS
-    static let store = makeStore(prefs: CheckPrefs())
+    static let prefs: AddressPrefs? = CheckPrefs()
     #else
-    static let store = makeStore(prefs: isSettingsApp ? UserDefaults.standard : nil)
+    static let prefs: AddressPrefs? = isSettingsApp ? UserDefaults.standard : nil
     #endif
+    /// The store reads and writes `prefs` (nil: the `local.usage-n-uf` suite); the default's settling (`start`) uses the same.
+    static let store = makeStore(prefs: prefs)
 
     /// The setting's store: `showEmails` in the `local.usage-n-uf` domain (true = shown), the older inverted `blurEmails`, the
     /// change note. `prefs`: where the booleans live, nil: that domain (a check passes a dictionary of its own).
@@ -81,7 +83,8 @@ enum AddressSettings {
     /// At launch, in every process that shows an address: the module reads its setting here, and reloads on each change note.
     /// The settings app first settles the default (`settleDefault`) for an install that has no setting yet.
     static func start() {
-        if isSettingsApp { settleDefault(prefs: UserDefaults.standard, store: store, setUp: Store.exists) }
+        // (the settings app's `prefs` are its standard defaults, the store's own source: what it reads is what it writes)
+        if isSettingsApp, let prefs { settleDefault(prefs: prefs, store: store, setUp: Store.exists) }
         AddressPrivacy.shared.store = store
         store.observe()
     }
@@ -144,17 +147,4 @@ extension View {
     /// Left out entirely while emails are hidden (`isEmail`: the text holds an address or an account id,
     /// AddressText.needsHiding).
     func hidesEmail(_ isEmail: Bool = true) -> some View { modifier(HiddenEmail(isEmail: isEmail)) }
-}
-
-/// "Show emails" in the Settings page's top bar.
-struct ShowEmailsSwitch: View {
-    @ObservedObject private var privacy = AddressPrivacy.shared
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text("Show emails").font(.system(size: 12)).foregroundStyle(.secondary)
-            SSwitch(isOn: Binding(get: { !privacy.blur }, set: { privacy.setBlur(!$0) }), on: "", off: "")   // its label is before it
-        }
-        .help("Off: email addresses are left out of the launcher, dashboard, panels and Dock menus. Here in Settings and in the Switch menus each one is a blurred stand-in, the same for every account (point at it to read it), and a sentence says \"hidden address\".")
-    }
 }

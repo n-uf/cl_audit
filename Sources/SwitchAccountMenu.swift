@@ -106,5 +106,7 @@ struct MenuPopButton<Label: View>: View {
     var body: some View {
         Button { if let v = anchor.view { make().pop(from: v) } } label: { label }
             .background(MenuAnchorView(anchor: anchor))
+            // (the SwiftUI Menu this replaces was read as a pop-up button: VoiceOver still says it opens a menu)
+            .accessibilityHint("Opens a menu")
     }
 }
