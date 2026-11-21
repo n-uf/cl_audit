@@ -805,6 +805,16 @@ enum SessionsBackup {
                                             "lua", "tclsh", "wish", "pwsh", "powershell", "rscript", "java", "swift", "python", "pythonw",
                                             "npx", "npm", "pnpm", "yarn", "uv", "uvx", "pipx", "docker", "arch", "caffeinate", "nice", "time",
                                             "timeout", "command", "xcrun", "script", "stdbuf", "setsid"]
+    /// The options `env` has (2026-11): this Mac's (BSD: -0 -i -v, -C -P -S -u with a value) and GNU coreutils' (-0 -i -v, -a -C
+    /// -S -u with a value; the long names below). An option outside these ends what can be read of an `env` command line.
+    enum EnvValue { case none, required, optional }
+    static let envLongOptions: [(name: String, value: EnvValue)] = [
+        ("--ignore-environment", .none), ("--null", .none), ("--unset", .required), ("--chdir", .required), ("--split-string", .required),
+        ("--debug", .none), ("--argv0", .required), ("--block-signal", .optional), ("--default-signal", .optional),
+        ("--ignore-signal", .optional), ("--list-signal-handling", .none), ("--help", .none), ("--version", .none)]
+    static let envOperandOptions: Set<Character> = ["S", "u", "C", "P", "a"]
+    static let envShortOptions: Set<Character> = envOperandOptions.union(["0", "i", "v"])
+    static let envUnreadFlag = "env has an option cl_audit doesn't know: the rest of its command line is hidden (\"…\"), so it couldn't be read in full"
     /// A command word as a program's name: surrounding quotes off, its last path part, lowercased.
     static func programName(_ word: String) -> String {
         var w = Substring(word)
@@ -893,6 +903,7 @@ enum SessionsBackup {
             let program: String? = commandWords.isEmpty || i >= words.count ? nil : words[i]
             // every other word in full (an `env` program's own NAME=value arguments too, counted by name), but a key the scan recognises
             var keyHidden = false, envArgs = program.map { programName($0) == "env" } ?? false, splitNext = false, operandNext = false
+            var unread = false                  // an `env` option it doesn't know: everything after it shows as one "…"
             for (k, w) in words.enumerated().dropFirst(i) {
                 // the operand of an `env` option that takes one (-u NAME, -C dir, -P path): as it is, not the program
                 if operandNext {
@@ -906,24 +917,40 @@ enum SessionsBackup {
                 // options, quotes): it is never shown, only `-S "…"` (the env flag already says to look at what it runs)
                 if k > i, envArgs {
                     if splitNext { splitNext = false; shown.append("\"…\""); continue }
-                    if w.hasPrefix("--"), w.count > 2 {
+                    // "--" ends env's options: as it is (masking goes on)
+                    if w == "--" { shown.append(w); continue }
+                    if w.hasPrefix("--") {
                         // a long option, or any prefix of one that getopt would take (--unse, --split): by its name before "="
                         let name = w.split(separator: "=", maxSplits: 1).first.map(String.init) ?? w
-                        let abbrev = { (full: String) in name.count >= 3 && full.hasPrefix(name) }
-                        if abbrev("--split-string") {
+                        let hits = name.count >= 3 ? envLongOptions.filter { $0.name.hasPrefix(name) } : []
+                        // the one it names (an exact name wins); none, or a prefix of two (getopt refuses it), is unknown
+                        guard let opt = hits.first(where: { $0.name == name }) ?? (hits.count == 1 ? hits[0] : nil),
+                              name == w || opt.value != .none else {
+                            unread = true; shown.append(maskKeys(name).0 + (name == w ? "" : "=…"))
+                            if k < words.count - 1 { shown.append("…") }
+                            break
+                        }
+                        if opt.name == "--split-string" {
                             if name == w { splitNext = true; shown.append(w) } else { shown.append(name + "=…") }
                             continue
                         }
-                        if name == w, abbrev("--unset") || abbrev("--chdir") || abbrev("--argv0") { operandNext = true }
+                        if name == w, opt.value == .required { operandNext = true }
                         shown.append(assignmentMasked(w) ?? w); continue
                     }
                     // a bare "-" is env's old spelling of -i: an option like the rest (masking goes on)
                     if w == "-" { shown.append(w); continue }
                     if w.hasPrefix("-"), w.count > 1 {
                         // a cluster of short options, read left to right: the first that takes a value (S its string; u, C, P, a
-                        // a name or path) takes the rest of the word, or the next word when nothing is left
+                        // a name or path) takes the rest of the word, or the next word when nothing is left. A letter env
+                        // doesn't have, before that, is unknown
                         let opts = w.dropFirst()
-                        if let o = opts.firstIndex(where: { "SuCPa".contains($0) }) {
+                        if let bad = opts.firstIndex(where: { !envShortOptions.contains($0) }),
+                           opts[..<bad].allSatisfy({ !envOperandOptions.contains($0) }) {
+                            unread = true; shown.append("-" + opts[...bad] + (opts.index(after: bad) == opts.endIndex ? "" : "…"))
+                            if k < words.count - 1 { shown.append("…") }
+                            break
+                        }
+                        if let o = opts.firstIndex(where: { envOperandOptions.contains($0) }) {
                             let rest = opts[opts.index(after: o)...]
                             if opts[o] == "S" {
                                 if rest.isEmpty { splitNext = true; shown.append(w) } else { shown.append("-" + opts[..<o] + "S…") }
@@ -935,7 +962,7 @@ enum SessionsBackup {
                             }
                             continue
                         }
-                        shown.append(assignmentMasked(w) ?? w); continue
+                        shown.append(w); continue
                     }
                     if let m = assignmentMasked(w) {
                         if let n = assignment(w) { env.insert(oneLine(n, max: 60)) }
@@ -953,6 +980,7 @@ enum SessionsBackup {
             let loaders = env.filter(isLoaderVariable).sorted()
             if !loaders.isEmpty { flags.append("sets \(loaders.prefix(3).joined(separator: ", "))\(loaders.count > 3 ? ", …" : ""), which \(loaders.count == 1 ? "changes" : "change") what a program loads") }
             if keyHidden { flags.append("an argument looks like a key (shown as ‹a key›): check where it came from") }
+            if unread { flags.append(envUnreadFlag) }
             let whole = oneLine(shown.joined(separator: " "), max: 4001)
             let full = whole.count > 4000 ? String(whole.prefix(3999)) + "…" : whole
             let runs: String

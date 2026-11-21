@@ -255,6 +255,29 @@ MainActor.assumeIsolated {
           && envOptions.filter { !["u-quoted", "w-escaped"].contains($0.name) }.allSatisfy { $0.flags.contains(launcherFlag("env")) }
           && eo["u-quoted"]?.flags == [launcherFlag("npx")] && eo["u-quoted"]?.env == ["E2"],
           "config: env -i, -u NAME, -S \"…\", a packed -S, quoted/dotted/dashed names: no value shown, env flagged: \(envOptions.map { "\($0.name): \($0.runs) \($0.flags)" })")
+    // an env option it doesn't know (it may take a value) ends what can be read: one "…" for the rest, and a flag saying so
+    let unreadFlag = SessionsBackup.envUnreadFlag
+    let envUnknown = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": [
+        "u1-long": ["command": "env", "args": ["--frob", "A3=s1", fakeKey, "prog"]],
+        "u2-short": ["command": "env", "args": ["-iX", "A4=s2", "prog"]],
+        "u3-glued": ["command": "env", "args": ["-xs3", "prog"]],
+        "u4-long-value": ["command": "env", "args": ["--frob=s4", "prog"]],
+        "u5-ambiguous": ["command": "env", "args": ["--i", "A5=s5", "prog"]],
+        "u6-no-value": ["command": "env", "args": ["--null=s6", "prog"]],
+        "u7-last": ["command": "env", "args": ["-i", "--frob"]],
+        "u8-command": ["command": "env -L s7 A6=s8 prog"],
+        "u9-known": ["command": "env", "args": ["-0iv", "--ignore-environment", "--null", "--debug", "--block-signal", "--default-signal=INT", "--ignore-signal",
+                                                "--list-signal-handling", "--chdir", "/d", "-C/e", "--argv0=n", "--ignore-e", "--", "A7=s9", "prog"]]]]))
+    let eu = Dictionary(uniqueKeysWithValues: envUnknown.map { ($0.name, $0) })
+    let euText = "\(envUnknown)"
+    check(eu["u1-long"]?.runs == "env --frob …" && eu["u2-short"]?.runs == "env -iX …" && eu["u3-glued"]?.runs == "env -x… …"
+          && eu["u4-long-value"]?.runs == "env --frob=… …" && eu["u5-ambiguous"]?.runs == "env --i …" && eu["u6-no-value"]?.runs == "env --null=… …"
+          && eu["u7-last"]?.runs == "env -i --frob" && eu["u8-command"]?.runs == "env -L …"
+          && ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", fakeKey].allSatisfy { !euText.contains($0) }
+          && envUnknown.filter { $0.name != "u9-known" }.allSatisfy { $0.flags == [launcherFlag("env"), unreadFlag] }
+          && eu["u9-known"]?.runs == "env -0iv --ignore-environment --null --debug --block-signal --default-signal=… --ignore-signal --list-signal-handling --chdir /d -C/e --argv0=… --ignore-e -- A7=… prog"
+          && eu["u9-known"]?.flags == [launcherFlag("env")] && envOptions.allSatisfy { !$0.flags.contains(unreadFlag) },
+          "config: an env option it doesn't know (long, a short letter in a cluster, glued, ambiguous, a value on one that takes none) hides the rest as one \"…\" and flags the server; every option env has reads as before: \(envUnknown.map { "\($0.name): \($0.runs) \($0.flags)" })")
     let found = Setup.scan(codeDir: codeA, home: home)
     let prompts = found.files.filter { $0.unit.kind == .task }.map(\.rel).sorted()
     check(prompts == ["scheduled-tasks/elsewhere-task/SKILL.md", "scheduled-tasks/nightly-digest/SKILL.md", "scheduled-tasks/orphan-prompt/SKILL.md", "scheduled-tasks/weekly-report/SKILL.md"],
