@@ -107,6 +107,8 @@ if args.count >= 3, args[1] == "--child" {
         print(given != nil && given === p.shownMenu ? "menu kept" : "menu lost")
         guard let m = p.dockMenu() else { print("no menu"); exit(6) }
         print(m === p.shownMenu ? "menu replaced" : "menu not replaced")
+        let tags = m.items.map(\.tag)
+        print(Set(tags).count == tags.count && !tags.contains(0) ? "tags unique" : "tags not unique: \(tags)")
         let titles = m.items.map(\.title)
         print("menu: \(titles.joined(separator: " | "))")
         if let open = m.items.first(where: { $0.title == "Open Claude window" }) { p.picked(open) }
@@ -419,6 +421,7 @@ let menu = child("menu")
 check(clean(menu, "menu") && menu.out.contains("menu: Dock | ") && menu.out.contains("Open Claude window")
       && menu.out.contains("heard: openWindow:\(id)") && !menu.out.contains("@") && log().contains("menu: openWindow"),
       "the plug-in's menu in the Dock's place: built from the record, Open Claude window asks the agent, no tripwire (got \(menu.out))")
+check(menu.out.contains("tags unique"), "each item of the menu has its own non-zero tag (the Dock hands a click back by its tag)")
 check(menu.out.contains("menu kept") && menu.out.contains("menu replaced"),
       "the menu given to the Dock is the one the plug-in keeps, alive after the call (a click comes later), until the next ask")
 

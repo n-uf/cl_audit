@@ -93,6 +93,9 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
                 i.target = self; i.representedObject = act.rawValue; m.addItem(i)
             }
         }
+        // each item its own tag: the Dock hands a click back as the item's tag (_sendDockMenuCommand:withTag:), and items
+        // that all had tag 0 sent every click to the first one, the title row, which does nothing
+        for (n, i) in m.items.enumerated() { i.tag = n + 1 }
         log("menu asked")
         shownMenu = m           // kept until the next ask (shownMenu)
         return m
