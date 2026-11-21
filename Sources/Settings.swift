@@ -1020,7 +1020,7 @@ struct AccountTile: View {
             TileKey(selected: selected, leading: 5) {
                 HStack(spacing: 9) {
                     Image(nsImage: preview(entry, status: Store.status(for: entry), tick: model.tick)).resizable().frame(width: 32, height: 32)
-                    TileText(title: entry.name.isEmpty ? "New profile" : entry.name, sub: sub)
+                    TileText(title: entry.name.isEmpty ? "New profile" : entry.name, sub: sub, lamp: ProfileLED(color: entry.ownColor))
                 }
             }
             .onTapGesture { model.selection = entry.id }
@@ -1064,9 +1064,14 @@ struct TileKey<Content: View>: View {
 struct TileText: View {
     let title: String
     let sub: String
+    /// A profile's tile: its own light before the name (ProfileLED); nil for the General and New profile tiles.
+    var lamp: ProfileLED? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 10.5, weight: .bold)).tracking(1).textCase(.uppercase).lineLimit(1)
+            HStack(spacing: 6) {
+                if let lamp { lamp }
+                Text(title).font(.system(size: 10.5, weight: .bold)).tracking(1).textCase(.uppercase).lineLimit(1)
+            }
             Text(sub).font(.system(size: 10.5)).opacity(0.65).lineLimit(1)
         }
         .fixedSize()

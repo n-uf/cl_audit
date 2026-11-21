@@ -244,7 +244,9 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
 
     /// The account's colour in the launcher, the dashboard (chips, cards, charts) and the panels.
     /// Unset: the icon colour when it's a plain one, else orange.
-    var accentColor: TileColor { accent ?? ([.usage, .graphite].contains(color) ? .orange : color) }
+    /// The profile's own colour, or nil when it has none: no colour picked and its Dock icon coloured by usage (or graphite).
+    var ownColor: TileColor? { accent ?? ([.usage, .graphite].contains(color) ? nil : color) }
+    var accentColor: TileColor { ownColor ?? .orange }
     var accentNSColor: NSColor { accentColor.color(fiveHour: nil, stale: false) }
 
     /// What's wrong with this entry, if anything, in words for the settings window.

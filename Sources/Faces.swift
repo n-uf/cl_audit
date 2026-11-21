@@ -361,11 +361,36 @@ struct LED: View {
     let color: Color
     var lit = true
     var size: CGFloat = 6
+    /// A dark bezel around it (a profile's own light): unlit on a light face it is a deeper off colour, so it reads as
+    /// off, not grey-lit.
+    var bezel = false
     @Environment(\.face) private var face
     var body: some View {
-        Circle().fill(lit ? color : face.ledOff).frame(width: size, height: size)
+        let off = bezel && face.light ? Color.hex(0x4a4744) : face.ledOff
+        Circle().fill(lit ? color : off).frame(width: size, height: size)
             .shadow(color: lit ? color.opacity(0.85) : .clear, radius: 3)
             .overlay(Circle().fill(Color.clear.shadow(.inner(color: .black(lit ? 0 : 0.5), radius: 0.5, y: 0.5))))
+            .overlay { if bezel { Circle().stroke(Color.black.opacity(0.6), lineWidth: 1.5).padding(-0.75) } }
+    }
+}
+
+/// A profile's own light, before its name in the Settings tile bar and on its dashboard card: lit in the profile's colour;
+/// unlit (dark, no glow) for a profile with no colour of its own (its Dock icon coloured by usage). Told from the in-use
+/// lamp (green, on the address line) by its place and its colour.
+struct ProfileLED: View {
+    let color: TileColor?
+    static let size: CGFloat = 7
+
+    /// The light a profile colour gives: its colour and lit, or unlit for none.
+    static func lamp(_ c: TileColor?) -> (color: NSColor?, lit: Bool) {
+        guard let c, c != .usage else { return (nil, false) }
+        return (c.color(fiveHour: nil, stale: false), true)
+    }
+
+    var body: some View {
+        let l = Self.lamp(color)
+        LED(color: l.color.map { Color(nsColor: $0) } ?? .clear, lit: l.lit, size: Self.size, bezel: true)
+            .accessibilityHidden(true)
     }
 }
 

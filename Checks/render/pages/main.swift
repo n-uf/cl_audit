@@ -398,6 +398,39 @@ struct AtlasMenu: View {
     draw("12", page: true)
 }
 
+// ==================================================================== a profile's own light (PROFILE_LED_ONLY=1: this alone)
+// The Settings tile bar (Main orange selected, Work teal, Studio pink, Lab with its Dock icon by usage: unlit) and the dashboard
+// card's name line, on Std and Silver; the lime case: a lime profile's light above the in-use green lamp. pl-*.png.
+MainActor.assumeIsolated {
+    func ledProfile(_ id: String, _ name: String, accent: TileColor?, color: TileColor = .orange, dir: String? = nil) -> AccountEntry {
+        var e = AccountEntry(id: id, name: name, label: name.uppercased(), configDir: dir ?? "~/.claude-\(id)")
+        e.accent = accent; e.color = color
+        return e
+    }
+    let mainP = ledProfile("ledmain", "Main", accent: .orange), workP = ledProfile("ledwork", "Work", accent: .teal)
+    let studioP = ledProfile("ledstudio", "Studio", accent: .pink), labP = ledProfile("ledlab", "Lab", accent: nil, color: .usage)
+    // the lime case on the render world's own signed-in profile (its record names the account in use: the green lamp)
+    let limeP = ledProfile("main", "Lime", accent: .lime, dir: "~/.claude")
+    let model = SettingsModel()
+    let ledActs = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    for f in [Face.std, .silver] {
+        let face = FaceTheme.of(f)
+        func framedL(_ v: some View, _ w: CGFloat) -> some View {
+            v.frame(width: w, alignment: .leading).padding(16).background(face.light ? Color(white: 0.86) : Color(white: 0.1))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .environment(\.face, face).environment(\.colorScheme, face.light ? .light : .dark)
+        }
+        model.accounts = [mainP, workP, studioP, labP]; model.selection = mainP.id
+        snapshot(framedL(ProfileTiles(model: model), 900), "pl-tiles-\(f.rawValue)", 932, 110)
+        for p in [mainP, labP, limeP] {
+            snapshot(framedL(AccountCard(row: cardRow(p), actions: ledActs), 460), "pl-card-\(p.name.lowercased())-\(f.rawValue)", 492, 420)
+        }
+        model.accounts = [limeP]; model.selection = nil
+        snapshot(framedL(ProfileTiles(model: model), 300), "pl-tiles-lime-\(f.rawValue)", 332, 110)
+    }
+}
+if ProcessInfo.processInfo.environment["PROFILE_LED_ONLY"] != nil { print("done"); exit(0) }
+
 if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     MainActor.assumeIsolated { atlasSwitch() }
     print("done"); exit(0)

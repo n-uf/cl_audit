@@ -3822,5 +3822,29 @@ do {
     try? fm.removeItem(atPath: madeDir); try? fm.removeItem(atPath: expand(neverDir))
 }
 
+// a profile's own light (ProfileLED, the Settings tile bar and the dashboard card's name): each colour gives its LED, lit in
+// that colour; a profile with no colour of its own (its Dock icon by usage or graphite, none picked) gives the unlit one
+do {
+    check(TileColor.accents.allSatisfy { c in
+        let l = ProfileLED.lamp(c)
+        return l.lit && l.color == c.color(fiveHour: nil, stale: false)
+    }, "each of the ten colours gives its LED, lit in that colour")
+    check(!ProfileLED.lamp(nil).lit && ProfileLED.lamp(nil).color == nil && !ProfileLED.lamp(.usage).lit,
+          "no colour of its own (or by usage): the unlit LED")
+    var e = AccountEntry(id: "led", name: "Led", label: "LED", configDir: "~/.claude-led")
+    e.accent = nil; e.color = .usage
+    let usage = e.ownColor
+    e.color = .graphite
+    let graphite = e.ownColor
+    e.color = .teal
+    let tile = e.ownColor
+    e.accent = .pink
+    let picked = e.ownColor
+    check(usage == nil && graphite == nil && tile == .teal && picked == .pink && !ProfileLED.lamp(usage).lit && ProfileLED.lamp(picked).lit,
+          "the profile's own colour: its pick, else its Dock icon's colour; none (unlit) for a Dock icon by usage or graphite")
+    e.accent = nil; e.color = .usage
+    check(e.accentColor == .orange, "accentColor keeps its orange for the places that need a colour (charts, keys)")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

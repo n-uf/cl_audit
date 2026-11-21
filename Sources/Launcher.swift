@@ -973,7 +973,7 @@ struct AccountCard: View {
                     // the name on one line; OWN WINDOW beside it, or under it when the card is too narrow (the plan badge
                     // has a fixed width)
                     let name = HStack(spacing: 6) {
-                        Circle().fill(row.accent).frame(width: 8, height: 8)
+                        ProfileLED(color: row.entry.ownColor)
                         Text("Claude \(row.entry.name)").font(.system(size: 14.5, weight: .semibold)).foregroundStyle(face.text)
                             .lineLimit(1).truncationMode(.tail)
                     }
