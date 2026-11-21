@@ -74,6 +74,10 @@ in step 1, nor in step 2 beyond the widget now following the headline exactly.
   "yesterday").
 - **Standby is never read.** A standby account's numbers are never read and show nowhere; the headline is only ever
   asked about the account in use.
+- **One Claude Code folder per profile.** A profile has exactly one Claude Code folder, and a new profile gets a new one;
+  every account of the profile, the one in use and each standby, shares that folder. No hidden, per-account or helper
+  folder is ever made (they would drift apart from the profile's own), so only the account signed in to the folder can be
+  read, which is why standby is never read.
 - **The one owner rule (settled in step 7).** Every "is this the same account / whose account is it" check compares by
   `AccountIdentity.sameAccount`: `matches` (the ids in any case when both have one, never the address then; else the
   address, any case, and the organisation, nil and "" one), except that one side known by its address only (no id, no
