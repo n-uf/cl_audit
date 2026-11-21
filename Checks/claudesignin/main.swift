@@ -608,6 +608,9 @@ do {
     let c = Case("sweeps", login: ["login": "hang"])
     c.start(wanted: wantedID(uuid(1)), lateSweep: 2)          // the late sweep comes 2 s after the end: time to put the profile in first
     spin(until: { c.states.contains(.waitingForBrowser) })
+    // the rest needs the window: a start that ended first says how (its outcome), not just that nothing was swept
+    check("profiles: the sweeps' sign-in opened its window", c.states.contains(.waitingForBrowser) && c.terminal.count == 1,
+          "\(c.states) \(String(describing: c.outcome)) opened \(c.terminal.count)")
     check("profiles: swept at the start", prefs.reads >= 1, "\(prefs.reads)")
     let atStart = prefs.writes
     c.signIn.stop(); c.waitEnd()
