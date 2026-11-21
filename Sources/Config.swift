@@ -309,13 +309,14 @@ enum ClaudeCLI {
     }
 
     /// The one line a sign-in key shows when the folder isn't there as a folder (deleted, or a link): nothing is started
-    /// and nothing is made. nil when the sign-in may go on.
-    static func goneLine(_ configDir: String) -> String? {
+    /// and nothing is made. nil when the sign-in may go on. `nothing`: what didn't happen, for a key that isn't a sign-in
+    /// (the Claude window, Terminal).
+    static func goneLine(_ configDir: String, nothing: String = "nothing was signed in") -> String? {
         guard !FolderGuard.folderReady(configDir) else { return nil }
         var st = stat()
         let there = lstat((configDir as NSString).expandingTildeInPath, &st) == 0
-        return there ? "Its Claude Code folder (\(tilde(configDir))) isn't a plain folder (a link?): nothing was signed in."
-                     : "Its Claude Code folder is gone (\(tilde(configDir))): nothing was signed in."
+        return there ? "Its Claude Code folder (\(tilde(configDir))) isn't a plain folder (a link?): \(nothing)."
+                     : "Its Claude Code folder is gone (\(tilde(configDir))): \(nothing)."
     }
 
     /// The check's seam: replaces the alert of the agent's surfaces (a check records the line).

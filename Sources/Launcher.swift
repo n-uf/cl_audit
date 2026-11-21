@@ -59,9 +59,13 @@ enum Launcher {
             }
             return
         }
+        // its Claude Code folder gone: not started with it (the app's own claude would make it again); asked for by a click,
+        // the alert says why, in the sign-in keys' words
+        guard FolderGuard.mayLaunch("window", account.configDir) else {
+            if activate, let why = ClaudeCLI.goneLine(account.configDir, nothing: "the Claude window wasn't opened") { ClaudeCLI.tellGone(why) }
+            return
+        }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: claudeBundleID) else { return }
-        // its Claude Code folder gone: not started with it (the app's own claude would make it again)
-        guard FolderGuard.mayLaunch("window", account.configDir) else { return }
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.activates = activate
         cfg.createsNewApplicationInstance = !running.isEmpty || account.claudeUserDataDir != nil
@@ -89,6 +93,8 @@ enum Launcher {
 
     /// Opens Terminal running Claude Code with the account's settings folder.
     static func openTerminal(_ account: Account) {
+        // its folder gone: the alert says why, as the sign-in keys do (openTerminal's own guard stays)
+        if let why = ClaudeCLI.goneLine(account.configDir, nothing: "nothing was started") { ClaudeCLI.tellGone(why); return }
         // the look for claude can take a few seconds (login shell): off the main thread
         DispatchQueue.global(qos: .userInitiated).async {
             guard let claude = ClaudeCLI.find() else { ClaudeInstall.showAlert(); return }
