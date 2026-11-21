@@ -413,8 +413,10 @@ final class SwitchRunner: ObservableObject {
             goal = g; end(.reached); return
         }
         guard let claude = model?.requireClaude() else { goal = g; windowDone(); fail(.signIn, model?.noClaudeWhy ?? ClaudeInstall.missing + "."); return }
-        guard ClaudeCLI.openLogin(claude, account: Account(e), email: g.wantedEmail.isEmpty ? nil : g.wantedEmail, marker: g.again ? Self.marker(for: profile) : nil) else {
-            goal = g; windowDone(); fail(.signIn, "Terminal didn't open."); return
+        let started = ClaudeCLI.startLogin(claude, account: Account(e), email: g.wantedEmail.isEmpty ? nil : g.wantedEmail,
+                                           marker: g.again ? Self.marker(for: profile) : nil)
+        guard started == .opened else {
+            goal = g; windowDone(); fail(.signIn, Self.loginWords(started, folder: e.configDir)); return
         }
         goal = g
         phase = .waiting
@@ -449,7 +451,21 @@ final class SwitchRunner: ObservableObject {
         windowNote = entry?.claudeWindow == true ? Self.windowOpenAgain : nil
     }
 
-    static let windowLateClose = "The Claude window was already asked to quit: if it closes, cl_audit opens it again."
+    /// Why Claude Code's sign-in didn't open (ClaudeCLI.startLogin), in the step's words; the folder by its short path.
+    static func loginWords(_ s: ClaudeCLI.LoginStart, folder: String) -> String {
+        switch s {
+        case .opened: return ""
+        case .alreadyOpen:
+            return "A sign-in is already open for \(tilde(folder)): finish it in its Terminal window (or close that window), then Try again."
+        case .cantTell:
+            return "cl_audit couldn't tell whether a sign-in is already open for \(tilde(folder)), so it didn't open another. Try again."
+        case .folderNotReady:
+            return ClaudeCLI.goneLine(folder) ?? "Its Claude Code folder (\(tilde(folder))) isn't ready: nothing was signed in."
+        case .terminalFailed: return "Terminal didn't open."
+        }
+    }
+
+    static let windowLateClose ="The Claude window was already asked to quit: if it closes, cl_audit opens it again."
 
     /// Back to the start, for another switch from the page.
     func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil

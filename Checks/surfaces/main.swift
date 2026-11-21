@@ -893,7 +893,7 @@ do {
         return String(t[r1.lowerBound..<r2.upperBound])
     }
     let launchers: [(String, String, String, String)] = [
-        ("Config.swift", "static func openLogin(", ".startSignIn(", "login"),
+        ("Config.swift", "static func startLogin(", ".startSignIn(", "login"),
         ("SignInWindow.swift", "static func start(", "run.start(", "the sign-in window"),            // (ClaudeSignIn: the guard once, then its own)
         ("Launcher.swift", "static func openClaude(", "openApplication(", "the Claude window"),
         ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal"),
@@ -3936,6 +3936,41 @@ do {
           "the profile's own colour: its pick, else its Dock icon's colour; none (unlit) for a Dock icon by usage or graphite")
     e.accent = nil; e.color = .usage
     check(e.accentColor == .orange, "accentColor keeps its orange for the places that need a colour (charts, keys)")
+}
+
+// why Claude Code's sign-in didn't open (ClaudeCLI.startLogin), each said in the switch's step (SwitchRunner.loginWords):
+// a sign-in already open on the folder, processes that can't be read, a folder that isn't there, Terminal not opening
+do {
+    let dir = "~/.claude-refusal"
+    try? fm.createDirectory(atPath: expand(dir), withIntermediateDirectories: true)
+    let acct = Account(profile("rf", dir, seat(71, "rf@example.com")))
+    let keepTerminal = ClaudeCLI.openTerminal
+    var opened = 0
+    ClaudeCLI.openTerminal = { _ in opened += 1; return true }
+    defer { ClaudeCLI.openTerminal = keepTerminal; ClaudeCLI.loginTableSeam = nil }
+    let me = getuid()
+    let login = ProcessTable.Entry(pid: 901, uid: me, ruid: me, name: "claude",
+                                   launch: ProcessTable.Launch(exe: "/usr/local/bin/claude", args: ["claude", "auth", "login"],
+                                                               configDir: expand(dir), environmentRead: true))
+    ClaudeCLI.loginTableSeam = { [login] }
+    let already = ClaudeCLI.startLogin("/usr/bin/false", account: acct, email: nil)
+    ClaudeCLI.loginTableSeam = { nil }
+    let cantTell = ClaudeCLI.startLogin("/usr/bin/false", account: acct, email: nil)
+    ClaudeCLI.loginTableSeam = { [] }
+    ClaudeCLI.openTerminal = { _ in opened += 1; return false }
+    let terminal = ClaudeCLI.startLogin("/usr/bin/false", account: acct, email: nil)
+    ClaudeCLI.openTerminal = { _ in opened += 1; return true }
+    let ok = ClaudeCLI.startLogin("/usr/bin/false", account: acct, email: nil)
+    let gone = ClaudeCLI.startLogin("/usr/bin/false", account: Account(profile("rg", "~/.claude-refusal-gone", seat(72, "rg@example.com"))), email: nil)
+    check(already == .alreadyOpen && cantTell == .cantTell && terminal == .terminalFailed && ok == .opened && gone == .folderNotReady && opened == 2,
+          "startLogin says why: already open, can't tell, Terminal failed, opened, folder gone (Terminal asked only twice): \(already) \(cantTell) \(terminal) \(ok) \(gone) \(opened)")
+    check(ClaudeCLI.openLogin("/usr/bin/false", account: acct, email: nil) == true, "openLogin is startLogin's .opened")
+    let w = { (s: ClaudeCLI.LoginStart) in SwitchRunner.loginWords(s, folder: dir) }
+    check(w(.alreadyOpen).contains("already open for ~/.claude-refusal") && w(.cantTell).contains("couldn't tell")
+          && w(.terminalFailed) == "Terminal didn't open." && !w(.alreadyOpen).contains("Terminal didn't open")
+          && w(.folderNotReady).contains("~/.claude-refusal"),
+          "the switch's step says each reason, never \"Terminal didn't open\" for a sign-in already open: \(w(.alreadyOpen))")
+    try? fm.removeItem(atPath: expand(dir))
 }
 
 print("checks: \(passed) passed, \(failed) failed")

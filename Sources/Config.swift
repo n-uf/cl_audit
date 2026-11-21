@@ -312,11 +312,29 @@ enum ClaudeCLI {
     /// already in use, where the folder's account doesn't change and so says nothing (SwitchRunner.swift).
     @discardableResult
     static func openLogin(_ claude: String, account: Account, email: String?, marker: URL? = nil, creating: Bool = false) -> Bool {
+        startLogin(claude, account: account, email: email, marker: marker, creating: creating) == .opened
+    }
+
+    /// How a start of Claude Code's sign-in in Terminal went: opened, or why nothing was opened.
+    enum LoginStart: Equatable {
+        case opened
+        case alreadyOpen            // a sign-in is open on the folder already (this app's sign-in window, or any `claude auth login`)
+        case cantTell               // the processes couldn't be read, so whether one is open can't be told (fail closed)
+        case folderNotReady         // the folder isn't there as a plain folder (FolderGuard)
+        case terminalFailed         // the script couldn't be written, or Terminal didn't open it
+    }
+
+    /// openLogin, saying why when nothing was opened.
+    static func startLogin(_ claude: String, account: Account, email: String?, marker: URL? = nil, creating: Bool = false) -> LoginStart {
         // one sign-in at a time on a folder: refused while this app's sign-in window (SignInWindow) runs there, or the
-        // kernel shows a `claude auth login` on it (any starter's), or the processes can't be read: false, nothing opened
-        guard !loginRuns(on: account.configDir) else { return false }
+        // kernel shows a `claude auth login` on it (any starter's), or the processes can't be read: nothing opened
+        switch loginState(on: account.configDir) {
+        case .runs: return .alreadyOpen
+        case .unknown: return .cantTell
+        case .none: break
+        }
         // never through a link; a brand-new folder is made here (FolderGuard), never by ClaudeAuth
-        guard FolderGuard.mayLaunch("login", account.configDir, creating: creating) else { return false }
+        guard FolderGuard.mayLaunch("login", account.configDir, creating: creating) else { return .folderNotReady }
         // ClaudeAuth writes the script (owner only from the start, never through a link) and opens it; the guard above
         // already said yes
         var tools = authTools
@@ -324,16 +342,30 @@ enum ClaudeCLI {
         tools.openTerminal = { openTerminal($0) }
         return Authenticator(account.authFolder, tools: tools)
             .startSignIn(claude: claude, email: email, script: loginScript(account.configDir), marker: marker,
-                         shown: tilde(account.configDir), done: doneWords, failed: failedWords) == .done
+                         shown: tilde(account.configDir), done: doneWords, failed: failedWords) == .done ? .opened : .terminalFailed
     }
 
     /// A sign-in is already open on this folder: this app's sign-in window (SignInWindow) or a `claude auth login` the kernel
     /// shows on it; also true when the processes can't be read (fail closed).
-    static func loginRuns(on configDir: String) -> Bool {
-        if SignInWindow.runs(on: configDir) { return true }
-        guard let table = ProcessTable.table() else { return true }
-        return loginOn(table, folder: configDir)
+    static func loginRuns(on configDir: String) -> Bool { loginState(on: configDir) != .none }
+
+    enum LoginState: Equatable { case none, runs, unknown }
+
+    /// Whether a sign-in is open on this folder (loginRuns), with "can't tell" apart: the processes couldn't be read.
+    static func loginState(on configDir: String) -> LoginState {
+        if SignInWindow.runs(on: configDir) { return .runs }
+        guard let table = loginTable() else { return .unknown }
+        return loginOn(table, folder: configDir) ? .runs : .none
     }
+
+    #if CL_AUDIT_TESTING
+    /// The processes loginState looks through, for a check (a hand-made table, or none: can't be read). A seam only a test
+    /// build has (-D CL_AUDIT_TESTING): the shipped app always reads the kernel's table.
+    nonisolated(unsafe) static var loginTableSeam: (() -> [ProcessTable.Entry]?)?
+    private static func loginTable() -> [ProcessTable.Entry]? { loginTableSeam.map { $0() } ?? ProcessTable.table() }
+    #else
+    private static func loginTable() -> [ProcessTable.Entry]? { ProcessTable.table() }
+    #endif
 
     /// A `claude auth login` of the table that is on this folder: by its CLAUDE_CONFIG_DIR where the kernel gave the
     /// environment (unset: the default folder; an absolute path: compared as a folder). One whose folder can't be told (no
