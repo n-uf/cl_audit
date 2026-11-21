@@ -925,16 +925,26 @@ do {
                           dstTask: #"{"id":"t1","cron":"0 9 * * *","enabled":false},{"id":"t1","cron":"other"}"#)
     check(SwitchEngine.taskProblem(source: dupe.src, target: dupe.dst) == "two of the new account's scheduled tasks share an id",
           "an id twice in the new account's file: refused")
-    // a twin the target gets after the plan: the move checks the bytes it joins, and both task files stay as they were
+    // a twin the target gets after the plan: the move checks the bytes it joins before any session moves; both task files
+    // stay as they were, the task's session stays with its task, the free one moves, and the switch finishes saying why
     let late = taskSwitch("tc12", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: "")
     guard case .success(let pl) = SwitchEngine.plan(late.e, standby: late.e.standby[0], dataDir: late.wd, owned: []) else { check(false, "plan tc12"); exit(1) }
-    check(pl.tasks == 1, "tc12: the plan moves the task")
+    check(pl.tasks == 1 && pl.move.contains("local_\(uuid(962)).json") && pl.held.isEmpty, "tc12: the plan moves the task and its session")
     put("\(late.dst)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1","cron":"0 10 * * *"}],"recordedSkips":{"t1":{"n":1}}}"#)
     let lateBefore = (bytes(late.src + "/scheduled-tasks.json"), bytes(late.dst + "/scheduled-tasks.json"))
     var lateWhy = ""
-    do { _ = try SwitchEngine.run(pl, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc12")) } catch { lateWhy = "\(error)" }
-    check(lateWhy.contains("other settings") && bytes(late.src + "/scheduled-tasks.json") == lateBefore.0 && bytes(late.dst + "/scheduled-tasks.json") == lateBefore.1,
-          "a twin made after the plan: the run stops, both scheduled-tasks.json byte for byte (\(lateWhy))")
+    var lateR: SwitchReceipt?
+    do { lateR = try SwitchEngine.run(pl, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc12")) } catch { lateWhy = "\(error)" }
+    check(lateWhy.isEmpty && lateR?.finished != nil, "a twin made after the plan: the switch finishes, not stopped part way (\(lateWhy))")
+    check(bytes(late.src + "/scheduled-tasks.json") == lateBefore.0 && bytes(late.dst + "/scheduled-tasks.json") == lateBefore.1
+          && lateR?.tasksMoved == nil && lateR?.steps.contains { $0.kind == .tasks } == false,
+          "…both scheduled-tasks.json byte for byte, no task step written")
+    check(fm.fileExists(atPath: "\(late.src)/local_\(uuid(962)).json") && !fm.fileExists(atPath: "\(late.dst)/local_\(uuid(962)).json")
+          && fm.fileExists(atPath: "\(late.dst)/local_\(uuid(961)).json") && !fm.fileExists(atPath: "\(late.src)/local_\(uuid(961)).json"),
+          "…the task's session stays with its task, the free one moves")
+    check(lateR?.problems.contains { $0.contains("scheduled tasks stay where they were, and so do their sessions") && $0.contains("other settings") } == true,
+          "…and the receipt says why: \(lateR?.problems ?? [])")
+    if let lateR { SwitchEngine.markLinked(lateR.id) }
     // an entry that can't be read whole (too large here): held like an owned one, but said apart, never "Claude Code is running"
     let big = taskSwitch("tc7", from: tA, to: tB, srcTask: "", dstTask: "")
     put("\(big.src)/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)

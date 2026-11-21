@@ -9,6 +9,7 @@ the notes before updating.
 ## Unreleased
 
 - Dock icons no longer run as apps just to show the usage: the Dock now draws each profile's usage itself, so a Dock icon has no running dot and no ⌘-Tab entry until you click it, and a click opens it as before. Its open dot for the Claude window stays. After an update, or for a new profile, a Dock icon app may start once for about a minute so the Dock can use it. If the Dock still can't draw it (Dock Tiles turned off under Login Items & Extensions in System Settings, say), the Dock icon app runs as before, about two minutes after cl_audit starts, until the Dock draws it again.
+- When the new account gets a differing copy of a scheduled task in the moment between Switch and the move itself, the switch no longer stops part way with that task's sessions moved and the task left behind: the tasks are now settled before any session moves, so they stay together with their sessions, the other sessions move, and the switch finishes saying why the tasks stayed.
 
 ## 26.11.75 — 2026-11-21
 

@@ -158,25 +158,50 @@ enum SessionTransfer {
 
     // MARK: moving
 
-    /// Moves `entries`, then the tasks (when `tasks` > 0), then clears the moved sessions' Remote Control pointers.
-    /// `work`: the caller's own folder for this transfer (parked originals in work/parked, the task files' backups).
+    /// Moves the tasks (when `tasks` > 0) first, then `entries`, then clears the moved sessions' Remote Control pointers.
+    /// The tasks are decided before any session moves: when they stay where they are (a twin the new account got since the
+    /// plan, a file that changed, a backup that couldn't be made: nothing of them written), the sessions of those tasks stay
+    /// with them and the rest move, as when the plan held them; never a task's sessions in one account and the task in the
+    /// other. `work`: the caller's own folder for this transfer (parked originals in work/parked, the task files' backups).
     /// `windowClosed` is asked before every step: the window must stay closed. `save` writes the record down.
     static func move<R: TransferRecord>(_ s: Scopes, entries: [String], tasks: Int, record r: inout R, work: URL,
                                         windowClosed: () -> Bool, save: (R) throws -> Void) throws {
         try FileManager.default.createDirectory(atPath: s.targetDir, withIntermediateDirectories: true)
+        // the scheduled tasks, also when there's no session to move
+        guard windowClosed() else { throw SwitchError.windowOpen }
+        var stayed: Set<String> = []                 // the ids of tasks that stayed: their sessions stay with them
+        if tasks > 0, !TaskRegistry.tasks(in: s.sourceDir).isEmpty {
+            do { try moveTasks(s, backups: work, &r, save: save) }
+            catch let stay as TasksStayed {
+                stayed = stay.ids
+                r.problems.append("The scheduled tasks stay where they were, and so do their sessions: \(stay.why).")
+                try save(r)
+            }
+        }
         for name in entries {
             guard windowClosed() else { throw SwitchError.windowOpen }
+            if !stayed.isEmpty, let task = taskID(of: name, s), stayed.contains(task) { continue }    // held with its task
             do { try moveEntry(name, s, parked: work.appendingPathComponent("parked"), &r, save: save) }
             catch { r.problems.append("\(name) didn't move: \(error)."); try save(r) }
         }
-        // the scheduled tasks, also when there's no session to move
-        guard windowClosed() else { throw SwitchError.windowOpen }
-        if tasks > 0, !TaskRegistry.tasks(in: s.sourceDir).isEmpty { try moveTasks(s, backups: work, &r, save: save) }
         let placedPaths = r.steps.filter { $0.kind == .entry && $0.done }.map(\.path)
         for path in placedPaths {
             guard windowClosed() else { throw SwitchError.windowOpen }
             clearPointer(entryPath: path, s, &r, save: save)
         }
+    }
+
+    /// The scheduled task a session entry belongs to (its scheduledTaskId), or nil; read as sort() reads it.
+    private static func taskID(of name: String, _ s: Scopes) -> String? {
+        guard let data = SafeRead.whole((s.sourceDir as NSString).appendingPathComponent(name), max: SafeRead.entryMax) else { return nil }
+        return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["scheduledTaskId"] as? String
+    }
+
+    /// The tasks stayed where they were, nothing of them written and none of their steps left in the record: `why` says
+    /// why, `ids` are the source's task ids (their sessions stay with them).
+    struct TasksStayed: Error {
+        let why: String
+        let ids: Set<String>
     }
 
     /// One entry: written down, placed, checked, then its original parked. A check that fails after placing takes the
@@ -221,38 +246,50 @@ enum SessionTransfer {
     /// the source keeps none. Both files are backed up and both steps written down first; the source is emptied before the
     /// target gets them, so a stop in between never leaves a task in both accounts (it would run twice). Each file is
     /// written through TaskRegistry's compare-and-swap: only while it is still as it was read here; a target that changed
-    /// meanwhile or can't be written puts the source back as it was and stops there: the tasks stay where they were, and
-    /// their steps leave the record (nothing of them to undo).
+    /// meanwhile or can't be written puts the source back as it was: the tasks stay where they were, and their steps leave
+    /// the record (nothing of them to undo). Every way the tasks stay with nothing of them written throws TasksStayed (the
+    /// caller then holds their sessions too); a source that can't be put back throws SwitchError (the switch stops, for Undo).
     private static func moveTasks<R: TransferRecord>(_ s: Scopes, backups: URL, _ r: inout R, save: (R) throws -> Void) throws {
         let fm = FileManager.default
         let srcFile = TaskRegistry.path(s.sourceDir), dstFile = TaskRegistry.path(s.targetDir)
         TaskRegistry.sweep(s.sourceDir); TaskRegistry.sweep(s.targetDir)          // a temp an earlier stop left
         // the two files as they are now: what each write must still find
+        // the source's task ids as decided below: when the tasks stay, their sessions stay with them
+        let ids = Set(TaskRegistry.tasks(in: s.sourceDir).compactMap { $0["id"] as? String })
         guard case .success(let srcBytes) = TaskRegistry.current(srcFile), case .success(let dstBytes) = TaskRegistry.current(dstFile) else {
-            throw SwitchError.failed("a scheduled-tasks.json isn't a plain file")
+            throw TasksStayed(why: "a scheduled-tasks.json isn't a plain file", ids: ids)
         }
         func object(_ d: Data?) -> [String: Any]? { d.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } }
+        let moving = Set(((object(srcBytes)?["scheduledTasks"] as? [[String: Any]]) ?? []).compactMap { $0["id"] as? String }).union(ids)
         // the twin rule again, on the very bytes joined below: a twin the target got since the plan (made before the window
         // closed) would otherwise drop the source's task for the target's; nothing of the tasks is written then
         if let b = TaskRegistry.twinCheck(source: object(srcBytes), sourceThere: srcBytes != nil,
                                           target: object(dstBytes), targetThere: dstBytes != nil) {
-            throw SwitchError.failed("the scheduled tasks stay where they were: \(b.words)")
+            throw TasksStayed(why: b.words, ids: moving)
         }
         let joined = TaskRegistry.joined(source: object(srcBytes) ?? [:], target: object(dstBytes) ?? ["scheduledTasks": [[String: Any]]()])
         var writes: [(file: String, data: Data, expected: Data?, step: Int)] = []
-        for (file, json, was, tag) in [(srcFile, joined.source, srcBytes, "source"), (dstFile, joined.target, dstBytes, "target")] {
-            let existed = was != nil
-            let backup = backups.appendingPathComponent("scheduled-tasks.\(tag).json").path
-            // the backup is the very bytes read (never a copy made later, which a link swapped in meanwhile could redirect)
-            if let was {
-                try? fm.removeItem(atPath: backup)
-                guard CreateOnly.write(was, as: backup, temp: backup + ".tmp", sync: true) == .created else {
-                    throw SwitchError.failed("couldn't back up scheduled-tasks.json")
+        let first = r.steps.count
+        do {
+            for (file, json, was, tag) in [(srcFile, joined.source, srcBytes, "source"), (dstFile, joined.target, dstBytes, "target")] {
+                let existed = was != nil
+                let backup = backups.appendingPathComponent("scheduled-tasks.\(tag).json").path
+                // the backup is the very bytes read (never a copy made later, which a link swapped in meanwhile could redirect)
+                if let was {
+                    try? fm.removeItem(atPath: backup)
+                    guard CreateOnly.write(was, as: backup, temp: backup + ".tmp", sync: true) == .created else {
+                        throw SwitchError.failed("couldn't back up scheduled-tasks.json")
+                    }
                 }
+                let data = try TaskRegistry.encode(json)
+                r.steps.append(TransferStep(kind: .tasks, path: file, sha: SwitchEngine.sha(data), parked: existed ? backup : nil, existed: existed))
+                writes.append((file, data, was, r.steps.count - 1))
             }
-            let data = try TaskRegistry.encode(json)
-            r.steps.append(TransferStep(kind: .tasks, path: file, sha: SwitchEngine.sha(data), parked: existed ? backup : nil, existed: existed))
-            writes.append((file, data, was, r.steps.count - 1))
+        } catch {
+            // nothing of the tasks written: their steps and backups go, and they stay where they were
+            for step in r.steps[first...] { if let b = step.parked { try? fm.removeItem(atPath: b) } }
+            r.steps.removeSubrange(first...)
+            throw TasksStayed(why: "\(error)", ids: moving)
         }
         r.tasksMoved = joined.moved.count
         try save(r)                                                  // both written down before either file changes
@@ -276,8 +313,12 @@ enum SessionTransfer {
                     r.steps[w.step].refused = true                     // this file's write was refused: nothing of it to undo
                 }
                 try? save(r)
-                if case .failed(let why) = wrote { throw SwitchError.failed(why) }
-                throw SwitchError.failed("scheduled-tasks.json changed during the switch; the tasks stay where they were")
+                let why: String
+                if case .failed(let w) = wrote { why = w } else { why = "scheduled-tasks.json changed during the switch" }
+                // put back: nothing of the tasks changed, they stay with their sessions; not put back: the source was
+                // emptied and the target didn't take them (they're in the backup): the switch stops, for Undo
+                if putBack { throw TasksStayed(why: why, ids: moving) }
+                throw SwitchError.failed("\(why); the tasks are in this switch's backup: Undo puts them back")
             }
             r.steps[w.step].done = true
             try save(r)
