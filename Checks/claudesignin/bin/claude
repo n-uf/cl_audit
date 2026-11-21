@@ -16,8 +16,10 @@ if [ "${1:-}" != auth ] || [ "${2:-}" != login ]; then exit 64; fi
 conf="${CL_LOGIN_CONF:?}"
 val() { sed -n "s/^$1=//p" "$conf" 2>/dev/null | head -1; }
 mode="$(val login)"; mode="${mode:-ok}"
-printf '%s\n' "$$" > "$conf.pid"
-{ printf 'ARG [%s]\n' "$@"; printf 'ENV CLAUDE_CONFIG_DIR=%s\n' "${CLAUDE_CONFIG_DIR-<unset>}"; printf 'ENV KEY=%s\n' "${ANTHROPIC_API_KEY-<unset>}"; } > "$conf.args"
+# how it was called first, whole (written aside, then moved in), and its pid last: the checks read the args once the pid is up
+{ printf 'ARG [%s]\n' "$@"; printf 'ENV CLAUDE_CONFIG_DIR=%s\n' "${CLAUDE_CONFIG_DIR-<unset>}"; printf 'ENV KEY=%s\n' "${ANTHROPIC_API_KEY-<unset>}"; } > "$conf.args.new"
+mv "$conf.args.new" "$conf.args"
+printf '%s\n' "$$" > "$conf.pid.new"; mv "$conf.pid.new" "$conf.pid"
 wait_forever() { while :; do sleep 0.1; done; }
 case "$mode" in
   ok)
