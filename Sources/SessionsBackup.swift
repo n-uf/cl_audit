@@ -234,7 +234,7 @@ enum SessionsBackup {
 
     private static func randomHex() -> String {
         #if CL_AUDIT_TESTING
-        if let n = hexPool { return String(format: "%04x", Int.random(in: 0..<n)) }
+        if let n = hexPool { return String(format: "%04x", Int.random(in: 0..<max(1, n))) }
         #endif
         return UUID().uuidString.prefix(4).lowercased()
     }
@@ -260,7 +260,8 @@ enum SessionsBackup {
     /// test build (compiled with -D CL_AUDIT_TESTING) has it.
     nonisolated(unsafe) static var nextIDs: [String] = []
     /// A check's seam: newID's random part is drawn from this many values (0000, 0001 …), so its draws repeat often, as 4 hex
-    /// characters do over many backups. Keep it above the number of names a check asks for in one second.
+    /// characters do over many backups (0 or less counts as 1). Keep it above the number of names a check asks for in one
+    /// second: once every value of that second is taken, newID looks for a free one for ever.
     nonisolated(unsafe) static var hexPool: Int? = nil
     #endif
 

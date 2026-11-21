@@ -2914,8 +2914,9 @@ MainActor.assumeIsolated {
     check(Set(ids).count == ids.count && ids.allSatisfy(SessionsBackup.validID) && Set(ids.map { $0.prefix(15) }).count == 1,
           "3000 names for one second: all different, all in the usual form, all of that second")
     // as a switch does (the name taken first and written down) and as Back up now does (make picks it for its `now`), in the next
-    // second, the random part drawn from 200 values only (seam hexPool): 80 draws repeat one almost surely (all differ about once in
-    // 100 million runs), so only newID's memory of the names it gave keeps them apart
+    // second, the random part drawn from 200 values only (seam hexPool): 80 draws repeat one almost surely, so only newID's memory
+    // of the names it gave keeps them apart. Without that fix this check would pass by luck about once in 100 million runs (80
+    // draws all different); with it, every run
     let second2 = second.addingTimeInterval(1)
     SessionsBackup.hexPool = 200
     var made: [SessionsBackup.Manifest] = [], failed: [String] = []
