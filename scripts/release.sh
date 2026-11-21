@@ -67,9 +67,9 @@ git tag -a "v$next" -m "cl_audit $next"
 echo "released $next (commit and tag v$next)"
 
 if [ $push = 1 ]; then
-  git push -q origin main
-  git push -q origin "v$next"
-  echo "pushed main and v$next"
+  # The app is built, packed and checked FIRST: main and the tag are pushed only once the files to publish are ready, so a
+  # failed build, zip or disk image leaves nothing pushed (the commit and tag stay local: fix it, then
+  # `git tag -d v$next && git reset --hard HEAD~1` and run this again, or push and publish by hand once it builds).
 
   # The ready-built app for direct download. The file name never changes, so
   # https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip always gets the newest.
@@ -105,6 +105,15 @@ if [ $push = 1 ]; then
   app="$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" /Applications/Claude.app/Contents/Info.plist 2>/dev/null)"
   checked="Checked with Claude Code ${cc:-?} and the Claude app ${app:-?}. A newer Claude version can change how Claude Code saves its login or the usage figures; if something stops working, update cl_audit."
   echo "$checked  (update README ▸ Install and the site's checkedWith if these changed)"
+
+  # the files are ready: now main and the tag go out, then the release that names the tag
+  git push -q origin main
+  git push -q origin "v$next"
+  echo "pushed main and v$next"
+  # a release that can't be published (gh missing, signed out, the network) leaves a pushed tag with no release: say the one
+  # line that publishes it by hand, with the files already in dist/
+  manual="gh release create v$next dist/cl_audit.zip dist/cl_audit.dmg --repo n-uf/cl_audit --title \"cl_audit $next\" --notes-file <(awk -v h=\"## $next \" 'index(\$0, h) == 1 {f=1; next} /^## /{f=0} f' CHANGELOG.md)"
+  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ "${published:-0}" = 1 ] || echo "the GitHub Release wasn'"'"'t published; publish it by hand: $manual" >&2' EXIT
   gh release create "v$next" dist/cl_audit.zip dist/cl_audit.dmg --repo n-uf/cl_audit --title "cl_audit $next" --notes "$section
 
 ---
@@ -116,5 +125,6 @@ $checked
 Also as a disk image: \`cl_audit.dmg\` below. Open it and drag cl_audit onto Applications.
 
 SHA-256: \`cl_audit.zip\` $zip_sha · \`cl_audit.dmg\` $dmg_sha"
+  published=1
   echo "published the GitHub Release v$next with cl_audit.zip and cl_audit.dmg"
 fi
