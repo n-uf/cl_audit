@@ -288,7 +288,10 @@ struct SwitchPage: View {
         let row = inUseRow
         let detail = Self.inUseDetail(plan: row.show.plan)
         let limits = row.limits
-        return AccountBox(lamp: row.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: row.lit ? .ok : .warn, detail: detail) {
+        // the in-use well, as in Settings ▸ Accounts; resting (the unlit shade) while a standby box below is the selected one,
+        // so only one box is dark
+        return AccountBox(lamp: row.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: row.lit ? .ok : .warn, detail: detail,
+                          inUse: true, rest: !again && runner.phase != .reached) {
             Text(Privacy.masked(Self.inUseName(row.show, expected: row.status?.expectedEmail))).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
         } content: {
