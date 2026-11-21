@@ -66,8 +66,10 @@ awk -v v="$next" -v d="$today" '
   { print }' CHANGELOG.md > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
 printf '%s\n' "$next" > VERSION
 
+before="$(git rev-parse HEAD)"          # (main before the release commit: a failed build's way back)
 git add VERSION CHANGELOG.md
 git commit -q -m "release $next"
+released="$(git rev-parse HEAD)"
 git tag -a "v$next" -m "cl_audit $next"
 echo "released $next (commit and tag v$next)"
 
@@ -80,9 +82,20 @@ if [ $push = 1 ]; then
   # https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip always gets the newest.
   stage="$(mktemp -d)"
   # whatever fails from here on, no image stays mounted and no temp folder stays behind; a failure before the push says how to
-  # take back the release commit and tag, at that moment only: the tree was clean before the release commit (checked above),
-  # so a hard reset then drops nothing else, while one run after a fix would drop the fix too
-  trap 'rc=$?; hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ $rc = 0 ] || echo "nothing was pushed; the release commit and the tag v$next are local only. Take them back now, before any fix: git tag -d v$next && git reset --hard HEAD~1  then fix it and run this again" >&2' EXIT
+  # take back the release commit and tag, to run at once, before any fix. The command stands alone on its line (a copy of
+  # it carries nothing else), names the commits by their ids (something may commit to main during the long build: then
+  # only the release commit is taken out), and keeps the tree's changes (--keep, never --hard)
+  undo_hint() {
+    echo "nothing was pushed; the release commit ${released:0:12} and the tag v$next are local only. Take them back now, before any fix:" >&2
+    if [ "$(git rev-parse HEAD)" = "$released" ]; then
+      echo "git tag -d v$next && git reset --keep $before" >&2
+    else
+      echo "git tag -d v$next && git rebase --onto $before $released" >&2
+      echo "(main has commits on top of the release commit since: that takes out the release commit only)" >&2
+    fi
+    echo "Then fix it and run this again." >&2
+  }
+  trap 'rc=$?; hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ $rc = 0 ] || undo_hint' EXIT
   # One build at a time on this Mac: the build lock installs and checks take too, held from the build until the app is
   # copied out of build/, so the zip and the disk image always hold the app this build made (never another's).
   /usr/bin/lockf -k /private/tmp/cl_audit-build.lock bash -c './build.sh --no-install >/dev/null && ditto build/cl_audit.app "$1/cl_audit.app"' _ "$stage"
