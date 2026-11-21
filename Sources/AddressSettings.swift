@@ -3,6 +3,11 @@
 // is missing and removed at the next write), announced to every process with the distributed note
 // `local.usage-n-uf.privacy-changed`. A missing setting means the addresses are hidden.
 //
+// The default (`settleDefault`, once, in the settings app's own start-up): an install that was already set up when this
+// version first starts (its profiles file is there) keeps showing what it showed before, so `showEmails` = true is written
+// once; a fresh install (no profiles file) gets `showEmails` = false written, so it stays hidden for good, also after its
+// first profile is made. A key that is there (the new one or the legacy `blurEmails`) is never touched.
+//
 // With it off, no address is shown anywhere in clear: not its first letter, its length or its domain. A view draws one fixed
 // blurred stand-in (the address itself only while the pointer is on it), a sentence says "hidden address", and the
 // launcher, dashboard, Dock panels and Dock menus leave an address out (`hidesEmail`).
@@ -18,20 +23,40 @@ import SwiftUI
 enum AddressSettings {
     /// The preferences key (true = addresses shown); a move's settings carry it too (SessionsMove).
     static let key = "showEmails"
+    /// The earlier, inverted key (true = hidden).
+    static let legacyKey = "blurEmails"
+
+    /// Whether this process is the settings app (the domain's own process).
+    static var isSettingsApp: Bool { Bundle.main.bundleIdentifier == Installer.managerID }
 
     /// Where the setting lives. The settings app is the domain's own process, so it reads and writes its standard defaults (the
     /// same domain; an app asking for a suite named like itself is not guaranteed one); every other process reads the suite.
-    static let store = makeStore(prefs: Bundle.main.bundleIdentifier == Installer.managerID ? UserDefaults.standard : nil)
+    static let store = makeStore(prefs: isSettingsApp ? UserDefaults.standard : nil)
 
     /// The setting's store: `showEmails` in the `local.usage-n-uf` domain (true = shown), the older inverted `blurEmails`, the
     /// change note. `prefs`: where the booleans live, nil: that domain (a check passes a dictionary of its own).
     static func makeStore(prefs: AddressPrefs?) -> AddressDefaultsStore {
         AddressDefaultsStore(suite: Installer.managerID, key: key, valueMeansShown: true,
-                             legacyKey: "blurEmails", changeNote: "local.usage-n-uf.privacy-changed", prefs: prefs)
+                             legacyKey: legacyKey, changeNote: "local.usage-n-uf.privacy-changed", prefs: prefs)
+    }
+
+    /// The default, settled once. Neither `showEmails` nor `blurEmails` is stored (the first start of the version that has the
+    /// setting): an install that was already set up (`setUp`: its profiles file is there) keeps what it saw before, the addresses
+    /// shown (`showEmails` = true), and a fresh install is written hidden (`showEmails` = false), so a profile made later never
+    /// turns them on. Written through the store, so it posts the change note. A stored key, of either sense, is never changed.
+    /// Returns what it wrote (true = shown), nil when it left the setting alone. Only the settings app calls it (`start`): it is
+    /// the domain's own process, so no icon app or agent ever races it (the others hear the change note).
+    @discardableResult
+    static func settleDefault(prefs: AddressPrefs, store: AddressDefaultsStore, setUp: Bool) -> Bool? {
+        guard prefs.addressBool(key) == nil, prefs.addressBool(legacyKey) == nil else { return nil }
+        store.blurAddresses = !setUp
+        return setUp
     }
 
     /// At launch, in every process that shows an address: the module reads its setting here, and reloads on each change note.
+    /// The settings app first settles the default (`settleDefault`) for an install that has no setting yet.
     static func start() {
+        if isSettingsApp { settleDefault(prefs: UserDefaults.standard, store: store, setUp: Store.exists) }
         AddressPrivacy.shared.store = store
         store.observe()
     }
@@ -55,6 +80,12 @@ enum AddressSettings {
     /// other processes. Nothing happens when it is what this Mac has already.
     static func take(shown: Bool) {
         if AddressPrivacy.shared.blur == shown { AddressPrivacy.shared.setBlur(!shown) }
+    }
+
+    /// The setting as `store` has it now (its key, else the older one, else hidden), taken as above: after a move's import or its
+    /// Undo has written the preference directly (MoveLive.reload), whatever it left, a missing key (hidden) included.
+    static func takeStored(_ from: AddressDefaultsStore = store) {
+        take(shown: !from.blurAddresses)
     }
 }
 
@@ -99,6 +130,6 @@ struct ShowEmailsSwitch: View {
             Text("Show emails").font(.system(size: 12)).foregroundStyle(.secondary)
             SSwitch(isOn: Binding(get: { !privacy.blur }, set: { privacy.setBlur(!$0) }), on: "", off: "")   // its label is before it
         }
-        .help("Off: email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred here in Settings (hover to see one).")
+        .help("Off: email addresses are left out of the launcher, dashboard, panels and Dock menus. Here in Settings and in the Switch menus each one is a blurred stand-in, the same for every account (point at it to read it), and a sentence says \"hidden address\".")
     }
 }

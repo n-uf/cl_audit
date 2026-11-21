@@ -284,7 +284,7 @@ enum SessionsMove {
     /// its backup settings. None holds a secret.
     static let known: [Known] = [
         Known(key: "face", label: "Face", store: .general, kind: .choice(Face.allCases.map { ($0.rawValue, $0.title) }), def: Face.std.rawValue),
-        Known(key: AddressSettings.key, label: "Emails", store: .general, kind: .bool(on: "shown", off: "hidden"), def: "true"),
+        Known(key: AddressSettings.key, label: "Emails", store: .general, kind: .bool(on: "shown", off: "hidden"), def: "false"),      // (not stored: hidden, as AddressSettings reads it)
         Known(key: DashboardPrefs.historyKey, label: "Usage history", store: .general, kind: .bool(on: "on", off: "off"), def: "true"),
         Known(key: "dashboardCardStyle", label: "Dashboard cards", store: .general, kind: .choice(PanelDesign.allCases.map { ($0.rawValue, $0.title) }), def: PanelDesign.segments.rawValue),
         Known(key: "dashboardRange", label: "History period", store: .general, kind: .choice(StatsRange.allCases.map { ($0.rawValue, $0.title) }), def: StatsRange.week.rawValue),
@@ -321,7 +321,14 @@ enum SessionsMove {
 
     /// The setting as it is on this Mac, written like the file writes it.
     static func current(_ k: Known) -> String {
-        guard let v = prefStore(k.store).object(forKey: k.key) else { return k.def }
+        guard let v = prefStore(k.store).object(forKey: k.key) else {
+            // Emails: as AddressSettings reads it with its key missing, the older inverted key if it is there, else hidden (the
+            // settings app writes the key at its first start, AddressSettings.settleDefault, so on a Mac in use it is there)
+            if k.key == AddressSettings.key, let blurred = bool(prefStore(k.store).object(forKey: AddressSettings.legacyKey)) {
+                return blurred ? "false" : "true"
+            }
+            return k.def
+        }
         if case .bool = k.kind, !isBool(v), let n = v as? NSNumber { return n.boolValue ? "true" : "false" }      // (a plain 0/1 number)
         return normalized(k, v) ?? k.def
     }
@@ -772,7 +779,8 @@ enum MoveWords {
     /// The done page's steps for one made profile: the accounts to sign in to, the Dock, and where its tasks are turned on.
     static func steps(_ m: SessionsMove.Made, tasks: Int = 0) -> [String] {
         var out: [String] = []
-        let who = m.signIns.joined(separator: ", ")
+        // (the file's addresses as the setting says them now: the receipt keeps them, the sentence is made here)
+        let who = m.signIns.map { AddressSettings.words($0) }.joined(separator: ", ")
         out.append("Sign in to \(m.signIns.count == 1 ? "its account" : "each of its \(m.signIns.count) accounts") (\(who)): Settings ▸ \(m.name) ▸ Claude Code ▸ Accounts ▸ Sign in with another account…. Nothing is signed in yet.")
         out.append(m.inDock ? "Put it in the Dock: Settings ▸ \(m.name) ▸ Dock icon ▸ Usage in the Dock, or the key here. It had a Dock icon on the other Mac."
                    : "It had no Dock icon on the other Mac; Settings ▸ \(m.name) ▸ Dock icon ▸ Usage in the Dock turns one on.")

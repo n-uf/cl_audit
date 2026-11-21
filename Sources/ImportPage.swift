@@ -46,7 +46,7 @@ enum MoveLive {
     static func reload() {
         guard let d = SessionsMove.prefs as? UserDefaults, d === UserDefaults.standard else { return }
         FacePrefs.shared.face = Face(rawValue: d.string(forKey: "face") ?? "") ?? .std
-        if d.object(forKey: AddressSettings.key) != nil { AddressSettings.take(shown: d.bool(forKey: AddressSettings.key)) }   // (through the store: it tells the other processes)
+        AddressSettings.takeStored()        // the setting as stored now, also after Undo took its key away (through the store: it tells the other processes)
         let dash = DashboardPrefs.shared
         dash.cardStyle = PanelDesign(rawValue: d.string(forKey: "dashboardCardStyle") ?? "") ?? .segments
         dash.range = StatsRange(rawValue: d.string(forKey: "dashboardRange") ?? "") ?? .week
