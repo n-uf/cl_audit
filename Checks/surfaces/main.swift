@@ -3337,7 +3337,7 @@ do {
     // the plan card's line: "Will stay with" until something moved (a receipt), also while closing and after a Cancel back
     // to Ready (during Closing, and while waiting when the plan moved nothing); "Left with" once it moved
     let rr = SwitchRunner(profile: "sw", model: SettingsModel())
-    func cardLeft() -> String? { SwitchPage.leftInPlan(left: rr.leftNote, moved: rr.receipt != nil, plan: rr.planned) }
+    func cardLeft() -> String? { SwitchPage.leftInPlan(left: rr.leftNote, moved: SwitchPage.movedForPlanLine(receipt: rr.receipt, phase: rr.phase), plan: rr.planned) }
     rr.preview(.closing, goal: nil, planned: p, left: SwitchRunner.leftBehind(p))
     check(cardLeft() == will, "closing: the card still says Will stay with: \(cardLeft() ?? "nil")")
     rr.cancel()
@@ -3349,6 +3349,11 @@ do {
     receipt.steps = []
     rr.preview(.waiting, goal: nil, planned: p, receipt: receipt, left: SwitchRunner.leftBehind(p))
     check(cardLeft() == left, "after a move: Left with: \(cardLeft() ?? "nil")")
+    // back at Ready with an unfinished receipt kept (a reset): the card describes the next switch's plan again
+    check(SwitchPage.movedForPlanLine(receipt: receipt, phase: .ready) == false && SwitchPage.movedForPlanLine(receipt: receipt, phase: .waiting)
+          && !SwitchPage.movedForPlanLine(receipt: nil, phase: .waiting)
+          && SwitchPage.leftInPlan(left: nil, moved: SwitchPage.movedForPlanLine(receipt: receipt, phase: .ready), plan: p) == will,
+          "Ready with a kept receipt: Will stay with, from the plan")
     var held = p; held.held = ["s1"]
     check(SwitchRunner.stayWords(held) == SwitchRunner.heldWords(1) && SwitchPage.noteLine(SwitchRunner.stayWords(held), SwitchPage.leftShown(left, movedNothing: true)) == SwitchRunner.heldWords(1)
           && SwitchPage.noteLine(SwitchRunner.stayWords(held), left) == SwitchRunner.heldWords(1) + " " + left && SwitchPage.noteLine(nil, nil) == nil,

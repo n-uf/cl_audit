@@ -415,6 +415,10 @@ struct SwitchPage: View {
         moved ? left : leftBefore(plan, started: false)
     }
 
+    /// Whether the plan card's line is past tense: a receipt, while it isn't back at Ready. At Ready the card shows the plan
+    /// of the next switch ("Will stay with"), also when a reset kept an unfinished receipt (whose leftNote went with it).
+    static func movedForPlanLine(receipt: SwitchReceipt?, phase: SwitchRunner.Phase) -> Bool { receipt != nil && phase != .ready }
+
     /// The one note line: what the move said (moveNote), then what stayed (the runner's leftNote, or before Switch leftBefore); nil when none.
     static func noteLine(_ note: String?, _ left: String?) -> String? {
         let parts = [note, left].compactMap { $0 }
@@ -517,7 +521,7 @@ struct SwitchPage: View {
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
             SRowLine(text: Self.staysLine(from: from, name: name, moveBack: movesBack,
                                           owner: backNote == nil ? view.clash : backNote?.owner))
-            if let n = Self.noteLine(runner.moveNote, Self.leftInPlan(left: runner.leftNote, moved: runner.receipt != nil, plan: plan)) { SRowLine(text: n) }
+            if let n = Self.noteLine(runner.moveNote, Self.leftInPlan(left: runner.leftNote, moved: Self.movedForPlanLine(receipt: runner.receipt, phase: runner.phase), plan: plan)) { SRowLine(text: n) }
             if let w = runner.windowNote { SRowLine(text: w) }               // (a Cancel's late-close watch, said here too)
         }
     }
