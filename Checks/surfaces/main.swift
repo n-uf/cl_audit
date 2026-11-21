@@ -648,11 +648,16 @@ do {
     let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
     for f in (try? fm.contentsOfDirectory(atPath: src.path)) ?? [] where f.hasSuffix(".swift") {
         let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
-        // (openLogin, and the sign-in window ClaudeSignIn runs: SignInWindow.start)
-        for l in t.components(separatedBy: "\n") where (l.contains("openLogin(") || l.contains("SignInWindow.start(")) && l.contains("creating: true") { creators.append(f) }
+        // (openLogin, and the sign-in window ClaudeSignIn runs: SignInWindow.start, named with the function it is in)
+        var inFunc = ""
+        for l in t.components(separatedBy: "\n") {
+            if let r = l.range(of: #"func (\w+)"#, options: .regularExpression) { inFunc = String(l[r].dropFirst(5)) }
+            if l.contains("openLogin(") && l.contains("creating: true") { creators.append(f) }
+            if l.contains("SignInWindow.start(") && l.contains("creating: true") { creators.append("\(f):\(inFunc)") }
+        }
     }
-    // (New profile's two Sign in keys are SettingsModel.startNewSignIn's one call, in Settings.swift)
-    check(Set(creators) == ["Settings.swift", "FirstRun.swift", "DefaultProfileRunner.swift"] && creators.count == 3,
+    // (New profile's two Sign in keys are SettingsModel.startNewSignIn's one call: the window's only creating start)
+    check(Set(creators) == ["Settings.swift:startNewSignIn", "FirstRun.swift", "DefaultProfileRunner.swift"] && creators.count == 3,
           "only New profile, first run and the default profile's offer sign in with creating: \(creators)")
     FolderGuard.launchSeam = nil
 }
@@ -3070,6 +3075,13 @@ do {
         }
         return true
     }
+    // Terminal's kept profiles: this suite's own in-memory stand-in, set here and not left to SignInWindow's guess from the home folder
+    // (never this Mac's real preferences). The window's guard reads the REAL process table (ClaudeSignIn has no injectable one): it
+    // refuses while another session's stand-in `claude auth login` whose folder can't be told runs at the same moment, which
+    // would fail this check (it waits 10 s) until that one ends.
+    let keepProfiles = SignInWindow.terminalProfiles
+    SignInWindow.terminalProfiles = TerminalProfiles(read: { nil }, write: { _ in })
+    defer { SignInWindow.terminalProfiles = keepProfiles }
     let clashModel = SettingsModel(); clashModel.accounts = [noSeat, other]
     AccountSettings(entry: .constant(noSeat), model: clashModel).signInAgain(email: settingsAddress)
     let opened = Date().addingTimeInterval(10)
