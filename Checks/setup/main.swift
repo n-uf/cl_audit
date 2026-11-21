@@ -181,6 +181,56 @@ MainActor.assumeIsolated {
     // (the leak check for everything that is not setup still runs: only profiles/pN/setup/ is exempt)
     check(read(oi.tree.path + "/export.json")?.contains("me@example.com") == false, "export: the structure files hold no address")
 
+    // ---- hdiutil's second try (two exports of one name collide on the volume name): a stand-in for hdiutil fails the first create;
+    // the export tries once more under a volume name of its own and is made; when both fail, the first reason is kept if the
+    // second gives none, and with no reason at all the message says so
+    do {
+        let fake = home + "/hdiutil-stand-in", calls = home + "/hdiutil-calls"
+        try? fm.removeItem(atPath: fake); try? fm.removeItem(atPath: calls)
+        try! fm.createDirectory(atPath: calls, withIntermediateDirectories: true)
+        write(fake, """
+        #!/bin/sh
+        # a stand-in for hdiutil: the first call fails as the mode says, later ones run hdiutil (or fail too)
+        d='\(calls)'
+        n=$(ls "$d" | grep -c '^args-'); n=$((n + 1))
+        for a in "$@"; do printf '%s\\n' "$a"; done > "$d/args-$n"
+        mode=$(cat "$d/mode")
+        if [ "$n" = 1 ]; then
+          [ "$mode" = silent ] || echo "resource busy (made up)" >&2
+          exit 1
+        fi
+        [ "$mode" = once ] && exec /usr/bin/hdiutil "$@"
+        exit 1
+        """)
+        chmod(fake, 0o755)
+        let keep = SessionsExport.hdiutilPath
+        SessionsExport.hdiutilPath = fake
+        defer { SessionsExport.hdiutilPath = keep }
+        func attempt(_ mode: String) -> (made: Bool, why: String, volnames: [String]) {
+            for f in names(calls) { unlink(calls + "/" + f) }
+            write(calls + "/mode", mode)
+            let url = URL(fileURLWithPath: out + "/E2-retry-\(mode).dmg")
+            try? fm.removeItem(at: url)
+            var why = ""
+            do { _ = try SessionsExport.run(SessionsExport.Job(parts: [part], keys: .keep, password: pw, destination: url, rootName: "e2-retry", place: eplace)) }
+            catch { why = "\(error)" }
+            let vols = names(calls).filter { $0.hasPrefix("args-") }.sorted().compactMap { f -> String? in
+                let a = (read(calls + "/" + f) ?? "").split(separator: "\n").map(String.init)
+                return a.firstIndex(of: "-volname").flatMap { $0 + 1 < a.count ? a[$0 + 1] : nil }
+            }
+            return (why.isEmpty && fm.fileExists(atPath: url.path), why, vols)
+        }
+        let once = attempt("once")
+        check(once.made && once.volnames.count == 2 && once.volnames[0] == "e2-retry" && once.volnames[1].hasPrefix("e2-retry ") && once.volnames[1] != once.volnames[0],
+              "export (image): hdiutil failing once, the second try under a volume name of its own makes it: \(once.why) \(once.volnames)")
+        let quiet = attempt("quiet-second")
+        check(!quiet.made && quiet.volnames.count == 2 && quiet.why.contains("resource busy (made up)"),
+              "export (image): both tries failing, the second with no reason: the first one's reason is said: \(quiet.why)")
+        let silent = attempt("silent")
+        check(!silent.made && silent.why.contains("hdiutil gave no reason, status 1"), "export (image): no reason from either: the message says so: \(silent.why)")
+        check(!names(out).contains { $0.hasPrefix(".E2-retry") }, "export (image): no temp file is left by the failed tries: \(names(out).filter { $0.hasPrefix(".") })")
+    }
+
     // ---- a hook script inside a skill: the skill is as sensitive as the script (a zip leaves it out, the image carries it as the skill)
     do {
         let c4 = e2 + "/.claude-e2h"

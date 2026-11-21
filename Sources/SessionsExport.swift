@@ -449,6 +449,8 @@ enum SessionsExport {
     /// A check's seam: called with each setup file's copy (in the backup the export is made from) just before it is copied
     /// in, so a check can make one go missing there. Never set in the app.
     nonisolated(unsafe) static var beforeSetupCopy: ((String) -> Void)? = nil
+    /// The hdiutil an encrypted export runs: a check's seam (a stand-in that fails the first try). Never changed in the app.
+    nonisolated(unsafe) static var hdiutilPath = "/usr/bin/hdiutil"
 
     /// One profile to export: from where it is now (`source`), or from a backup of it.
     struct Part {
@@ -1128,7 +1130,7 @@ enum SessionsExport {
             func make(_ volname: String) throws -> (status: Int32, err: String) {
                 let args = ["create", "-srcfolder", root.deletingLastPathComponent().path, "-volname", volname, "-fs", "APFS", "-format", "UDZO",
                             "-encryption", "AES-256", "-stdinpass", "-quiet", tmp.path]
-                guard let r = Tool.run("/usr/bin/hdiutil", args, stdin: Data(npw.utf8), secret: npw, cancel: cancel, poll: watch) else { throw ArchiveError("hdiutil couldn't start.") }
+                guard let r = Tool.run(SessionsExport.hdiutilPath, args, stdin: Data(npw.utf8), secret: npw, cancel: cancel, poll: watch) else { throw ArchiveError("hdiutil couldn't start.") }
                 if r.cancelled { throw ArchiveError("Stopped.") }
                 return (r.status, r.err.trimmingCharacters(in: .whitespacesAndNewlines))
             }
