@@ -3865,7 +3865,9 @@ do {
           "Claude window row help, folder never made: no kept words, no path, says it asks for a sign-in on its first start")
     check(stdInfo.contains("are kept") && stdInfo.contains("Its data folder: \(FolderKey.standardDataDir)."),
           "Claude window row help, the usual app: kept words and the usual data folder")
-
+    let unnamedOn = DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: "", windowOn: true)
+    check(unnamedOn.contains("Its data folder: none named yet.") && !unnamedOn.contains("made when the window is turned on"),
+          "Claude window row help, window on with no folder named (an older profile): \"none named yet\", never \"made when turned on\"")
 
     func offNote(_ e: AccountEntry) -> String? {
         var on = e; on.claudeWindow = true
