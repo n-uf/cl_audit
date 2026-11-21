@@ -114,10 +114,11 @@ enum NewAccountSetup {
 
     static func exists(_ path: String) -> Bool { !path.isEmpty && FileManager.default.fileExists(atPath: expand(path)) }
 
-    /// The Claude Code folder is in place (created, or an existing one connected) and so is the window's data folder.
+    /// The Claude Code folder is in place (created, or an existing one connected) and so is the window's data folder,
+    /// which only a profile with a Claude window gets (createOrConnect makes it only then).
     static func foldersReady(_ d: NewAccountDraft) -> Bool {
         let config = d.source == .existing ? d.connected : exists(d.configDir)
-        return config && (d.window != .separate || exists(d.dataDir))
+        return config && (d.window != .separate || !d.claudeWindow || exists(d.dataDir))
     }
 
     static func linksReady(_ d: NewAccountDraft) -> Bool {
