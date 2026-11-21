@@ -122,10 +122,14 @@ enum AppSignIn {
     static let maxListed = 256
 
     /// The newest claude-code-sessions/<account>/<org> folder in the data folder: its organisation (lower case), or nil.
-    /// Names and times only, at most `maxListed` entries; a link (the account's folder or an org's) is never followed.
+    /// Names and times only, at most `maxListed` entries; a link (claude-code-sessions itself, the account's folder or an
+    /// org's) is never followed.
     static func sessionsOrg(dataDir: String, account: String) -> String? {
+        let dir = (dataDir as NSString).expandingTildeInPath
+        var st = stat()
+        guard lstat((dir as NSString).appendingPathComponent("claude-code-sessions"), &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR else { return nil }
         var best: (org: String, at: Date)?
-        for s in ClaudeFiles.sessionScopes(dataDir: (dataDir as NSString).expandingTildeInPath, account: account, limit: maxListed)
+        for s in ClaudeFiles.sessionScopes(dataDir: dir, account: account, limit: maxListed)
             where best.map({ s.modified > $0.at }) ?? true { best = (s.organization.lowercased(), s.modified) }
         return best?.org
     }

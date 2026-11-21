@@ -236,6 +236,11 @@ do {
     try? fm.createDirectory(atPath: linked.data + "/claude-code-sessions", withIntermediateDirectories: true)
     try? fm.createSymbolicLink(atPath: linked.data + "/claude-code-sessions/\(a)", withDestinationPath: sess)
     check(read(linked).org == nil && read(linked).account == a, "the account's sessions folder is a link: not followed, no organisation")
+    let rootLinked = home("a2-rootlinked", log: Array(story[1...2]), config: a)
+    try? fm.createSymbolicLink(atPath: rootLinked.data + "/claude-code-sessions", withDestinationPath: noLine.data + "/claude-code-sessions")
+    check(read(rootLinked).org == nil && read(rootLinked).account == a && AppSignIn.sessionsOrg(dataDir: rootLinked.data, account: a) == nil
+          && AppSignIn.sessionsOrg(dataDir: noLine.data, account: a) == uuid(402),
+          "claude-code-sessions itself a link (to a folder with A's organisations): not followed, no organisation")
     // no config.json: the log's own account line decides, as before
     let noConfig = home("a2-noconfig", log: story, config: nil)
     check(read(noConfig).account == b && read(noConfig).org == ob && read(noConfig).state == .known, "no config.json: the log's newest init line decides, as before")
