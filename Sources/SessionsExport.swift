@@ -1430,13 +1430,14 @@ enum SessionsExport {
             // whose CLAUDE.md, include or skill was left out (a key, the image) would be an include nothing names, which an import
             // refuses, the whole file with it. The import's own closure decides, over what really landed.
             var landed = Set<String>()
+            var gone = false                    // a file went missing while it was copied
             func copyUnit(_ u: Setup.Unit, _ list: [SessionsBackup.Item]) throws {
                 for it in list {
                     let src = b.dir.appendingPathComponent(it.path).path
                     let dst = try create(it.path)
                     switch SessionsBackup.copyOne(src, dst, single: true) {
                     case .cloned, .copied: break
-                    case .gone: leftOut += 1; continue
+                    case .gone: leftOut += 1; gone = true; continue
                     case .failed(let why): throw ArchiveError("couldn't copy \((src as NSString).lastPathComponent) (\(why))")
                     }
                     chmod(dst, 0o600)
@@ -1460,6 +1461,26 @@ enum SessionsExport {
                     if cancel() { throw ArchiveError("Stopped.") }
                     guard reached.contains(u.name) else { setupNames.append("\(SetupRow.title(u)) (left out with what includes it)"); leftOut += list.count; continue }
                     try copyUnit(u, list)
+                }
+                // a file that went missing while it was copied names nothing in the file: an include only it reached would be one
+                // nothing names, which an import refuses, the whole file with it. The closure again, over what really landed, and
+                // what it no longer reaches is taken out again.
+                if gone {
+                    let still = Setup.includeClosure(carried: landed) { rel in
+                        SafeFiles.readPlain(b.dir.appendingPathComponent("setup/" + rel).path, max: 4 << 20)
+                    }
+                    for (u, list) in includes where landed.contains(u.name) && !still.contains(u.name) {
+                        for it in list {
+                            let path = (out.path as NSString).appendingPathComponent(it.path)
+                            if let i = items.firstIndex(where: { $0.role == .setup && $0.path == it.path }) {
+                                po.bytes -= items[i].bytes; cloned -= 1; items.remove(at: i)
+                            }
+                            unlink(path)
+                            landed.remove(String(it.path.dropFirst(6)))
+                        }
+                        po.setupUnits.removeAll { $0 == u }
+                        setupNames.append("\(SetupRow.title(u)) (left out with what includes it)"); leftOut += list.count
+                    }
                 }
             }
         }
