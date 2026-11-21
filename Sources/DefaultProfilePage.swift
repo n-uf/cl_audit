@@ -283,7 +283,21 @@ struct DefaultProfilePage: View {
 
     // MARK: steps
 
-    private enum StepState { case pending, current, done }
+    private enum StepState { case pending, current, done, stopped, left }
+
+    /// At .moving, its restore stopped part way, being undone or left as it is (the top line says which): what step 3 and the
+    /// Result say then, in the top line's words, never a spinner or "working…" while nothing runs. nil: it moves, or another phase.
+    private struct Halt { var step: String; var result: String; var state: StepState }
+
+    private var halt: Halt? {
+        guard runner.phase == .moving else { return nil }
+        switch runner.inner?.phase {
+        case .stopped?: return Halt(step: "Stopped part way · what came back is kept", result: "Stopped part way: what came back is kept. Finish or Undo it on the restore's page.", state: .stopped)
+        case .undoing?: return Halt(step: "Undoing · taking back what came back", result: "Undoing: taking back what came back.", state: .current)
+        case .left?: return Halt(step: "Left as it is · what the move did stays as it is", result: "Left as it is: what the move did stays as it is.", state: .left)
+        default: return nil
+        }
+    }
 
     private func states() -> [StepState] {
         let count = stepCount
@@ -295,7 +309,7 @@ struct DefaultProfilePage: View {
         case .signingIn: upTo(0, current: 0)
         case .closing, .backingUp: upTo(w ? 0 : 1, current: w ? 0 : 1)
         // windowOnly: the backups, the profile switched to the usual app (saved before the restore), then the restore
-        case .moving: upTo(w ? 2 : 2, current: 2)
+        case .moving: upTo(w ? 2 : 2, current: 2); if let h = halt { out[2] = h.state }
         case .done: upTo(3, current: w ? nil : (runner.oldDone ? nil : 3)); if !w, runner.oldDone { out[3] = .done }
         }
         return out
@@ -304,13 +318,21 @@ struct DefaultProfilePage: View {
     private var stepsCard: some View {
         let st = states()
         let list = DefaultProfile.steps(s)
+        let h = halt
         return SCard(title: "Steps", info: "Cancel works until the first file is written; a stopped move keeps what is back (Finish or Undo on the restore's page). Undo this move is meant to take back what it added and put the window kind back; it may not bring everything back.") {
             VStack(alignment: .leading, spacing: 9) {
                 ForEach(Array(list.enumerated()), id: \.offset) { i, text in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         marker(st[i])
-                        Text("\(i + 1) · \(text)").font(.system(size: 12)).foregroundStyle(st[i] == .pending ? face.muted : face.text)
-                            .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("\(i + 1) · \(text)").font(.system(size: 12)).foregroundStyle(st[i] == .pending ? face.muted : face.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if i == 2, let h {
+                                Text(h.step).font(.system(size: 11)).foregroundStyle(h.state == .stopped ? face.caution : face.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 if let note = runner.note { Text(note).font(.system(size: 11)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true) }
@@ -328,6 +350,8 @@ struct DefaultProfilePage: View {
         case .done: Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(FaceTheme.ledOn)
         case .current: ProgressView().controlSize(.mini)
         case .pending: Image(systemName: "circle").font(.system(size: 12)).foregroundStyle(face.muted)
+        case .stopped: Image(systemName: "exclamationmark.circle.fill").font(.system(size: 12)).foregroundStyle(face.caution)
+        case .left: Image(systemName: "minus.circle").font(.system(size: 12)).foregroundStyle(face.muted)
         }
     }
 
@@ -337,8 +361,12 @@ struct DefaultProfilePage: View {
         if runner.phase == .done || runner.phase == .moving {
             SCard(title: "Result", info: "What the restore wrote (its receipt is in cl_audit's folder, restores/): what is back, what stayed as it was, and what Undo takes back.") {
                 VStack(alignment: .leading, spacing: 8) {
-                    // by the receipt: what the restore wrote, not what the preview counted
-                    if let r = runner.inner?.receipt {
+                    // by the receipt: what the restore wrote, not what the preview counted. Stopped, undoing or left: the top
+                    // line's words first (and, where nothing runs, what it wrote so far)
+                    if let h = halt {
+                        value(h.result)
+                        if h.state != .current, let r = runner.inner?.receipt { value("What it wrote: " + Self.resultWords(r)) }
+                    } else if let r = runner.inner?.receipt {
                         value(Self.resultWords(r))
                     } else if runner.phase == .moving {
                         value("working…")
