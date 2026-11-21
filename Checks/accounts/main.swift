@@ -1841,12 +1841,12 @@ do {
         DefaultProfile.Record(id: id, kind: .otherFolder, profile: "ordp", oldProfile: "ordo", created: true, backup: "b-\(id)",
                               backupPlace: "/x", started: t, receipt: "r-\(id)")
     }
-    for id in ["F0000000-0000-4000-8000-000000000000", "10000000-0000-4000-8000-000000000000", "80000000-0000-4000-8000-000000000000"] {
+    for id in ["ffffffff-1111-4222-8333-444444444444", "aaaaaaaa-1111-4222-8333-444444444444", "cccccccc-1111-4222-8333-444444444444"] {
         DefaultProfile.save(mv(id))
     }
     DefaultProfile.forgetCache()
-    check(DefaultProfile.all().map(\.id.first) == ["F", "1", "8"] && DefaultProfile.standing(profile: "ordp")?.id.first == "8"
-          && DefaultProfile.unfinished(involving: "ordp")?.id.first == "8",
+    check(DefaultProfile.all().map(\.id.first) == ["f", "a", "c"] && DefaultProfile.standing(profile: "ordp")?.id.first == "c"
+          && DefaultProfile.unfinished(involving: "ordp")?.id.first == "c",
           "default-profile moves of one second: all() oldest first in the order made, standing and unfinished the last made (\(DefaultProfile.all().map(\.id.first)))")
     try? fm.removeItem(at: DefaultProfile.folder)
     if hadMoves { try? fm.moveItem(at: movesAside, to: DefaultProfile.folder) }
