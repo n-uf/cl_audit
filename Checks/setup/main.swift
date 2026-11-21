@@ -866,11 +866,11 @@ MainActor.assumeIsolated {
         check(cdsPaths.count == 20_000 + 150 && took4 < quick,
               "scripts: 150 cds of 2,000 different relative tokens each: 20,000 resolved in all, in a moment (\(cdsPaths.count) paths in \(String(format: "%.2f", took4)) s)")
         // the setup row's ~: only where the home folder is a whole path's start
-        check(SetupRow.tildeHome("node /Users/ann/a.js --log /Users/ann", home: "/Users/ann") == "node ~/a.js --log ~"
-              && SetupRow.tildeHome("node /Users/anna/a.js /x/Users/ann/b", home: "/Users/ann") == "node /Users/anna/a.js /x/Users/ann/b"
-              && SetupRow.tildeHome("sh \"/Users/ann/x y.sh\"", home: "/Users/ann") == "sh \"~/x y.sh\""
-              && SetupRow.tildeHome("PATH=/Users/ann:/usr/bin x --dir=/Users/ann,y", home: "/Users/ann") == "PATH=~:/usr/bin x --dir=~,y",
-              "setup row: the home folder becomes ~ only as a path's start, never inside /Users/anna or another path")
+        check(SetupRow.tildeHome("node /home/ann/a.js --log /home/ann", home: "/home/ann") == "node ~/a.js --log ~"
+              && SetupRow.tildeHome("node /home/anna/a.js /x/home/ann/b", home: "/home/ann") == "node /home/anna/a.js /x/home/ann/b"
+              && SetupRow.tildeHome("sh \"/home/ann/x y.sh\"", home: "/home/ann") == "sh \"~/x y.sh\""
+              && SetupRow.tildeHome("PATH=/home/ann:/usr/bin x --dir=/home/ann,y", home: "/home/ann") == "PATH=~:/usr/bin x --dir=~,y",
+              "setup row: the home folder becomes ~ only as a path's start, never inside /home/anna or another path")
         // an export's names: two of the backup's names that become the same once an address is replaced get free names, one
         // folder level at a time; the same backup name always gets the same name (a session's transcript and folder stay together)
         var names = SessionsExport.Names()
