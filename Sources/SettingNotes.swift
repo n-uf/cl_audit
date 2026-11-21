@@ -109,7 +109,7 @@ enum SettingNotes {
     static func emails(_ on: Bool) -> SettingNote {
         SettingNote(title: "Show emails · \(on ? "on" : "off")", text: on
             ? "Email addresses show everywhere in cl_audit."
-            : "Email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings, for screen sharing.")
+            : "Email addresses are left out of the launcher, dashboard, panels and Dock menus. In Settings and the Switch menus each one is a blurred stand-in, and sentences say “hidden address”, for screen sharing.")
     }
 }
 
