@@ -718,6 +718,22 @@ MainActor.assumeIsolated {
         let cdNamed = Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh", "other/run.sh"])
         check(cdNamed == ["skills/guard/run.sh", "skills/shared/lib.sh"],
               "scripts: cd ~/.claude/skills/guard && ./run.sh names run.sh (and ../shared/lib.sh); a ./ with no cd before it, or a bare word, names nothing: \(cdNamed.sorted())")
+        // where a cd's folder ends: at the `)` of its subshell, after `||` (run when the cd may have failed); a quoted folder whole
+        func cdPaths(_ command: String) -> [String] {
+            let j = try! JSONSerialization.data(withJSONObject: ["hooks": ["Stop": [["hooks": [["type": "command", "command": command]]]]]])
+            return Setup.commandPaths(inSettings: j, home: home)
+        }
+        let sk = home + "/.claude/skills"
+        check(cdPaths("(cd ~/.claude/skills/a && ./x.sh); ./y.sh") == [sk + "/a", sk + "/a/x.sh"],
+              "scripts: (cd …/a && ./x.sh); ./y.sh: x.sh in a, y.sh after the subshell nowhere: \(cdPaths("(cd ~/.claude/skills/a && ./x.sh); ./y.sh"))")
+        check(cdPaths("cd ~/.claude/skills/a && (./x.sh) && ./y.sh") == [sk + "/a", sk + "/a/x.sh", sk + "/a/y.sh"],
+              "scripts: a subshell after the cd keeps its folder, and so does what follows it")
+        check(cdPaths("cd ~/.claude/skills/a || ./z.sh") == [sk + "/a"], "scripts: cd …/a || ./z.sh: z.sh runs when the cd failed, so it is named nowhere")
+        check(cdPaths(#"cd "$HOME/.claude/skills/a b" && ./q.sh"#) == [sk + "/a b", sk + "/a b/q.sh"]
+              && cdPaths("cd '/opt/x y/z' && ./q.sh") == ["/opt/x y/z", "/opt/x y/z/q.sh"],
+              "scripts: a quoted cd folder with a space is read whole: \(cdPaths(#"cd "$HOME/.claude/skills/a b" && ./q.sh"#))")
+        check(cdPaths("cd && ./h.sh") == [home + "/h.sh"] && cdPaths("bash -c 'cd' ./h.sh").isEmpty,
+              "scripts: a bare cd goes home; a cd ended by its own quote isn't taken for a quoted folder")
         // a crafted settings.json of one very deep path, and a cd to a very long one followed by many ./ tokens: both quick
         let deep = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/\#(String(repeating: "a/", count: 400_000))x.sh"}]}]}}"#.utf8)
         let longCd = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd /\#(String(repeating: "b", count: 2_000_000)) && \#(String(repeating: "./a ", count: 200_000))"}]}]}}"#.utf8)

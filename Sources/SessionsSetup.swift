@@ -673,10 +673,15 @@ enum Setup {
     /// The absolute paths named in the commands of a settings.json: tokens that start with `~/`, `$HOME/`, `${HOME}/` or `/`, and a
     /// `./` or `../` one after a `cd` to such a folder in the same command (`cd ~/.claude/skills/x && ./run.sh`); any other relative
     /// one depends on where the command runs, so it isn't guessed. The command is split on spaces, quotes and shell punctuation; each
-    /// token is expanded against `home`.
+    /// token is expanded against `home`. A cd's folder in quotes is read whole (`cd "/a b/c"`); a cd inside `( … )` ends at its `)`,
+    /// and after `||` (run when what came before failed, the cd perhaps) the folder isn't known.
     static func commandPaths(inSettings data: Data, home: String) -> [String] {
         var out: [String] = [], seen = Set<String>()     // (a set, so a crafted settings.json of a million paths stays quick)
-        let seps = CharacterSet(charactersIn: " \t\n\"'`;|&()<>=,{}")
+        // the separators, ASCII all (the command is read as UTF-8 bytes: quick for a crafted 8 MB one)
+        var sep = [Bool](repeating: false, count: 256)
+        for c in " \t\n\"'`;|&()<>=,{}".utf8 { sep[Int(c)] = true }
+        let blank: Set<UInt8> = [0x20, 0x09, 0x0A], quotes: Set<UInt8> = [0x22, 0x27]
+        let open = UInt8(ascii: "("), close = UInt8(ascii: ")"), bar = UInt8(ascii: "|")
         func absolute(_ raw: String) -> String? {
             var t = raw
             if t.hasPrefix("~/") { t = home + String(t.dropFirst(1)) }
@@ -692,18 +697,38 @@ enum Setup {
             // the folder a `cd` goes to, normalised once (nil: one it can't tell, or longer than any real path); each relative token
             // after it resolved once, at most `perCd` of them per cd and `inAll` for the whole file
             var cwd: String? = nil, afterCd = false, resolved = Set<String>()
-            for raw in cmd.components(separatedBy: seps) where !raw.isEmpty {
+            var saved: [String?] = []           // the folder at each open `(`: a subshell's cd ends at its `)`
+            func take(_ raw: String) {
                 if afterCd { afterCd = false; cwd = raw.utf8.count <= 1024 ? absolute(raw).map(normalize) : nil; resolved = [] }
-                if raw == "cd" { afterCd = true; continue }
+                if raw == "cd" { afterCd = true; return }
                 var t = absolute(raw)
                 if t == nil, let d = cwd, raw.hasPrefix("./") || raw.hasPrefix("../"), raw.utf8.count <= 1024,
                    resolved.count < perCd, resolvedInAll < inAll, resolved.insert(raw).inserted {
                     resolvedInAll += 1
                     t = normalize(d + "/" + raw)
                 }
-                guard let p = t else { continue }
+                guard let p = t else { return }
                 if seen.insert(p).inserted { out.append(p) }
             }
+            let b = Array(cmd.utf8)
+            var i = 0, start = 0
+            while i < b.count {
+                let c = b[i]
+                guard sep[Int(c)] else { i += 1; continue }
+                if start < i { take(String(decoding: b[start..<i], as: UTF8.self)) }
+                // a cd's folder in quotes, after a blank: up to its closing quote, spaces and all (none: the quote is a separator)
+                if afterCd, quotes.contains(c), i > 0, blank.contains(b[i - 1]),
+                   let end = b[(i + 1)...].firstIndex(of: c) {
+                    take(String(decoding: b[(i + 1)..<end], as: UTF8.self))
+                    i = end + 1; start = i; continue
+                }
+                if afterCd, !blank.contains(c), !quotes.contains(c) { afterCd = false; cwd = normalize(home); resolved = [] }   // a bare cd: home
+                if c == open { saved.append(cwd) }
+                else if c == close, let s = saved.popLast() { cwd = s }
+                else if c == bar, i + 1 < b.count, b[i + 1] == bar { cwd = nil; i += 1 }       // `||`: the folder isn't known
+                i += 1; start = i
+            }
+            if start < b.count { take(String(decoding: b[start..<b.count], as: UTF8.self)) }
         }
         return out
     }
