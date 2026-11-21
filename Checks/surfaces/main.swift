@@ -1163,6 +1163,30 @@ do {
     // the account in use on the app and Claude Code alike: no own row for Claude Code, the numbers in the IN USE box
     let r1 = after(ann, appOn: ann)
     check(r1.v.codeRow == nil && standby(r1.e, r1.v) == [ben.email!], "01: one IN USE box with the numbers, ben on standby")
+    // 05 in Settings ▸ Accounts: Claude Code's row on ben (a standby entry of this profile) is clickable like every standby
+    // row; picked, it lights with the Switch account key. The view is read through its AccountBox's own props.
+    do {
+        var rec5 = IconStatus(state: "ok"); rec5.loginEmail = ben.email; rec5.weekly = 12
+        // a split by hand: the profile's seat is still ann's and ben is still one of its standby entries (the folder not followed)
+        rec5.resolved = AccountResolver.resolve(m0, among: [m0], app: app(ann), code: ben, loginEmail: ben.email, names: [:], now: t0)
+        _ = Store.writeStatus(m0.id, rec5)
+        func boxProps(_ v: Any) -> (tap: Bool, selected: Bool, unlit: Bool, litBadge: String?)? {
+            let m = Mirror(reflecting: v)
+            if "\(m.subjectType)".hasPrefix("AccountBox<") {
+                func val(_ k: String) -> Any? { m.children.first { $0.label == k }?.value }
+                func some(_ a: Any?) -> Any? { a.flatMap { Mirror(reflecting: $0).children.first?.value } }
+                return (some(val("tap")) != nil, val("selected") as? Bool ?? false, val("unlit") as? Bool ?? false, some(val("litBadge")) as? String)
+            }
+            for c in m.children { if let p = boxProps(c.value) { return p } }
+            return nil
+        }
+        let sm5 = SettingsModel(); sm5.accounts = [m0, w0]
+        let idle = boxProps(AccountSettings(entry: .constant(m0), model: sm5).codeBox(ben.email!))
+        let chosen = boxProps(AccountSettings(entry: .constant(m0), model: sm5, picked: m0.standby[0].id).codeBox(ben.email!))
+        check(AccountSettings(entry: .constant(m0), model: sm5).view.codeRow == ben.email && idle?.tap == true && idle?.selected == false && idle?.unlit == true
+              && chosen?.tap == true && chosen?.selected == true && chosen?.unlit == false && chosen?.litBadge == "Switch account",
+              "05: Claude Code's row on a standby account of the profile: a click selects it, picked it lights Switch account: \(String(describing: idle)) / \(String(describing: chosen))")
+    }
 
     // 04a–04c: one line in the Switch page's strip words while it runs; the Sessions card never says "stopped" then
     let started = t0

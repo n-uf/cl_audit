@@ -1850,10 +1850,14 @@ struct AccountSettings: View {
         // left); a split by hand: a standby account signed in to Claude Code in Terminal, so it shows its numbers
         let switching = target.map { $0.lowercased() == code.lowercased() } ?? false
         let pick = entry.standby.first { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() }
-        return AccountBox(lamp: nil, badge: "Standby", detail: (own?.plan).map(Account.planWords), unlit: !switching,
-                          selected: switching, litBadge: "Switching to",
+        // like every standby row: a click anywhere selects it (again: deselects), and the lit key opens the Switch page
+        let chosen = !switching && pick.map { picked == $0.id } == true
+        return AccountBox(lamp: nil, badge: "Standby", detail: (own?.plan).map(Account.planWords), unlit: !(switching || chosen),
+                          selected: switching || chosen, litBadge: switching ? "Switching to" : "Switch account",
                           litAction: pick.map { p in { model.showSwitch(AccountEntry.switchKey(entry.id, p.id)) } },
-                          marks: (app: false, terminal: !["expired", "noLogin"].contains(own?.state ?? ""))) {
+                          marks: (app: false, terminal: !["expired", "noLogin"].contains(own?.state ?? "")),
+                          tap: switching ? nil : pick.map { p in { toggle(p) } },
+                          tapHelp: switching || pick == nil ? nil : chosen ? "Click to deselect" : "Click to select, then Switch account") {
             AccountBoxTitle(text: Privacy.masked(code))
         } content: {
             // its sign-in signed out or expired: that one line (A3), with its key; else the numbers (they are its)
