@@ -3152,7 +3152,8 @@ do {
         ("not readable (denied, no numbers) + another account", rec("denied", week: nil, five: nil, login: u2.email, code: u1), nil, anotherAccount),
         ("not readable (unreadable, no numbers) + another account", rec("unreadable", week: nil, five: nil, login: u2.email, code: u1), nil, anotherAccount),
         ("expired + another profile's account", rec("expired", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
-        ("signed out + another profile's account (the folder's record names Other's u3)", rec("noLogin", week: nil, five: nil, login: nil, code: u3), nil, otherProfile),
+        // (H1: signed out, the clash's heading never says "signed in to")
+        ("signed out + another profile's account (the folder's record names Other's u3)", rec("noLogin", week: nil, five: nil, login: nil, code: u3), nil, "Terminal is signed out, last on Other's account"),
         ("not readable (denied, no numbers) + another profile's account", rec("denied", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
         ("not readable (unreadable, no numbers) + another profile's account", rec("unreadable", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
         ("another account + another profile's account (the sign-in on u2, the folder on Other's u3)", rec(login: u2.email, code: u3), nil, anotherAccount),

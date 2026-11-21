@@ -91,7 +91,8 @@ enum AccountResolver {
         else if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !sameAddress(n, a) }
         else if r.fromApp, let id = r.account { r.differs = code.map { !byID(id).sameAccount(known($0)) } ?? false }
         if let o = owner {
-            r.line = "Claude Code's folder is signed in to \(o.name)'s account: its numbers show on \(o.name)."
+            // ("is on": true signed in or signed out, when the folder's record still names the account it was last on)
+            r.line = "Claude Code's folder is on \(o.name)'s account: its numbers show on \(o.name)."
             r.lit = r.fromApp
         } else if ownerUnknown {
             // the numbers are hidden (stale) and nothing else says why: the one line, on every surface that shows it
