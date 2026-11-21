@@ -814,7 +814,7 @@ do {
     check(SwitchEngine.taskProblem(source: SwitchEngine.scopeDir(wdE, SeatID(u2)), target: SwitchEngine.scopeDir(wdE, SeatID(u3)))?.contains("other state") == true,
           "said as a state collision")
     put("\(wdE)/claude-code-sessions/\(uuid(70))/\(uuid(71))/scheduled-tasks.json", "{ not json")
-    check(SwitchEngine.taskProblem(source: "\(wdE)/claude-code-sessions/\(uuid(70))/\(uuid(71))", target: dst) == "its scheduled-tasks.json can't be read", "an unreadable registry stops the tasks")
+    check(SwitchEngine.taskProblem(source: "\(wdE)/claude-code-sessions/\(uuid(70))/\(uuid(71))", target: dst) == "the old account's scheduled tasks file can't be read", "an unreadable registry stops the tasks (named by whose it is, no file name)")
     // a target with the same task id and another entry (same state): never dropped: both files stay as they are, and so do
     // the task's sessions; the rest of the switch goes on
     let tA = seat(951, "task-a@example.com"), tB = seat(952, "task-b@example.com"), tC = seat(953, "task-c@example.com"), tD = seat(954, "task-d@example.com")
@@ -870,7 +870,7 @@ do {
     }
     // the target's list has an element that isn't a task: no clash can be seen, so the tasks stay (its own are never overwritten)
     let odd = taskSwitch("tc3", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: #"{"id":"t1","cron":"0 10 * * *"},null"#)
-    blocked(odd, "tc3", held: ["local_\(uuid(962)).json"], problem: "the new account's scheduled-tasks.json isn't a task list")
+    blocked(odd, "tc3", held: ["local_\(uuid(962)).json"], problem: "the new account's scheduled tasks file isn't a list of tasks")
     // several tasks, one of them clashes: none moves, all their sessions are held
     let many = taskSwitch("tc4", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"a"},{"id":"t2","cron":"b"},{"id":"t3","cron":"c"}"#, dstTask: #"{"id":"t2","cron":"b"},{"id":"t3","cron":"other"}"#)
     put("\(many.src)/local_\(uuid(963)).json", #"{"sessionId":"local_t2","scheduledTaskId":"t2"}"#)
@@ -888,6 +888,17 @@ do {
     put("\(none.dst)/scheduled-tasks.json", "{ not json")
     guard case .success(let pn) = SwitchEngine.plan(none.e, standby: none.e.standby[0], dataDir: none.wd, owned: []) else { check(false, "plan none"); exit(1) }
     check(pn.taskStay == nil && SwitchRunner.stayWords(pn) == nil && pn.tasks == 0, "no task on the old account: no word about tasks")
+    // an entry that can't be read whole (too large here): held like an owned one, but said apart, never "Claude Code is running"
+    let big = taskSwitch("tc7", from: tA, to: tB, srcTask: "", dstTask: "")
+    put("\(big.src)/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)
+    let bigName = "local_\(uuid(964)).json"
+    put("\(big.src)/\(bigName)", #"{"sessionId":"local_big","pad":""# + String(repeating: "x", count: SafeRead.entryMax) + #""}"#)
+    guard case .success(let pu) = SwitchEngine.plan(big.e, standby: big.e.standby[0], dataDir: big.wd, owned: []) else { check(false, "plan unreadable"); exit(1) }
+    let unreadWords = SwitchRunner.stayWords(pu) ?? ""
+    check(pu.held == [bigName] && pu.unreadable == [bigName] && pu.move.contains("local_\(uuid(961)).json")
+          && unreadWords == SwitchRunner.unreadableWords(1) && !unreadWords.contains("running") && unreadWords.contains("couldn't be read"),
+          "an entry too large to read: held, said as unreadable, not as run by Claude Code: \(unreadWords)")
+    try? fm.removeItem(atPath: "\(big.src)/\(bigName)")
     // nothing to move: only the sign-in (no receipt, no backup)
     let empty = expand("~/Library/Application Support/Claude-empty8")
     guard case .success(let p4) = SwitchEngine.plan(e, standby: k2, dataDir: empty, owned: []) else { check(false, "plan 4"); exit(1) }
@@ -1262,8 +1273,8 @@ do {
     let before12 = tree(wd)
     let words12 = (try? SwitchEngine.leaveAsIs(open12.first?.id ?? "")) ?? ""
     check(open12.count == 1 && SwitchEngine.unfinished(profile: "r3").isEmpty && tree(wd) == before12
-          && words12.hasPrefix("Left as it is: 2 Code-tab sessions stay under the account the switch went to"),
-          "Leave it as it is: the receipt closed, nothing moved, what stays where said: \(words12)")
+          && words12.hasPrefix("Left as it is: 2 Code-tab sessions stay under the account the switch went to") && !words12.contains("backup"),
+          "Leave it as it is: the receipt closed, nothing moved, what stays where said, nothing promised about the backup: \(words12)")
 
     // SHOULD 7: the program is the executable's last path component, the path whole even with spaces
     check(Processes.isClaude(home + "/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1220))")
@@ -1446,7 +1457,8 @@ do {
     let running = try! Flows.takeLock()
     why = startedWith()
     running.release()
-    check(why == "Another restore, import or move is under way.", "a restore still running: under way, not stopped half way: \(why ?? "it went on")")
+    // (the lock doesn't say who holds it: the words name every flow that takes it, never only "a restore, import or move")
+    check(why == "Another backup, export, restore, import, move or switch is under way.", "a restore still running: under way, not stopped half way: \(why ?? "it went on")")
 
     // the switch's own unfinished receipt: still the switch page's own words, also beside a stopped restore
     fresh14()

@@ -461,6 +461,24 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     print("switched:", ProfileShow.load(e, now: now).display.split?.switchWaits == true ? "yes" : "NO")
     snapshot(framed(AccountCard(row: cardRow(e, now: now), actions: acts)
                         .frame(width: 460).fixedSize(horizontal: false, vertical: true), 460), "split-card-switched-std-w460", 492, 1000)
+    // signed out, the last reading's account (mo) kept: the card says Terminal is signed out, never "signed in to mo"
+    var signedOut = rec; signedOut.state = "noLogin"
+    signedOut.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: nil, loginEmail: mo.email, names: [:], now: now)
+    _ = Store.writeStatus("main", signedOut)
+    let outShow = ProfileShow.load(e, now: now)
+    print("signed out:", outShow.display.split != nil ? "split kept" : "no split", "| notice:", UsageNotice.of(cardRow(e, now: now))?.heading ?? "none",
+          "| line:", outShow.lineWords(short: false) ?? "none", "| age line:", outShow.noNumbersWords ?? "Reading usage…")
+    snapshot(framed(AccountCard(row: cardRow(e, now: now), actions: acts)
+                        .frame(width: 460).fixedSize(horizontal: false, vertical: true), 460), "split-card-signedout-std-w460", 492, 1000)
+    // a split never read yet: the Dock panel's age line says the numbers aren't this account's, never "Reading usage…" for good
+    var unread = rec; unread.updatedAt = nil; unread.weekly = nil; unread.weeklyResets = nil; unread.loginEmail = nil; unread.numbersOwner = nil
+    unread.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: mo, loginEmail: nil, names: [:], now: now)
+    _ = Store.writeStatus("main", unread)
+    let unreadApp = AppDelegate(); unreadApp.entry = e; unreadApp.show = ProfileShow.load(e, now: now)
+    let unreadPanel = unreadApp.detailsInfo()
+    print("split never read:", unreadApp.show?.display.split != nil ? "split" : "no split", "| age line:", unreadPanel.noNumbers ?? "Reading usage…")
+    snapshot(framed(DetailsView(info: unreadPanel, actions: DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})).fixedSize(), 340),
+             "split-dock-unread-std-w340", 372, 1400)
 }
 
 if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {

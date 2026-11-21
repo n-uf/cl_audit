@@ -377,8 +377,8 @@ do {
         ("Settings", AccountSettings(entry: .constant(after), model: m).view),
         ("Switch page", page.view)]
     for (s, v) in views { check(v == want && v.label == u2.email, "after a switch: \(s) names ultra-2") }
-    check(want.numbersOwner == u2.email && want.line == nil && Store.status(for: after)?.weekly == nil,
-          "after a switch ultra-1's numbers never show: none until a read for ultra-2 succeeds")
+    check(want.numbersOwner == u2.email && want.line == AccountResolver.staleWords && Store.status(for: after)?.weekly == nil,
+          "after a switch ultra-1's numbers never show: none until a read for ultra-2 succeeds (the line says read for another account, and the way back if it stays)")
     let listed = after.listed(by: want)
     check(!listed.standby.contains { $0.seat?.same(u2) == true } && listed.standby.filter { $0.seat?.same(u1) == true }.count == 1,
           "the old account is on standby once, the new one never: \(listed.standby.map(\.email))")
@@ -597,6 +597,17 @@ do {
     sm.runner(of: lp.id).signInAgain()
     check(sm.runner(of: lp.id).phase == .failed(linkLine), "Sign in again on a folder that is a link: that line")
     check(launches.isEmpty && terminals.isEmpty, "no claude and no Terminal for any of them: \(launches) \(terminals)")
+    // the Claude window and Terminal keys on a deleted folder: the alert says why (in the sign-in keys' words), nothing starts;
+    // a window opened without a click (the agent reopening it) says nothing
+    alerts.removeAll()
+    var pw = p; pw.claudeWindow = true; pw.desktop = .separate; pw.desktopDataDir = "~/Library/Application Support/Claude-pk-gone"
+    Launcher.openClaude(Account(pw))
+    Launcher.openClaude(Account(pw), activate: false)
+    Launcher.openTerminal(Account(p))
+    check(alerts == ["Its Claude Code folder is gone (~/.claude-gone): the Claude window wasn't opened.",
+                     "Its Claude Code folder is gone (~/.claude-gone): nothing was started."]
+          && launches.isEmpty && terminals.isEmpty && !fm.fileExists(atPath: expand(gone)),
+          "the Claude window's and Terminal's keys on a deleted folder: the alert says why, nothing started or made: \(alerts)")
     // a brand-new folder the person just chose (New profile, first run): still made, owner only, and launched
     let fresh = "~/.claude-new-profile"
     try? fm.removeItem(atPath: expand(fresh))
@@ -3139,6 +3150,21 @@ do {
     check(SwitchRunner.stayWords(held) == SwitchRunner.heldWords(1) && SwitchPage.noteLine(SwitchRunner.stayWords(held), SwitchPage.leftShown(left, movedNothing: true)) == SwitchRunner.heldWords(1)
           && SwitchPage.noteLine(SwitchRunner.stayWords(held), left) == SwitchRunner.heldWords(1) + " " + left && SwitchPage.noteLine(nil, nil) == nil,
           "…the rest of the note stays (a session a running Claude Code holds), then the left-behind line when something moved")
+    // a session held because its record can't be read: said apart, never "Claude Code is running it"
+    var unread = p; unread.held = ["s1", "s2"]; unread.unreadable = ["s2"]
+    check(SwitchRunner.stayWords(unread) == SwitchRunner.heldWords(1) + " " + SwitchRunner.unreadableWords(1)
+          && SwitchRunner.unreadableWords(1) == "1 session stays with the account in use: its record couldn't be read. A later switch moves it once it can be read.",
+          "one owned, one unreadable: each said in its own words: \(SwitchRunner.stayWords(unread) ?? "nil")")
+    // a partial Undo names what stayed by kind and count, never by file name
+    var partly = receipt; partly.partlyUndone = Date()
+    partly.left = ["local_\(uuid(1301)).json", "local_\(uuid(1302)).json", "scheduled-tasks.json"]
+    let partlyLine = SwitchRunner.partlyWords(partly)
+    check(partlyLine == "Partly undone: 2 Code-tab sessions and the scheduled tasks file were left as they were. The rest is back; Undo again once that's sorted."
+          && !partlyLine.contains("local_") && !partlyLine.contains(".json"),
+          "Partly undone: what kind, how many: \(partlyLine)")
+    partly.left = ["local_\(uuid(1303)).json"]
+    check(SwitchRunner.partlyWords(partly) == "Partly undone: 1 Code-tab session was left as it was. The rest is back; Undo again once that's sorted.",
+          "one: \(SwitchRunner.partlyWords(partly))")
 }
 
 // ============ 15. one owner rule in the resolver and the lists (AccountIdentity.sameAccount) ============
@@ -3214,6 +3240,15 @@ do {
     let bothOther = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, loginAccount: otherAcct, names: [:], now: t0)
     check(bothOther.readStale == true && bothOther.codeName == h2.email && shownWeekly(bothOther, id: otherAcct) == nil,
           "…another id and another address: stale, shown nowhere")
+    // …and the way back shows where the reason does: the card, the Dock panel and menu, the menu bar row (its record is the
+    // one shownWeekly just wrote); the Dock panel's age line says they aren't this account's, never "Reading usage…"
+    let staleShow = ProfileShow.load(me, now: t0)
+    let (staleNote, staleMenu, staleAge) = MainActor.assumeIsolated { let d = dockOf(me, staleShow); return (d.panel.activeNote, titles(d.menu), d.panel.noNumbers) }
+    let staleLine = AccountResolver.staleWords
+    check(bothOther.line == staleLine && cardRow(me, now: t0).line == staleLine && staleNote == staleLine && staleMenu.contains(staleLine)
+          && MenuBarRow.lineWords(MenuBarItems.Profile(show: staleShow)) == staleLine && staleLine.contains("sign in to read again") && staleLine.count <= 70
+          && staleAge == "Not read for this account",
+          "a stale reading: \"\(staleLine)\" on the card, in the Dock panel and menu, on the menu bar row; the age line: \(staleAge ?? "-")")
     let lone = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, names: [:], now: t0)
     let loneWeekly = shownWeekly(lone), loneShow = ProfileShow.load(me, now: t0)
     let (loneNote, loneMenu) = MainActor.assumeIsolated { let d = dockOf(me, loneShow); return (d.panel.activeNote, titles(d.menu)) }
