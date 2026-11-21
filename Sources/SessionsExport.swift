@@ -530,7 +530,8 @@ enum SessionsExport {
         var connections = 0                 // entries holding connection settings (a zip leaves them out)
         var imageKeyedFiles = 0             // entries whose keys sit only in those connection settings: kept in the image, not a zip
         var imageKeyedBytes: Int64 = 0
-        var unreadable = 0                  // entries (and the task file) left out because they aren't UTF-8 JSON objects it can read, or are too big
+        var unreadable = 0                  // entries (and the task file) a zip or an image leaves out: not UTF-8 JSON objects it can read (a move keeps them)
+        var tooBig = 0                      // entries (and the task file) of 64 MB or more: never read, so left out of every export, a move too
         /// The counts as the encrypted image would hold them: an entry whose keys sit in its connection settings counts as keyed.
         var inImage: Preview { var p = self; p.keyedFiles += imageKeyedFiles; p.keyedBytes += imageKeyedBytes; p.imageKeyedFiles = 0; p.imageKeyedBytes = 0; return p }
         var notEntries = 0                  // window files named like an entry (local_…) that aren't one (ClaudeFiles): left out
@@ -748,7 +749,7 @@ enum SessionsExport {
                 if ClaudeFiles.isEntryName(leaf) { pv.entries += 1 }
                 pv.windowBytes += f.bytes
                 // an entry or the task file of 64 MB or more is never read, so an export leaves it out whichever the file (as the run does)
-                if ClaudeFiles.isEntryName(leaf) || leaf == "scheduled-tasks.json", f.bytes > 64 << 20 { pv.unreadable += 1; continue }
+                if ClaudeFiles.isEntryName(leaf) || leaf == "scheduled-tasks.json", f.bytes > 64 << 20 { pv.tooBig += 1; continue }
                 // an entry as a zip will hold it: without its two fields (counted), and not at all when it can't be read (counted apart);
                 // what only the encrypted image would carry (keys in those two fields) is counted apart too, for when the file is one
                 if ClaudeFiles.isEntryName(leaf), let d = FileManager.default.contents(atPath: f.src) {

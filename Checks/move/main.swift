@@ -382,6 +382,18 @@ MainActor.assumeIsolated {
                   "export (move): the UTF-16 entry and task file are kept as they are, none counted (\(mo.unreadableLeftOut)): \(w.keys.sorted())")
             SessionsImport.discard(o.work)
         } else { check(false, "export (move, UTF-16 window files): made and opens") }
+        // the Export page's count: the UTF-16 files apart from one of 64 MB or more (never read: left out of a move too), so a move's
+        // line names only that one, and a zip's or an image's both
+        let bigPath = "\(ud)/local_\(sid(63)).json"
+        fm.createFile(atPath: bigPath, contents: nil)
+        if let h = FileHandle(forWritingAtPath: bigPath) { try? h.truncate(atOffset: (64 << 20) + 1); try? h.close() }      // (sparse: no 64 MB written)
+        let upv = SessionsExport.preview(part(u16))
+        check(upv?.unreadable == 2 && upv?.tooBig == 1, "preview: 2 Code-tab files it can't read, 1 of 64 MB or more, counted apart: \(String(describing: upv?.unreadable)) \(String(describing: upv?.tooBig))")
+        check(ExportWords.codeTabLeftOut(upv, image: true, move: true) == "1 Code-tab file of 64 MB or more is left out of the move too."
+              && ExportWords.codeTabLeftOut(upv, image: true, move: false) == "2 Code-tab files it can't read are left out. 1 Code-tab file of 64 MB or more is left out.",
+              "export page: a move names only the file of 64 MB or more; an image both: \(ExportWords.codeTabLeftOut(upv, image: true, move: true) ?? "none")")
+        unlink(bigPath)
+        check(ExportWords.codeTabLeftOut(SessionsExport.preview(part(u16)), image: true, move: true) == nil, "export page: a move with only UTF-16 files names none (it keeps them)")
         try? fm.removeItem(atPath: expand(u16.configDir)); try? fm.removeItem(atPath: expand(u16.desktopDataDir))
     }
 

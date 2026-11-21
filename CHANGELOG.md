@@ -12,6 +12,7 @@ the notes before updating.
 - A standby account brought over by a move with no organisation recorded now also gets it as soon as cl_audit finds it on this Mac, so it can be switched to.
 - When Claude Code renews its own expired sign-in, the numbers now also come back within about a minute when its only status line since came in that first minute (it waited up to 10 minutes then).
 - A setup file that disappears while an export copies it no longer leaves an empty folder in the file, which made its import refuse the whole file; a skill (or other setup item) gone whole that way is listed as left out, not counted as carried.
+- For a move, the Export page now says when a Code-tab file of 64 MB or more is left out (a move keeps the ones it can't read, so they aren't counted there); a zip's or an image's line names the two apart.
 
 ## 26.11.70 — 2026-11-20
 

@@ -210,7 +210,7 @@ final class ExportRunner: ObservableObject {
         var t = SessionsExport.Preview(profile: "all", name: "All profiles")
         for x in p {
             t.sessions += x.sessions; t.transcriptBytes += x.transcriptBytes; t.entries += x.entries; t.tasks += x.tasks; t.windowBytes += x.windowBytes
-            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.imageKeyedFiles += x.imageKeyedFiles; t.imageKeyedBytes += x.imageKeyedBytes; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable; t.notEntries += x.notEntries; t.markersOrphan += x.markersOrphan; t.markersKeyed += x.markersKeyed
+            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.imageKeyedFiles += x.imageKeyedFiles; t.imageKeyedBytes += x.imageKeyedBytes; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable; t.tooBig += x.tooBig; t.notEntries += x.notEntries; t.markersOrphan += x.markersOrphan; t.markersKeyed += x.markersKeyed
             t.windowLeftOut = t.windowLeftOut || x.windowLeftOut
             for (k, v) in x.keyKinds { t.keyKinds[k, default: 0] += v }
             t.setup.add(x.setup)
@@ -365,6 +365,19 @@ struct WellSecure: View {
 /// The words of the Export page that come from the numbers (so a check can read them): the setup row, what is left out of it, the Found line.
 enum ExportWords {
     private static func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
+
+    /// The Code-tab files an export leaves out, in a line (nil: none): connection settings a zip leaves out; a file it can't
+    /// read (UTF-16, say) out of a zip or an image (its ids couldn't be replaced), never out of a move, which keeps it as it is;
+    /// one of 64 MB or more out of every export, a move too (never read).
+    static func codeTabLeftOut(_ pv: SessionsExport.Preview?, image: Bool, move: Bool) -> String? {
+        guard let p = pv else { return nil }
+        let settings = !image && p.connections > 0 ? "Connection settings in \(n(p.connections, "Code-tab entry", "Code-tab entries")) need the encrypted disk image: left out of a zip." : ""
+        let unread = move ? 0 : p.unreadable
+        let cant = unread > 0 ? "\(n(unread, "Code-tab file", "Code-tab files")) it can't read \(unread == 1 ? "is" : "are") left out." : ""
+        let big = p.tooBig > 0 ? "\(n(p.tooBig, "Code-tab file", "Code-tab files")) of 64 MB or more \(p.tooBig == 1 ? "is" : "are") left out\(move ? " of the move too" : "")." : ""
+        let line = [settings, cant, big].filter { !$0.isEmpty }.joined(separator: " ")
+        return line.isEmpty ? nil : line
+    }
 
     /// "CLAUDE.md, 23 skills, 4 agents, 6 commands" (what goes in: a zip leaves out settings.json, its scripts and the marketplaces).
     static func setupWords(_ pv: SessionsExport.Preview?, setup: Bool, image: Bool) -> String {
@@ -698,12 +711,8 @@ struct ExportPage: View {
                     }
                 }
             }
-            // (a Code-tab file it can't read, or one too big to read, is left out of the encrypted image too: its ids couldn't be
-            // replaced; a move keeps it as it is)
-            if let p = pv, (!runner.usesImage && p.connections > 0) || (!runner.move && p.unreadable > 0) {
-                let settings = !runner.usesImage && p.connections > 0 ? "Connection settings in \(n(p.connections, "Code-tab entry", "Code-tab entries")) need the encrypted disk image: left out of a zip." : ""
-                let unread = !runner.move && p.unreadable > 0 ? "\(n(p.unreadable, "Code-tab file", "Code-tab files")) it can't read \(p.unreadable == 1 ? "is" : "are") left out." : ""
-                SRowLine(text: [settings, unread].filter { !$0.isEmpty }.joined(separator: " "), color: face.caution)
+            if let line = ExportWords.codeTabLeftOut(pv, image: runner.usesImage, move: runner.move) {
+                SRowLine(text: line, color: face.caution)
             }
             SRow(label: "Claude Code setup", info: "Claude Code's own setup, from \(tilde(entry.configDir)): CLAUDE.md and the .md files it includes (its @ lines), skills, agents, commands, output styles, keybindings, settings.json (with the scripts its hooks and status line point to) and the plugin list, so a move to another Mac brings them. Never the plugins themselves, settings.local.json or a sign-in. A link is never followed: a skill that is one, or holds one, is left out and listed. settings.json, its scripts and the plugin marketplaces can hold tokens no scan recognises, so only the encrypted disk image carries them; a zip leaves them out. Importing leaves them out unless you add them.", stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
