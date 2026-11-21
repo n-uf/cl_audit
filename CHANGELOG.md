@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- In Settings ▸ Accounts, the row of the account Claude Code in Terminal is signed in to (while the Claude app is on another) now selects on a click like every standby account, and its Switch account key opens the Switch page, when that account is on the profile's standby list. It did nothing on a click.
 
 ## 26.11.74 — 2026-11-21
 
