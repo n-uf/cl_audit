@@ -445,6 +445,7 @@ do {
     // an existing install (profiles), claude missing, nothing on screen: the timer's watch does nothing
     try? Store.save([entry("work", "Work", dir: "~/.claude-work"), entry("home", "Home", dir: "~/.claude-home")])
     let m = SettingsModel()
+    m.windowShowsSettings = { true }         // (a window showing Settings: only the onScreen guard holds the look back)
     for _ in 0..<5 { m.watchClaude() }
     RunLoop.main.run(until: Date().addingTimeInterval(0.4))
     check(calls() == 0, "no page, no note: no lookups (\(calls()))")
@@ -456,13 +457,16 @@ do {
     for _ in 0..<5 { m.watchClaude() }
     RunLoop.main.run(until: Date().addingTimeInterval(0.4))
     check(calls() == 1, "…then it backs off (no second look inside 6 s): \(calls())")
-    // a hidden window shows nothing
-    m.windowShowsSettings = { false }
-    let before = calls()
-    m.claudeNotes = 1
-    for _ in 0..<3 { m.watchClaude() }
+    // a hidden window shows nothing (a model that hasn't looked yet, so no back-off can stand in for the flag)
+    let h = SettingsModel(); h.windowShowsSettings = { false }; h.claudeNotes = 1
+    let hidden = calls()
+    for _ in 0..<3 { h.watchClaude() }
     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-    check(calls() == before, "window not showing Settings: no look")
+    check(calls() == hidden, "window not showing Settings: no look")
+    h.windowShowsSettings = { true }
+    h.watchClaude(); wait { calls() > hidden }
+    check(calls() == hidden + 1, "…the same model once its window shows Settings: it looks (the flag alone held it back)")
+    let before = calls()
     // the note goes: nothing again; Check again (force) always looks
     m.windowShowsSettings = { true }; m.claudeNotes = 0
     m.watchClaude(); RunLoop.main.run(until: Date().addingTimeInterval(0.3))
