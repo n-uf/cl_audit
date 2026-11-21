@@ -152,7 +152,7 @@ struct SetupRow: View {
     /// `/Users/anna/x`), and not in the middle of a longer word.
     static func tildeHome(_ s: String, home: String) -> String {
         guard !home.isEmpty, home != "/" else { return s }
-        let pattern = "(?<![\\w/.~-])" + NSRegularExpression.escapedPattern(for: home) + "(?=/|$|[\\s\"'`;|&)])"
+        let pattern = "(?<![\\w/.~-])" + NSRegularExpression.escapedPattern(for: home) + "(?=/|$|[\\s\"'`;|&):,=<>}\\]])"
         guard let re = try? NSRegularExpression(pattern: pattern) else { return s }
         return re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: "~")
     }
