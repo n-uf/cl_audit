@@ -3829,7 +3829,9 @@ do {
         let l = ProfileLED.lamp(c)
         return l.lit && l.color == c.color(fiveHour: nil, stale: false)
     }, "each of the ten colours gives its LED, lit in that colour")
-    check(!ProfileLED.lamp(nil).lit && ProfileLED.lamp(nil).color == nil && !ProfileLED.lamp(.usage).lit,
+    check(ProfileLED.lamp(.teal).color == TileColor.hex(0x14b8a6) && ProfileLED.lamp(.pink).color == TileColor.hex(0xec4899)
+          && ProfileLED.lamp(.lime).color == TileColor.hex(0x84cc16), "…the swatches' own colours (teal, pink, lime by value)")
+    check(!ProfileLED.lamp(nil).lit && ProfileLED.lamp(nil).color == nil && !ProfileLED.lamp(.usage).lit && !ProfileLED.lamp(.graphite).lit,
           "no colour of its own (or by usage): the unlit LED")
     var e = AccountEntry(id: "led", name: "Led", label: "LED", configDir: "~/.claude-led")
     e.accent = nil; e.color = .usage

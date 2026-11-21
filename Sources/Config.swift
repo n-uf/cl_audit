@@ -242,10 +242,11 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     /// Usage in the Dock off and no Claude window: its usage shows on the dashboard, in the launcher and in alerts.
     var usageOnly: Bool { runs.usageOnly }
 
+    /// The profile's own colour, or nil when it has none: no colour picked and its Dock icon coloured by usage or graphite
+    /// (a neutral, not a colour of its own). Its light (ProfileLED) is unlit then.
+    var ownColor: TileColor? { accent ?? ([.usage, .graphite].contains(color) ? nil : color) }
     /// The account's colour in the launcher, the dashboard (chips, cards, charts) and the panels.
     /// Unset: the icon colour when it's a plain one, else orange.
-    /// The profile's own colour, or nil when it has none: no colour picked and its Dock icon coloured by usage (or graphite).
-    var ownColor: TileColor? { accent ?? ([.usage, .graphite].contains(color) ? nil : color) }
     var accentColor: TileColor { ownColor ?? .orange }
     var accentNSColor: NSColor { accentColor.color(fiveHour: nil, stale: false) }
 

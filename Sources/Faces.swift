@@ -383,7 +383,7 @@ struct ProfileLED: View {
 
     /// The light a profile colour gives: its colour and lit, or unlit for none.
     static func lamp(_ c: TileColor?) -> (color: NSColor?, lit: Bool) {
-        guard let c, c != .usage else { return (nil, false) }
+        guard let c, ![.usage, .graphite].contains(c) else { return (nil, false) }     // no colour of its own (as ownColor)
         return (c.color(fiveHour: nil, stale: false), true)
     }
 
