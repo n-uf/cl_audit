@@ -275,7 +275,7 @@ MainActor.assumeIsolated {
           && eu["u7-last"]?.runs == "env -i --frob" && eu["u8-command"]?.runs == "env -L …"
           && ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", fakeKey].allSatisfy { !euText.contains($0) }
           && envUnknown.filter { $0.name != "u9-known" }.allSatisfy { $0.flags == [launcherFlag("env"), unreadFlag] }
-          && eu["u9-known"]?.runs == "env -0iv --ignore-environment --null --debug --block-signal --default-signal=… --ignore-signal --list-signal-handling --chdir /d -C/e --argv0=… --ignore-e -- A7=… prog"
+          && eu["u9-known"]?.full == "env -0iv --ignore-environment --null --debug --block-signal --default-signal=… --ignore-signal --list-signal-handling --chdir /d -C/e --argv0=… --ignore-e -- A7=… prog"
           && eu["u9-known"]?.flags == [launcherFlag("env")] && envOptions.allSatisfy { !$0.flags.contains(unreadFlag) },
           "config: an env option it doesn't know (long, a short letter in a cluster, glued, ambiguous, a value on one that takes none) hides the rest as one \"…\" and flags the server; every option env has reads as before: \(envUnknown.map { "\($0.name): \($0.runs) \($0.flags)" })")
     let found = Setup.scan(codeDir: codeA, home: home)
