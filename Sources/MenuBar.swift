@@ -53,7 +53,7 @@ enum MenuBarColours: String, CaseIterable, Identifiable, Codable {
         case .levels: return "green, amber, red, crimson as the limits fill up"
         case .system: return "the menu bar's own colour, like Apple's icons: white or black, dimmed on an inactive screen. A full limit shows by its countdown, as macOS doesn't colour these icons"
         case .accent: return "your Mac's accent colour (System Settings ▸ Appearance), following it when it changes"
-        case .profile: return "this profile's colour"
+        case .profile: return "this profile's colour (orange for a profile with none of its own)"
         }
     }
 }

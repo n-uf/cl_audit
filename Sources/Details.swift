@@ -347,7 +347,7 @@ extension DetailsController {
                                fiveHourResets: Date().addingTimeInterval(3 * 3600 + 57 * 60),
                                weekly: 58, weeklyResets: Date().addingTimeInterval(2 * 3600 + 7 * 60), updated: Date(),
                                source: "Anthropic", problem: nil, renewNote: nil, needsLogin: false,
-                               design: design, accent: Painter.orange)
+                               design: design, accent: Painter.orange, ownColor: .orange)
         let actions = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
         let view = Group {
             if large { DetailsView(info: info, actions: actions) } else { CompactView(info: info) }

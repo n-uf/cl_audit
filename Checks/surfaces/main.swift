@@ -3952,9 +3952,13 @@ do {
     check(flat.isEmpty && lights["Launcher.swift", default: 0] >= 2 && lights["MenuBar.swift", default: 0] >= 1
           && lights["Details.swift", default: 0] >= 2 && lights["Settings.swift", default: 0] >= 1,
           "every dot before a profile's name is its own light (ownColor, unlit for none), never an orange fallback: flat \(flat), lights \(lights)")
-    let info = DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
-                           weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false)
-    check(info.ownColor == nil && !ProfileLED.lamp(info.ownColor).lit, "a Dock panel told nothing of the profile's colour shows the unlit light, not orange")
+    // the Dock panel takes the profile's own colour as the icon app builds it (DetailsInfo.of): pink lit, none unlit
+    e.accent = .pink
+    let pinkPanel = DetailsInfo.of(ProfileShow.of(e, raw: nil), name: e.name, icon: NSImage(), problem: nil)
+    e.accent = nil; e.color = .usage
+    let nonePanel = DetailsInfo.of(ProfileShow.of(e, raw: nil), name: e.name, icon: NSImage(), problem: nil)
+    check(pinkPanel.ownColor == .pink && ProfileLED.lamp(pinkPanel.ownColor).lit && nonePanel.ownColor == nil && !ProfileLED.lamp(nonePanel.ownColor).lit,
+          "the Dock panel's light: the profile's own colour (pink lit), unlit for a profile with none, never orange")
 }
 
 // why Claude Code's sign-in didn't open (ClaudeCLI.startLogin), each said in the switch's step (SwitchRunner.loginWords):
