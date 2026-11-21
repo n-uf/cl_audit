@@ -254,11 +254,17 @@ struct SignInSaid: Equatable {
     /// A wrong account that is another profile's: whose ("the account of “Work”", NewAccountSetup.ownerWords): refused.
     var owner: String? = nil
     var failure: ClaudeSignIn.Failure? = nil
+    /// The profile follows its folder's account within seconds (FolderRules.noteAccounts): an unconfirmed or wrong account
+    /// that isn't another profile's becomes the account in use, and `previous` (the account in use when Sign in was pressed,
+    /// nil: none, a new profile) goes to standby. False where nothing is linked (New profile's draft): no such sentence.
+    var follows = true
+    var previous: String? = nil
 
     /// nil: nothing to say (the person's Cancel).
     /// `owner`: the name-words of the profile whose account signed in, when it isn't this profile's.
-    init?(_ end: SignInWindow.End, configDir: String, owner: String? = nil) {
+    init?(_ end: SignInWindow.End, configDir: String, owner: String? = nil, previous: String? = nil, follows: Bool = true) {
         self.configDir = configDir
+        self.previous = previous; self.follows = follows
         switch end {
         // another profile's account (`owner`) is refused whatever the sign-in was asked for or confirmed: never "Signed in."
         case .signedIn(let a):
@@ -276,16 +282,23 @@ struct SignInSaid: Equatable {
     }
 
     /// The line. Never "Signed in." for an unconfirmed sign-in; no address is ever filled in by it.
-    var text: String {
+    var text: String { text(emailsShown: Privacy.shared.show) }
+
+    /// The same for a given "Show emails" setting (what a check hands in: never the real preference). The amber lines name
+    /// accounts by their short names only; the red one (another profile's) by the address, masked while emails are hidden.
+    func text(emailsShown shown: Bool) -> String {
         let folder = tilde(configDir)
-        func who(_ a: String?) -> String { a.map { Privacy.masked($0) } ?? "another account" }
+        func who(_ a: String?) -> String { a.map { shown ? $0 : Privacy.mask($0) } ?? "another account" }
         switch kind {
         case .signedIn: return "Signed in."
         case .unverified:
-            return "The sign-in ended, but cl_audit couldn't confirm which account it is\(address.map { " (\(Privacy.masked($0)))" } ?? ""). Sign in again, or Refresh now."
+            guard follows, let address else {
+                return "The sign-in ended, but cl_audit couldn't confirm which account it is\(address.map { " (\(AccountNames.shortName($0, shown: shown)))" } ?? ""). Sign in again, or Refresh now."
+            }
+            return "The sign-in ended, but cl_audit couldn't confirm which account it is. " + followWords(address, shown: shown)
         case .wrongAccount:
             if let owner { return "\(who(address)) is \(owner): one profile per account." }
-            return "Signed in as \(who(address))\(wanted.map { ", not \(Privacy.masked($0))" } ?? ""): the browser's claude.ai account decided. Switch the account in the browser, then sign in again."
+            return followWords(address, shown: shown)
         case .declined: return "The sign-in was declined in the browser; nothing changed."
         case .timedOut: return "No sign-in came in 10 minutes; nothing changed."
         case .replaced: return "Another sign-in started, so this one ended; nothing changed."
@@ -303,6 +316,16 @@ struct SignInSaid: Equatable {
             case .windowClosed: return "The Terminal window was closed before the sign-in ended. Try again."
             }
         }
+    }
+
+    /// What happened after a wrong or unconfirmed account (not another profile's): the profile follows its folder to it, and
+    /// the account before is on standby (none before: nothing to go back to). Short names only, masked while emails are hidden
+    /// (AccountNames.short).
+    private func followWords(_ address: String?, shown: Bool) -> String {
+        let now = address.map { AccountNames.shortName($0, shown: shown) } ?? "another account"
+        var s = "Claude Code here is now signed in to \(now), so this profile uses it."
+        if let previous, previous.lowercased() != address?.lowercased() { s += " \(AccountNames.shortName(previous, shown: shown)) is on standby: Switch to go back." }
+        return s
     }
 
     /// Red: a refusal or a failure. Amber: the rest but "Signed in.".

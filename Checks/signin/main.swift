@@ -2963,7 +2963,7 @@ do {
         let lines = ends.map { said($0.0)!.text }
         check(Set(lines).count == lines.count && lines.allSatisfy { !$0.isEmpty }, "stage G: each ends in words of its own: \(lines)")
         let u = said(.unverified(a))!.text
-        check(!u.hasPrefix("Signed in") && !u.contains("Signed in.") && u.contains("couldn't confirm") && said(.signedIn(a))!.text == "Signed in.",
+        check(!u.hasPrefix("Signed in") && !u.contains("Signed in.") && !u.contains("@") && u.contains("couldn't confirm") && said(.signedIn(a))!.text == "Signed in.",
               "stage G: an unconfirmed sign-in is never worded as signed in: \(u)")
         let failures: [ClaudeSignIn.Failure] = [.folderNotReady, .locked, .alreadySigningIn, .processesUnreadable, .notOpened, .windowStillOpen,
                                                 .loginFailed(status: 2), .noAccount, .windowClosed]
@@ -2974,9 +2974,27 @@ do {
               "stage G: Terminal not opening and a window still open say what they always said")
         let wrong = said(.wrongAccount(signedIn: b, wanted: a))!
         let refused = said(.wrongAccount(signedIn: b, wanted: a), owner: "the account of “Other”")!
-        check(!wrong.danger && wrong.text.hasPrefix("Signed in as ") && wrong.text.contains("not ")
-              && refused.danger && refused.text.hasSuffix("is the account of “Other”: one profile per account."),
-              "stage G: another account signed in: said as the browser's choice; another profile's account: refused in red, one profile per account: \(refused.text)")
+        check(!wrong.danger && refused.danger && refused.text.hasSuffix("is the account of “Other”: one profile per account.") && !refused.text.contains("on standby"),
+              "stage G: another account signed in: amber; another profile's account: refused in red, one profile per account, nobody followed: \(refused.text)")
+        // what happened after a wrong or unconfirmed account that isn't another profile's: the profile follows, the account before is on standby
+        func follow(_ e: SignInWindow.End, previous: String?, follows: Bool = true) -> SignInSaid { SignInSaid(e, configDir: dir, previous: previous, follows: follows)! }
+        let wrongNow = follow(.wrongAccount(signedIn: b, wanted: a), previous: ann.email)
+        let unvNow = follow(.unverified(b), previous: ann.email)
+        let line = "Claude Code here is now signed in to bob, so this profile uses it. ann is on standby: Switch to go back."
+        let hiddenLine = "Claude Code here is now signed in to b•••, so this profile uses it. a••• is on standby: Switch to go back."
+        check(wrongNow.text(emailsShown: true) == line && wrongNow.text(emailsShown: false) == hiddenLine && !wrongNow.danger,
+              "stage G: a wrong account that isn't another profile's: the profile follows it, the account before is on standby (short names, shown and hidden): \(wrongNow.text(emailsShown: true)) | \(wrongNow.text(emailsShown: false))")
+        check(unvNow.text(emailsShown: true) == "The sign-in ended, but cl_audit couldn't confirm which account it is. " + line
+              && unvNow.text(emailsShown: false) == "The sign-in ended, but cl_audit couldn't confirm which account it is. " + hiddenLine && !unvNow.danger,
+              "stage G: …the same after an unconfirmed sign-in, shown and hidden: \(unvNow.text(emailsShown: true))")
+        let fresh = follow(.wrongAccount(signedIn: b, wanted: a), previous: nil)
+        check(fresh.text(emailsShown: true) == "Claude Code here is now signed in to bob, so this profile uses it."
+              && follow(.unverified(b), previous: nil).text(emailsShown: false).hasSuffix("signed in to b•••, so this profile uses it."),
+              "stage G: …with no account before (a new profile) the standby sentence is dropped")
+        check(follow(.unverified(b), previous: ann.email, follows: false).text(emailsShown: true) == "The sign-in ended, but cl_audit couldn't confirm which account it is (bob). Sign in again, or Refresh now.",
+              "stage G: …and New profile's draft links nothing, so it says no profile follows")
+        check([wrongNow, unvNow, fresh, follow(.unverified(b), previous: ann.email, follows: false)].allSatisfy { s in
+                  [true, false].allSatisfy { !s.text(emailsShown: $0).contains("@") } }, "stage G: …never a full address in any of them")
         check(said(.failed(.folderNotReady))!.text.contains("isn't there as a plain folder"), "stage G: a folder that isn't a plain folder says so: \(said(.failed(.folderNotReady))!.text)")
     }
 
@@ -3065,7 +3083,9 @@ do {
         _ = conf(login(as: bob))
         m.startSignIn(fakeClaude, entry: eh, email: ann.email)
         settle(eh.id)
-        check(shown(eh.id)?.kind == .wrongAccount && shown(eh.id)?.danger == false && shown(eh.id)?.owner == nil, "stage G: Settings: an account nobody has signed in: the browser decided, said in amber")
+        check(shown(eh.id)?.kind == .wrongAccount && shown(eh.id)?.danger == false && shown(eh.id)?.owner == nil
+              && shown(eh.id)?.text(emailsShown: true) == "Claude Code here is now signed in to bob, so this profile uses it. ann is on standby: Switch to go back.",
+              "stage G: Settings: an account nobody has signed in: amber, the profile follows it and the account before is on standby: \(String(describing: shown(eh.id)?.text(emailsShown: true)))")
         term.killAll()
 
         // the word never confirms: unconfirmed, never signed in

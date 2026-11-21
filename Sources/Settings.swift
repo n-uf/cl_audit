@@ -359,6 +359,7 @@ final class SettingsModel: ObservableObject {
     /// made again). The words land in `signIns`.
     func startSignIn(_ claude: String, entry e: AccountEntry, email: String?) {
         let id = e.id, folder = e.configDir
+        let previous = e.seat?.email.flatMap { $0.isEmpty ? nil : $0 }       // the account in use now: standby once another is followed
         let generation = (signInGenerations[id] ?? 0) + 1
         signInGenerations[id] = generation
         signIns[id] = .waiting
@@ -375,7 +376,7 @@ final class SettingsModel: ObservableObject {
             default: break
             }
             if let who, let o = FolderRules.seatOwner(who.identity, among: self.saved, except: id) { owner = NewAccountSetup.ownerWords(o) }
-            let said = SignInSaid(end, configDir: folder, owner: owner)
+            let said = SignInSaid(end, configDir: folder, owner: owner, previous: previous)
             self.signIns[id] = said.map { .said($0) }
             self.tick += 1
             // "Signed in." is only for the moment: the box's own lines say who is signed in from then on (never a stale one)
@@ -418,7 +419,7 @@ final class SettingsModel: ObservableObject {
     func newSignInEnded(_ end: SignInWindow.End, generation: Int, folder: String) {
         guard generation == newSignInGeneration, var d = draft, d.configDir == folder else { return }
         d.signInRunning = false; d.signInAsked = nil; d.seatAtAsk = nil
-        d.signInSaid = SignInSaid(end, configDir: folder)
+        d.signInSaid = SignInSaid(end, configDir: folder, follows: false)      // nothing is linked here: no "the profile follows" words
         draft = d; tick += 1
     }
 

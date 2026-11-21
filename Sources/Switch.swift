@@ -95,9 +95,12 @@ extension AccountEntry {
 
 enum AccountNames {
     /// An account's short name: its address before the @ ("ultra-2"), the first letter only while addresses are hidden.
-    static func short(_ email: String) -> String {
+    static func short(_ email: String) -> String { shortName(email, shown: Privacy.shared.show) }
+
+    /// The same for a given "Show emails" setting (what a check hands in: never the real preference).
+    static func shortName(_ email: String, shown: Bool) -> String {
         let local = email.split(separator: "@").first.map(String.init) ?? email
-        return Privacy.shared.show ? local : String(local.prefix(1)) + "•••"
+        return shown ? local : String(local.prefix(1)) + "•••"
     }
 }
 
