@@ -357,6 +357,15 @@ MainActor.assumeIsolated {
               && g1.count == g0.count + 2 && g1.outcome?.setupUnits.contains { $0.name == "g" } == false
               && g0.outcome?.setupUnits.contains { $0.name == "g" } == true,
               "export (zip): a skill whose every file is gone while it is copied isn't counted as carried, its files count as left out, its emptied folders go (the file imports): \(g1.refusal ?? "opened") \(g1.rels.sorted()) \(g1.leftOut) \(g0.count)→\(g1.count)")
+        // an include gone after the closure was read (at its copy): the nested include only it reached was copied, and is taken
+        // out again with the folders that held only it; both count as left out, and the file imports
+        try? fm.removeItem(atPath: c7)
+        w(c7, "CLAUDE.md", "# rules\n@rules/a.md\n"); w(c7, "rules/a.md", "a\n@../notes/deep/b.md\n"); w(c7, "notes/deep/b.md", "b\n")
+        let n0 = goneWhileCopied([], "e2i-inc-none"), n1 = goneWhileCopied(["rules/a.md"], "e2i-inc-gone")
+        check(n0.refusal == nil && n0.rels == ["CLAUDE.md", "rules/a.md", "notes/deep/b.md"], "export (zip): CLAUDE.md, its include and the nested one: \(n0.rels.sorted())")
+        check(n1.refusal == nil && n1.rels == ["CLAUDE.md"] && n1.leftOut.contains("included file notes/deep/b.md (left out with what includes it)")
+              && n1.count == n0.count + 2 && n1.outcome?.setupUnits.map(\.name) == ["CLAUDE.md"],
+              "export (zip): an include gone at its copy takes the nested one out again, its emptied folders too (the file imports), both counted: \(n1.refusal ?? "opened") \(n1.rels.sorted()) \(n1.leftOut) \(n0.count)→\(n1.count) \(n1.outcome?.setupUnits.map(\.name) ?? [])")
         try? fm.removeItem(atPath: c7)
     }
 
