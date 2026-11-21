@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.69 — 2026-11-20
+
 - A hook written as `cd ~/.claude/skills/x && ./run.sh` now counts as running that script: an export keeps the skill out of a zip like any other script a hook runs, and an import accepts it with settings.json.
 - An encrypted export no longer fails when two exports of the same name are made at once: it tries once more under a name of its own, and when hdiutil gives no reason the message says so.
 - An export no longer stops when two of a session's file names become the same once an address in them is replaced: the second gets a free name beside it.
