@@ -422,7 +422,11 @@ enum SessionsRepoint {
         var sessions: [Done] = []
         var problems: [String] = []
         var steps: [Step] = []
+        /// Every pick was refused and nothing was written: kept for its problems, never offered for Undo (nil in older receipts).
+        var refused: Bool? = nil
         var touchesWindow: Bool { steps.contains { $0.kind == .entry && $0.done && !$0.settled } }
+        /// Nothing re-pointed and nothing written: a refused apply (an older one isn't marked so).
+        var empty: Bool { sessions.isEmpty && !steps.contains(where: \.done) }
     }
 
     struct Pick: Equatable, Codable, Hashable {
@@ -441,8 +445,11 @@ enum SessionsRepoint {
     /// The re-points that follow an import's restore and aren't undone.
     static func linked(restore id: String) -> [Receipt] { store.list().filter { $0.restore == id && $0.undone == nil } }
     static func touchesWindow(restore id: String) -> Bool { linked(restore: id).contains(where: \.touchesWindow) }
-    /// The last re-point of a profile that isn't undone (the Sessions page's Undo).
-    static func last(profile: String) -> Receipt? { store.list().first { $0.profile == profile && $0.undone == nil && $0.finished != nil } }
+    /// The last re-point of a profile that isn't undone (the Sessions page's Undo); a refused one, or an empty one from before
+    /// `refused`, isn't one, so it never hides the Undo of the real one before it.
+    static func last(profile: String) -> Receipt? {
+        store.list().first { $0.profile == profile && $0.undone == nil && $0.finished != nil && $0.refused != true && !$0.empty }
+    }
 
     // MARK: re-pointing
 
@@ -494,6 +501,7 @@ enum SessionsRepoint {
             for k in r.sessions.indices where waited.contains(r.sessions[k].session) && !still.contains(r.sessions[k].session) { r.sessions[k].sideWritten = true }
         }
         r.finished = Date()
+        if r.empty { r.refused = true }
         try store.save(r)
         return r
     }

@@ -241,14 +241,22 @@ if role == "b" {
         refused = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/gone2/app")], windowClosed: { true })
         check(refused.problems.first?.contains("couldn't be checked") == true, "refused: when running sessions can't be told")
         let treeAfter = homeTree()
-        // (today a refused apply still leaves an empty, finished receipt in cl_audit's repoints folder: a known bug, reported for a fix
-        // (it can hide the last real re-point's Undo on the Sessions page), not a design; this check only pins that nothing outside that
-        // folder, Claude's folders and the project's, changes byte for byte)
+        // (a refused apply keeps its receipt in cl_audit's repoints folder for its problems, marked refused: never the Sessions page's
+        // Undo (L353); nothing outside that folder, Claude's folders and the project's, changes byte for byte)
         let own = "Library/Application Support/usage-n-uf/repoints/"
         let changedPaths = Set(treeUnread.keys).union(treeAfter.keys).filter { treeAfter[$0] != treeUnread[$0] }
         let outside = changedPaths.filter { !$0.hasPrefix(own) }
         check(refused.sessions.isEmpty && outside.isEmpty && treeUnread.count > 10 && changedPaths.allSatisfy { $0.hasPrefix(own) },
               "refused: when running sessions can't be told, nothing outside cl_audit's own repoint receipt was written in the home (\(treeUnread.count) paths; sessions \(refused.sessions.count); changed outside it: \(outside.sorted().prefix(12)))")
+        // L353: the refused applies are marked so and never the profile's last re-point: the earlier real one (S3 again, r2) keeps its
+        // Undo on the Sessions page; an empty receipt from before `refused` (not marked) is passed over the same way
+        let stored = SessionsRepoint.store.load(refused.id)
+        check(refused.refused == true && stored?.refused == true && stored?.finished != nil && r2.refused == nil && !r2.empty
+              && SessionsRepoint.last(profile: t.profile)?.id == r2.id,
+              "refused: the receipt is marked refused, and the last re-point (the Sessions page's Undo) is still the real one before it: \(SessionsRepoint.last(profile: t.profile)?.id ?? "none") vs \(r2.id)")
+        var unmarked = refused; unmarked.id = SessionsRestore.receiptID(Date().addingTimeInterval(5), t.profile); unmarked.refused = nil
+        try! SessionsRepoint.store.save(unmarked)
+        check(SessionsRepoint.last(profile: t.profile)?.id == r2.id, "an empty receipt from before `refused`: passed over too, the real re-point's Undo stays offered")
         SessionsRestore.runningSessions = { [] }
         // a link in its folder
         try! fm.createDirectory(atPath: proj + "/" + enc(gone) + "/\(S2)", withIntermediateDirectories: true)

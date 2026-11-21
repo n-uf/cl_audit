@@ -33,6 +33,7 @@ Nothing pending.
 ## 26.11.72 — 2026-11-21
 
 - The note under the account on the Dock icon's details panel ("Usage: Claude Code on …", or why Claude Code's account is shown) is drawn in the normal secondary grey instead of the faint one, so it reads on every face.
+- Picking a folder for a moved session that cl_audit refuses (nothing written) no longer hides the Undo of the last real re-point on the Sessions page.
 - When a move to the default profile stopped part way, is being undone or was left as it is, its steps and Result now say so too, as the line at the top does: no spinner on the move step and no "working…" while nothing runs.
 
 ## 26.11.71 — 2026-11-20
