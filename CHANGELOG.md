@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-- Settings ▸ Dock icon ▸ Runs now says it applies only when the Dock can't draw the icon itself (Dock Tiles turned off, say); while the Dock draws it, the line under it says the app runs only when you click it.
+- Settings ▸ Dock icon ▸ Runs now says it has no effect while the Dock draws the icon itself, and applies only when the Dock can't (Dock Tiles turned off, say); the line under it says which is the case now.
 
 ## 26.11.79 — 2026-11-21
 

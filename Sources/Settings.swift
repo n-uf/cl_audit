@@ -2291,7 +2291,7 @@ struct AccountSettings: View {
                     } label: { MenuWell(text: entry.dockRuns.title, fill: true) }
                     .faceMenuFill()
                 }
-                SRowLine(text: runsWords)
+                runsLine
                 clickRows
                 SRow(label: "Press and hold", info: "Press and hold the icon for its details panel and a short menu. Double-click or ⌥-click also opens the panel; right-click shows the full menu.") {
                     SSwitch(isOn: $entry.longPressDetails, on: "details and menu", off: "off")
@@ -2328,22 +2328,28 @@ struct AccountSettings: View {
     /// Runs' help: it applies only when the Dock can't draw the icon itself (the agent starts no Dock icon app while the
     /// Dock draws its tile: TileTracker, Rules.swift).
     static func runsInfo(name: String) -> String {
-        "While the Dock draws \(name)'s icon itself, its app runs only when you click it. Runs applies when the Dock can't draw the icon (Dock Tiles turned off under Login Items & Extensions in System Settings, say): At login: always there, from when you sign in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard)."
+        "Normally the Dock draws \(name)'s icon itself, so no app needs to run and Runs has no effect. If it can't (Dock Tiles turned off in System Settings ▸ General ▸ Login Items & Extensions), the Dock icon app draws it, and Runs says when that app runs. At login: always, from when you sign in to the Mac. With its window: while \(name)'s Claude window is open, quitting 10 s after it closes (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard)."
     }
 
-    /// The grey line under Runs: what runs now. While the Dock draws the icon (its tile's heartbeat is fresh), the app runs
-    /// only when clicked, whatever Runs says; otherwise what the choice means.
-    private var runsWords: String { Self.runsWords(entry, dockDraws: DockTile.drawn(entry.id)) }
+    /// The grey line under Runs: what runs now. While the Dock draws the icon (its tile's heartbeat is fresh) no app needs
+    /// to run, whatever Runs says; otherwise Runs applies, in the choice's own words. Read again every 15 s, so it follows
+    /// the heartbeat.
+    private var runsLine: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { _ in
+            SRowLine(text: Self.runsWords(entry, dockDraws: DockTile.drawn(entry.id)))
+        }
+    }
 
     static func runsWords(_ e: AccountEntry, dockDraws: Bool) -> String {
-        if dockDraws { return "The Dock draws the icon itself, so it runs only when you click it." }
+        if dockDraws { return "The Dock draws the icon itself, so its app needn't run: a click starts it." }
+        let rule: String
         switch e.dockRuns {
-        case .atLogin: return "The Dock isn't drawing the icon itself, so it's always there, from when you sign in."
+        case .atLogin: rule = "always there, from when you sign in."
         case .withWindow:
-            return e.claudeWindow ? "The Dock isn't drawing the icon itself, so it starts with the Claude window and quits 10 s after it."
-                                  : "No Claude window, so it runs only when you start it."
-        case .whenStarted: return "Only when you start it: its Dock tile, or its switch on the dashboard."
+            rule = e.claudeWindow ? "it starts with the Claude window and quits 10 s after it." : "no Claude window, so only when you start it."
+        case .whenStarted: rule = "only when you start it: its Dock tile, or its switch on the dashboard."
         }
+        return "The Dock isn't drawing the icon (yet), so Runs applies: " + rule
     }
 
     /// Click and, after a brief usage panel, how long it shows. With Opens from ▸ Only when asked (or no Claude window)

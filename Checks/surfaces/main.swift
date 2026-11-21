@@ -1956,36 +1956,50 @@ MainActor.assumeIsolated {
                  DockTile.className("a-b", build: "0011"), DockTile.className("a_b", build: "0011")]
     check(Set(names).count == names.count && names.allSatisfy { NSClassFromString($0) == nil && $0.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") } }
           && !names.contains(DockTile.baseClass), "Dock tile classes: one per profile and build, plain names, none the base class")
-    // Settings ▸ Dock icon ▸ Runs: while the Dock draws the icon (a fresh heartbeat) the app runs only when clicked, whatever
-    // Runs says; Runs applies when the Dock can't draw it, and its words say so
-    var runs = e; runs.claudeWindow = true
-    let drawnWords = DockRuns.allCases.map { r -> String in runs.dockRuns = r; return AccountSettings.runsWords(runs, dockDraws: true) }
-    check(drawnWords.allSatisfy { $0 == "The Dock draws the icon itself, so it runs only when you click it." },
-          "Runs while the Dock draws the icon: runs only when clicked, for every choice")
-    runs.dockRuns = .atLogin; let atLoginWords = AccountSettings.runsWords(runs, dockDraws: false)
-    runs.dockRuns = .withWindow; let withWindowWords = AccountSettings.runsWords(runs, dockDraws: false)
-    runs.claudeWindow = false; let noWindowWords = AccountSettings.runsWords(runs, dockDraws: false)
-    runs.dockRuns = .whenStarted; let whenStartedWords = AccountSettings.runsWords(runs, dockDraws: false)
-    check(atLoginWords.contains("isn't drawing the icon itself") && atLoginWords.contains("always there")
-          && withWindowWords.contains("isn't drawing the icon itself") && withWindowWords.contains("starts with the Claude window")
-          && noWindowWords.hasPrefix("No Claude window") && whenStartedWords.hasPrefix("Only when you start it"),
-          "Runs when the Dock can't draw the icon: each choice's own words")
+    // Settings ▸ Dock icon ▸ Runs: while the Dock draws the icon (a fresh heartbeat) no app needs to run, whatever Runs says;
+    // otherwise Runs applies, in each choice's own words
+    var runs = e
+    func words(_ r: DockRuns, window: Bool, drawn: Bool) -> String {
+        runs.dockRuns = r; runs.claudeWindow = window; return AccountSettings.runsWords(runs, dockDraws: drawn)
+    }
+    let drawnLine = "The Dock draws the icon itself, so its app needn't run: a click starts it."
+    check(DockRuns.allCases.allSatisfy { r in [true, false].allSatisfy { words(r, window: $0, drawn: true) == drawnLine } },
+          "Runs while the Dock draws the icon: no app needs to run, for every choice, with or without a Claude window")
+    let notYet = "The Dock isn't drawing the icon (yet), so Runs applies: "
+    check(words(.atLogin, window: true, drawn: false) == notYet + "always there, from when you sign in."
+          && words(.atLogin, window: false, drawn: false) == notYet + "always there, from when you sign in."
+          && words(.withWindow, window: true, drawn: false) == notYet + "it starts with the Claude window and quits 10 s after it."
+          && words(.withWindow, window: false, drawn: false) == notYet + "no Claude window, so only when you start it."
+          && words(.whenStarted, window: true, drawn: false) == notYet + "only when you start it: its Dock tile, or its switch on the dashboard.",
+          "Runs when the Dock isn't drawing the icon: each choice's own words, the same lead for all")
     let info = AccountSettings.runsInfo(name: "Main")
-    check(info.hasPrefix("While the Dock draws Main's icon itself, its app runs only when you click it.")
-          && info.contains("Runs applies when the Dock can't draw the icon"), "Runs' help says it applies only when the Dock can't draw the icon")
-    // DockTile.drawn: a heartbeat within 90 s; an old one, one in the future or none: not drawn
-    let beatID = "runs-check"
-    try? fm.createDirectory(at: DockTile.folder, withIntermediateDirectories: true)
-    let beatFile = DockTile.beatURL(beatID)
-    check(!DockTile.drawn(beatID), "no heartbeat: the Dock doesn't draw it")
-    fm.createFile(atPath: beatFile.path, contents: Data("beat".utf8))
-    check(DockTile.drawn(beatID), "a heartbeat just now: the Dock draws it")
-    try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-200)], ofItemAtPath: beatFile.path)
-    check(!DockTile.drawn(beatID), "a heartbeat 200 s old: not drawn")
-    try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(3600)], ofItemAtPath: beatFile.path)
-    check(!DockTile.drawn(beatID), "a heartbeat in the future: not drawn")
-    DockTile.forget(beatID)
-    check(!fm.fileExists(atPath: beatFile.path), "DockTile.forget removes the heartbeat")
+    check(info.hasPrefix("Normally the Dock draws Main's icon itself, so no app needs to run and Runs has no effect.")
+          && info.contains("If it can't (Dock Tiles turned off in System Settings ▸ General ▸ Login Items & Extensions)"),
+          "Runs' help: it has no effect while the Dock draws the icon, and says where Dock Tiles is")
+    // the one freshness test (DockTile.fresh), for the agent's tracker and Settings alike: under 90 s and not in the future
+    let beatAt = Date(timeIntervalSince1970: 1_800_000_000)
+    check(DockTile.fresh(beatAt, now: beatAt) && DockTile.fresh(beatAt, now: beatAt.addingTimeInterval(89.9))
+          && !DockTile.fresh(beatAt, now: beatAt.addingTimeInterval(90)) && !DockTile.fresh(beatAt, now: beatAt.addingTimeInterval(-1))
+          && !DockTile.fresh(nil, now: beatAt), "DockTile.fresh: 0 and 89.9 s fresh; 90 s, a future heartbeat (-1 s) and none: not")
+    var agrees = TileTracker(now: beatAt)
+    agrees.tick(now: beatAt.addingTimeInterval(30))
+    let atFresh = agrees.step("x", TileTracker.Facts(pinned: true, running: true, ours: true, inFront: false, lastBeat: beatAt.addingTimeInterval(-59.9)),
+                              now: beatAt.addingTimeInterval(30))
+    check(atFresh == .quit, "the agent's tracker uses the same test: a heartbeat 89.9 s old counts as drawn")
+    // DockTile.drawn reads the profile's heartbeat file (an id of its own, removed whatever happens)
+    do {
+        let beatID = "runs-check-\(getpid())"
+        let beatFile = DockTile.beatURL(beatID)
+        defer { DockTile.forget(beatID) }
+        try? fm.createDirectory(at: DockTile.folder, withIntermediateDirectories: true)
+        check(!DockTile.drawn(beatID), "no heartbeat: the Dock doesn't draw it")
+        fm.createFile(atPath: beatFile.path, contents: Data("beat".utf8))
+        let stamp = (try? fm.attributesOfItem(atPath: beatFile.path))?[.modificationDate] as? Date ?? Date()
+        check(DockTile.drawn(beatID, now: stamp.addingTimeInterval(89)) && !DockTile.drawn(beatID, now: stamp.addingTimeInterval(90))
+              && !DockTile.drawn(beatID, now: stamp.addingTimeInterval(-1)), "DockTile.drawn: the file's time through the one test")
+        DockTile.forget(beatID)
+        check(!fm.fileExists(atPath: beatFile.path), "DockTile.forget removes the heartbeat")
+    }
 
     // a reset that has passed: that limit has no percent; both passed: no numbers at all
     let pastReset = show(rec(week: 100, weekIn: -60))

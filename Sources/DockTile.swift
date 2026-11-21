@@ -37,9 +37,13 @@ enum DockTile {
         for u in [beatURL(id), logURL(id), logURL(id).appendingPathExtension("1"), windowURL(id)] { try? FileManager.default.removeItem(at: u) }
     }
 
-    /// The Dock draws the profile's tile now: a heartbeat within TileTracker.fresh (and not in the future).
-    static func drawn(_ id: String, now: Date = Date()) -> Bool {
-        lastBeat(id).map { now.timeIntervalSince($0) }.map { $0 >= 0 && $0 < TileTracker.fresh } ?? false
+    /// The Dock draws the profile's tile now: its heartbeat is fresh (Settings' Runs line asks this).
+    static func drawn(_ id: String, now: Date = Date()) -> Bool { fresh(lastBeat(id), now: now) }
+
+    /// A heartbeat within TileTracker.fresh and not in the future (a clock moved back): the one test, for the agent's
+    /// tracker and Settings alike.
+    static func fresh(_ beat: Date?, now: Date = Date()) -> Bool {
+        beat.map { now.timeIntervalSince($0) }.map { $0 >= 0 && $0 < TileTracker.fresh } ?? false
     }
 
     /// When the Dock last drew the profile's tile through the plug-in, or nil.
@@ -144,8 +148,7 @@ struct TileTracker {
         var s = states[id] ?? State(readyAt: baseline)
         defer { states[id] = s }
         guard f.pinned else { s.stale = 0; return .none }
-        let age = f.lastBeat.map { now.timeIntervalSince($0) }
-        if let age, age >= 0, age < Self.fresh {
+        if DockTile.fresh(f.lastBeat, now: now) {
             s.stale = 0
             guard !s.sticky else { return .none }       // drawn only while it runs: it keeps running, as before
             s.failed = false
