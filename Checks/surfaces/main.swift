@@ -3337,6 +3337,15 @@ do {
     check(orgBack?.readingOrganization == teamOrg && orgNoAcct.readingOrganization == nil
           && StatusCodec.decode(Data(#"{"state":"ok","numbersOwner":"hex-2@example.com","numbersAccount":"x"}"#.utf8))?.readingOrganization == nil,
           "status record: the reading's organisation kept with its id; none without it, none in an older record")
+    // differs on a stale reading: the folder's account against the app's by the ids, never the addresses (an address
+    // changed on the same id is no split; another id with the app's address is one)
+    let renamed = Seat(account: h2.account, organization: h2.organization, email: "renamed-2@example.com")
+    let staleSameID = AccountResolver.resolve(me, among: [me], app: appH2, code: renamed, loginEmail: foreign, names: [:], now: t0)
+    check(staleSameID.readStale == true && staleSameID.fromApp && !staleSameID.differs,
+          "a stale reading, the app on the folder's id under another address: no split (by the ids)")
+    let otherIDSameAddr = Seat(account: otherAcct, organization: h2.organization, email: h2.email)
+    let staleOtherID = AccountResolver.resolve(me, among: [me], app: appH2, code: otherIDSameAddr, loginEmail: foreign, names: [:], now: t0)
+    check(staleOtherID.readStale == true && staleOtherID.differs, "…the folder on another id with the app's address: a split (by the ids)")
     // the record's new field: an older record (no numbersAccount) decodes, with no id; a new one keeps it
     let olderRec = StatusCodec.decode(Data(#"{"state":"ok","numbersOwner":"hex-2@example.com","weekly":40}"#.utf8))
     var withID = IconStatus(state: "ok"); withID.numbersOwner = h2.email; withID.numbersAccount = h2.account

@@ -13,8 +13,9 @@
 //   ("Usage: Claude Code on b…@example.com");
 // - Claude Code's folder on another profile's account in use: that profile has those numbers (one profile per account);
 //   the line says so and the lamp is off.
-// - The numbers are labelled with the address they were read for (`loginEmail`), and "differs" compares that address with
-//   the active account's, so a read from just before a sign-in changed and the resolver always agree.
+// - The numbers are labelled with the address they were read for (`loginEmail`), and "differs" compares that reading's
+//   account with the active one (by the ids where both are known, else the addresses), so a read from just before a
+//   sign-in changed and the resolver always agree.
 
 import Foundation
 import ProfileCore
@@ -83,9 +84,10 @@ enum AccountResolver {
             r.lit = true
         }
         // in every case: the reading's own id against the active account's when both are known and the id isn't one the
-        // folder's record disagrees with (the guard above); else the numbers' own address when both are known; else the
-        // folder's id
+        // folder's record disagrees with (the guard above); a stale reading is the folder's account's, so its id against
+        // the active account's; else the numbers' own address when both are known; else the folder's id
         if !stale, idMatch != false, let n = readID, let a = r.account { r.differs = !byID(a).sameAccount(byID(n)) }
+        else if stale, let c = code, !c.account.isEmpty, let a = r.account { r.differs = !byID(a).sameAccount(known(c)) }
         else if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !sameAddress(n, a) }
         else if r.fromApp, let id = r.account { r.differs = code.map { !byID(id).sameAccount(known($0)) } ?? false }
         if let o = owner {
