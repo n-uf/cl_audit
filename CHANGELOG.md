@@ -9,6 +9,7 @@ the notes before updating.
 ## Unreleased
 
 - Settings ▸ Claude window: a window that's on but whose data folder was deleted outside cl_audit shows that folder as missing, not "none yet".
+- Each profile's tile in Settings and its card header on the dashboard now show a small light in the profile's colour, before its name (dark for a profile with no colour of its own: none picked and its Dock icon coloured by usage or graphite). The card header's flat dot becomes that light.
 
 ## 26.11.77 — 2026-11-21
 
@@ -26,7 +27,6 @@ the notes before updating.
 - A switch now settles the scheduled tasks before any session moves. When they can't move at that moment (the new account got a differing copy since you pressed Switch, or its tasks file can't be written, or the old account's file changed), they stay together with their sessions, the other sessions move, and the switch goes on to the sign-in and says why the tasks stayed; it used to stop part way, with those tasks' sessions already moved. What changed now counts what actually moved. A switch stopped part way (the Claude window opened) may now have moved the tasks already: Undo puts them back, as before.
 - New profile with the Claude window off: Create (or Connect, for an existing folder) no longer stops after its first click and says nothing; it goes on to sign-in, and when it can't go on it says why. The Create key reads "Checking…" while it looks, and the Claude window switch, locked once the folder is made, says so and that Cancel starts over.
 - In Settings ▸ Accounts, the row of the account Claude Code in Terminal is signed in to (while the Claude app is on another) now also selects when its account isn't on the standby list (Claude Code was switched to it elsewhere, for example in cl_quick): Switch account then closes the profile's Claude window, moves its sessions to that account (from the Claude app's own account and organisation) and opens no sign-in, since Claude Code is on it already. The window opens again with only its own sign-in left, and the Switch page says so. A finished move of this kind has no Undo (the backup made first keeps a copy); one that stops part way can be undone as usual.
-- Each profile's tile in Settings and its card header on the dashboard now show a small light in the profile's colour, before its name (dark for a profile with no colour of its own: none picked and its Dock icon coloured by usage or graphite). The card header's flat dot becomes that light.
 
 ## 26.11.75 — 2026-11-21
 
