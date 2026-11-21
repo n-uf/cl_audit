@@ -93,6 +93,8 @@ extension DetailsInfo {
 func cardRow(_ e: AccountEntry, now: Date = Date()) -> AccountRow { AccountRow(entry: e, show: ProfileShow.load(e, now: now)) }
 
 @MainActor func snapshot(_ v: some View, _ name: String, _ w: CGFloat, _ h: CGFloat = 3600) {
+    // RENDER_ONLY=<name prefix>,<name prefix>…: only the pictures whose name starts with one of them (a few pictures of a changed page)
+    if let only = ProcessInfo.processInfo.environment["RENDER_ONLY"], !only.split(separator: ",").contains(where: { name.hasPrefix($0) }) { return }
     if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil, !name.hasPrefix("o") { return }  // the one-folder renders only
     if ProcessInfo.processInfo.environment["LEFT_ONLY"] != nil, !name.hasPrefix("ol") { return }    // the left-behind line only
     if ProcessInfo.processInfo.environment["B2_ONLY"] != nil, !name.hasPrefix("6") { return }      // stage B2 renders only
@@ -887,6 +889,22 @@ MainActor.assumeIsolated {
         } }
     }
 
+    // the same page at .moving with its inner restore stopped, being undone and left as it is: the top line says that, not "Moving ●"
+    // (xdp-moving-<state>-std-w340/460/708; always drawn, not only under EXPERIMENTAL_ONLY)
+    do {
+        let dpm = DefaultProfileRunner(situation: DefaultProfile.Situation(kind: .windowOnly, old: main, target: nil), model: model)
+        let inner = RestoreRunner(key: RestoreKey(profile: "main", backup: mSw.id, place: place.path), model: model)
+        let states: [(String, RestoreRunner.Phase)] = [("stopped", .stopped("Stopped by you. What is back is kept.")), ("undoing", .undoing), ("left", .left)]
+        for (tag, ph) in states {
+            inner.preview(ph, progress: (52, 86))
+            dpm.preview(.moving, inner: inner)
+            for w in [CGFloat(340), 460, 708] {
+                snapshot(framed(DefaultProfilePage(model: model, runner: dpm, width: w, counts: DefaultProfile.Preview(), importCarried: false), .std, w),
+                         "xdp-moving-\(tag)-std-w\(Int(w))", w + 32, 3000)
+            }
+        }
+    }
+
     // a. the one account answer (AccountResolver): every surface from the same record, side by side, for "the Claude app and
     // Claude Code on different accounts" and "the same account"; the Dock panel before its first read and after; a standby
     // account whose kept sign-in ran out
@@ -1036,6 +1054,21 @@ MainActor.assumeIsolated {
     var undone = moved; undone.undone = Date()
     r.preview(.undone, goal: goal, target: k2, planned: swPlan, receipt: undone)
     page(main, k2, "o12-switch-undone")
+    // an Undo that left some things as they were: "Partly undone: … left as …" (one session that changed since, and a file that isn't a
+    // session), the receipt open for another Undo (the atlas's row 10 draws it too, but only under ATLAS_SWITCH)
+    var partlyBack = moved; partlyBack.left = [URL(fileURLWithPath: moved.steps.first?.path ?? "/x/local_x.json").lastPathComponent, "settings.json"]; partlyBack.partlyUndone = Date()
+    r.preview(.failed(SwitchRunner.partlyWords(partlyBack)), goal: goal, target: k2, planned: swPlan, receipt: partlyBack, failedAt: .move)
+    page(main, k2, "o13-switch-partly-undone")
+    // a session whose Code-tab record is too large to read (over SafeRead.entryMax): held, said apart from a running Claude Code's
+    let bigEntry = "\(odir)/local_\(uuid(5001)).json"
+    fm.createFile(atPath: bigEntry, contents: Data("{}".utf8))
+    if let h = FileHandle(forWritingAtPath: bigEntry) { try? h.truncate(atOffset: UInt64(SafeRead.entryMax + 1)); try? h.close() }
+    let bigPlan: SwitchPlan? = { if case .success(let p) = SwitchEngine.plan(main, standby: k2, owned: []) { return p }; return nil }()
+    print("too large to read:", bigPlan?.unreadable.count ?? -1, "held:", bigPlan?.held.count ?? -1)
+    r.preview(.waiting, goal: goal, target: k2, planned: bigPlan, receipt: moved, note: bigPlan.flatMap(SwitchRunner.stayWords), seen: u1)
+    page(main, k2, "o14-switch-unreadable-session")
+    try? fm.removeItem(atPath: bigEntry)
+    r.preview(.ready, goal: nil, target: k2)
     let again = SwitchRunner.Goal(standby: nil, wantedSeat: u1, wantedEmail: u1.email!, from: u1, started: Date().addingTimeInterval(-30))
     r.preview(.waiting, goal: again, target: nil)
     page(main, k2, "o6-switch-sign-in-again")
