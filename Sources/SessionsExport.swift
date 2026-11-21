@@ -522,7 +522,11 @@ enum SessionsExport {
         var keyedBytes: Int64 = 0
         var keyedFiles = 0                  // lone files with keys (a window entry, a project's other files)
         var connections = 0                 // entries holding connection settings (a zip leaves them out)
-        var unreadable = 0                  // entries a zip leaves out because they aren't UTF-8 JSON objects it can read
+        var imageKeyedFiles = 0             // entries whose keys sit only in those connection settings: kept in the image, not a zip
+        var imageKeyedBytes: Int64 = 0
+        var unreadable = 0                  // entries (and the task file) left out because they aren't UTF-8 JSON objects it can read, or are too big
+        /// The counts as the encrypted image would hold them: an entry whose keys sit in its connection settings counts as keyed.
+        var inImage: Preview { var p = self; p.keyedFiles += imageKeyedFiles; p.keyedBytes += imageKeyedBytes; p.imageKeyedFiles = 0; p.imageKeyedBytes = 0; return p }
         var notEntries = 0                  // window files named like an entry (local_…) that aren't one (ClaudeFiles): left out
         var markersOrphan = 0               // retention markers with no transcript beside them: left out
         var markersKeyed = 0                // retention markers of a session that holds keys: left out with it unless keys are kept
@@ -737,16 +741,20 @@ enum SessionsExport {
                 if leaf.hasPrefix("local_"), !ClaudeFiles.isEntryName(leaf) { pv.notEntries += 1; continue }
                 if ClaudeFiles.isEntryName(leaf) { pv.entries += 1 }
                 pv.windowBytes += f.bytes
-                // an entry as a zip will hold it: without its two fields (counted), and not at all when it can't be read (counted apart)
-                if ClaudeFiles.isEntryName(leaf), f.bytes < 64 << 20, let d = FileManager.default.contents(atPath: f.src) {
+                // an entry or the task file of 64 MB or more is never read, so an export leaves it out whichever the file (as the run does)
+                if ClaudeFiles.isEntryName(leaf) || leaf == "scheduled-tasks.json", f.bytes >= 64 << 20 { pv.unreadable += 1; continue }
+                // an entry as a zip will hold it: without its two fields (counted), and not at all when it can't be read (counted apart);
+                // what only the encrypted image would carry (keys in those two fields) is counted apart too, for when the file is one
+                if ClaudeFiles.isEntryName(leaf), let d = FileManager.default.contents(atPath: f.src) {
+                    progress?(Int64(d.count))
                     guard let w = EntryConnections.without(d) else { pv.unreadable += 1; continue }
                     if w.held > 0 { pv.connections += 1 }
-                    progress?(Int64(d.count))
                     if !SecretScan.scan(w.data).isEmpty { pv.keyedFiles += 1; pv.keyedBytes += f.bytes }
+                    else if w.held > 0, !SecretScan.scan(d).isEmpty { pv.imageKeyedFiles += 1; pv.imageKeyedBytes += f.bytes }
                     continue
                 }
-                if leaf == "scheduled-tasks.json", f.bytes < 64 << 20, let d = FileManager.default.contents(atPath: f.src), EntryConnections.top([UInt8](d)) == nil {
-                    pv.unreadable += 1; continue                            // a task file a zip can't read is left out too
+                if leaf == "scheduled-tasks.json", let d = FileManager.default.contents(atPath: f.src), EntryConnections.top([UInt8](d)) == nil {
+                    pv.unreadable += 1; continue                            // a task file it can't read is left out too
                 }
                 if ClaudeFiles.isEntryName(leaf) || leaf == "scheduled-tasks.json" {
                     guard let kinds = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }

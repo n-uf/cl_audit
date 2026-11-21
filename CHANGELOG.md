@@ -11,6 +11,7 @@ the notes before updating.
 - A hook written as `cd ~/.claude/skills/x && ./run.sh` now counts as running that script: an export keeps the skill out of a zip like any other script a hook runs, and an import accepts it with settings.json.
 - An encrypted export no longer fails when two exports of the same name are made at once: it tries once more under a name of its own, and when hdiutil gives no reason the message says so.
 - An export no longer stops when two of a session's file names become the same once an address in them is replaced: the second gets a free name beside it.
+- Export's key count for an encrypted disk image now includes Code-tab entries whose keys sit in their connection settings (the image keeps those settings; a zip leaves them out).
 
 ## 26.11.68 — 2026-11-20
 

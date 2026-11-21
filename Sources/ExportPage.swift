@@ -210,7 +210,7 @@ final class ExportRunner: ObservableObject {
         var t = SessionsExport.Preview(profile: "all", name: "All profiles")
         for x in p {
             t.sessions += x.sessions; t.transcriptBytes += x.transcriptBytes; t.entries += x.entries; t.tasks += x.tasks; t.windowBytes += x.windowBytes
-            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable; t.notEntries += x.notEntries; t.markersOrphan += x.markersOrphan; t.markersKeyed += x.markersKeyed
+            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.imageKeyedFiles += x.imageKeyedFiles; t.imageKeyedBytes += x.imageKeyedBytes; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable; t.notEntries += x.notEntries; t.markersOrphan += x.markersOrphan; t.markersKeyed += x.markersKeyed
             t.windowLeftOut = t.windowLeftOut || x.windowLeftOut
             for (k, v) in x.keyKinds { t.keyKinds[k, default: 0] += v }
             t.setup.add(x.setup)
@@ -522,7 +522,8 @@ struct ExportPage: View {
     @State private var consent: ConsentRequest?
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
-    private var pv: SessionsExport.Preview? { runner.total }
+    // (the encrypted image keeps an entry's connection settings, and so any keys in them: its counts say so)
+    private var pv: SessionsExport.Preview? { runner.usesImage ? runner.total?.inImage : runner.total }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
