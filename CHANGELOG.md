@@ -12,6 +12,7 @@ the notes before updating.
 - A sign-in change is now followed within seconds also in a Claude Code folder that was deleted and made again, and in one (or the Claude app's logs folder) that wasn't there yet when cl_audit started.
 - The Claude app signed out and then back in to the same account now shows as signed in again as soon as its log says its sessions started for that account, not only after a newer sign-in transition or settings write.
 - When Claude Code renews its own expired sign-in while it runs, the numbers come back within about a minute (its status line says it works, so the sign-in is read again), not after up to 10 minutes of "sign-in expired".
+- A standby account remembered without its organisation (found only by its id, or kept from an older list) now gets it as soon as cl_audit finds it on this Mac, so it can be switched to.
 
 ## 26.11.69 — 2026-11-20
 
