@@ -1,8 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Switch State Text</title>
 <style>
   * { box-sizing: border-box; }
@@ -62,25 +61,14 @@
   <p>One line, panel height unchanged (40 px). The state word (STOPPED, WAITING, QUITS IN 10 S) never moves. The detail after it, slightly lighter, sits in the space left on the line; only when it doesn't fit does it pause, scroll through and loop, fading at both edges like a display window. When it fits it stays still. With "reduce motion" turned on it doesn't move and ends in "…" instead.</p>
   <div class="stage">
     <div class="row-lbl">165 px · the two cards on the Overview</div>
-    <div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>stopped</b><span class="tick"><span data-t="· no alerts">· no alerts</span></span></span></div><span class="key"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>waiting</b><span class="tick"><span data-t="· for the window">· for the window</span></span></span></div><span class="key"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>quits in 10 s</b><span class="tick"><span data-t="· after the window">· after the window</span></span></span></div><span class="key on"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>running</b></span></div><span class="key on"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Claude window</span><span class="st2"><b>open</b></span></div><span class="key on"><i></i></span></div>
+    <div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>stopped</b><span class="tick run"><span data-t="· no alerts" style="--shift: -99.5px; --dur: 6.21875s;">· no alerts</span></span></span></div><span class="key"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>waiting</b><span class="tick run"><span data-t="· for the window" style="--shift: -131.5px; --dur: 8.21875s;">· for the window</span></span></span></div><span class="key"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>quits in 10 s</b><span class="tick run"><span data-t="· after the window" style="--shift: -144.5px; --dur: 9.03125s;">· after the window</span></span></span></div><span class="key on"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>running</b></span></div><span class="key on"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Claude window</span><span class="st2"><b>open</b></span></div><span class="key on"><i></i></span></div>
     <div class="row-lbl">210 px · the Demo dashboard at 1440 px</div>
-    <div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>stopped</b><span class="tick"><span data-t="· no alerts">· no alerts</span></span></span></div><span class="key"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>waiting</b><span class="tick"><span data-t="· for the window">· for the window</span></span></span></div><span class="key"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>quits in 10 s</b><span class="tick"><span data-t="· after the window">· after the window</span></span></span></div><span class="key on"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>running</b></span></div><span class="key on"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Claude window</span><span class="st2"><b>open</b></span></div><span class="key on"><i></i></span></div>
+    <div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>stopped</b><span class="tick"><span data-t="· no alerts">· no alerts</span></span></span></div><span class="key"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>waiting</b><span class="tick run"><span data-t="· for the window" style="--shift: -131.5px; --dur: 8.21875s;">· for the window</span></span></span></div><span class="key"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>quits in 10 s</b><span class="tick run"><span data-t="· after the window" style="--shift: -144.5px; --dur: 9.03125s;">· after the window</span></span></span></div><span class="key on"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>running</b></span></div><span class="key on"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Claude window</span><span class="st2"><b>open</b></span></div><span class="key on"><i></i></span></div>
   </div>
 </section>
 
 </main>
-<script>
-  // scroll a detail only when it is longer than the space it has; each loop moves one copy plus the gap
-  document.querySelectorAll(".tick").forEach((t) => {
-    const s = t.firstElementChild;
-    const one = s.offsetWidth;                 // the text alone (with its 6 px lead)
-    if (one <= t.clientWidth) return;
-    t.classList.add("run");
-    const gap = parseFloat(getComputedStyle(s, "::after").paddingLeft) || 0;
-    const shift = one - 6 + gap;
-    s.style.setProperty("--shift", `-${shift}px`);
-    s.style.setProperty("--dur", `${Math.max(4, shift / 16)}s`);
-  });
-</script>
-</body>
-</html>
+
+
+
+</body></html>

@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en" class="dot-home dot-work"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cl_audit · quick chat</title>
 <!-- The app's own parts: the site demo's copy of cl_audit's design code (cl_audit_home src/styles). -->
@@ -2146,10 +2146,11 @@ body { background: #101012; }
   <div class="when"><div class="t">THE QUICK CHAT</div><h2>A bar on ⌥Space, a window after the first message</h2><p>Pick a moment, or use it: type and press Return, try the pickers, Copy, the pencil or Esc.</p></div>
   <div>
     <div class="sk-picker"><span class="switch" id="qcpick">
-      <button type="button" data-s="closed">Closed</button><button type="button" data-s="bar">Bar</button><button type="button" data-s="typing">Typing</button><button type="button" data-s="model">Model</button><button type="button" data-s="answering">Answering</button><button type="button" data-s="answer">Answer</button><button type="button" data-s="followup">Follow-up</button><button type="button" data-s="thinking">Thinking</button><button type="button" data-s="full">Week full</button><button type="button" data-s="failed">Claude Code failed</button>
+      <button type="button" data-s="closed">Closed</button><button type="button" data-s="bar">Bar</button><button type="button" data-s="typing">Typing</button><button type="button" data-s="model">Model</button><button type="button" data-s="answering">Answering</button><button type="button" data-s="answer" class="on">Answer</button><button type="button" data-s="followup">Follow-up</button><button type="button" data-s="thinking">Thinking</button><button type="button" data-s="full">Week full</button><button type="button" data-s="failed">Claude Code failed</button>
     </span></div>
-    <div class="qc-desk" id="qcdesk"></div>
-    <p class="sk-why" id="qcwhy" style="margin-top:10px"></p>
+    <div class="qc-desk" id="qcdesk"><div class="qc-mb"><b>Notes</b><span class="qc-dim qc-hide-n">File</span><span class="qc-dim qc-hide-n">Edit</span><span class="qc-dim qc-hide-n">View</span>
+  <span class="qc-mb-r"><span class="qc-mbi">MAIN <i style="background:#f59e0b"></i><i style="background:#22c55e"></i></span><span class="qc-dim qc-hide-n">Wi‑Fi</span><span>Sun 14:05</span></span></div><div class="qc-bgwin"><div class="tb"><i></i><i></i><i></i></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div></div><div class="qc-win" role="dialog" aria-label="Quick chat"><div class="qc-head"><span class="qc-who"><b>Main</b><span class="qc-mail">u••••••@example.com</span></span><span class="qc-lv"><span class="qc-meter"><i style="width:62%;background:#f59e0b"></i></span><b style="color:#f59e0b">62%</b> week · resets Thu</span><span class="qc-sp"></span><button type="button" class="qc-icon" data-act="new" title="New chat (⌘N)" aria-label="New chat"><svg class="qc-ico " viewBox="0 0 16 16" aria-hidden="true"><path d="M7.2 2.8H4.2A1.7 1.7 0 0 0 2.5 4.5v7.3a1.7 1.7 0 0 0 1.7 1.7h7.3a1.7 1.7 0 0 0 1.7-1.7V8.8"></path><path d="M11.4 2.3l2.3 2.3-5.6 5.6H5.8V7.9z"></path></svg></button><button type="button" class="qc-icon" data-act="hide" title="Hide (Esc)" aria-label="Hide"><svg class="qc-ico " viewBox="0 0 16 16" aria-hidden="true"><path d="M4.3 4.3l7.4 7.4M11.7 4.3l-7.4 7.4"></path></svg></button></div><div class="qc-msgs" id="qcmsgs"><div class="qc-user"><span>How do I find which process is using port 3000 on macOS?</span></div><div class="qc-ans"><p>Use <code>lsof</code>:</p><div class="qc-pre"><div class="qc-pre-h">zsh<button type="button" data-act="copy"><svg class="qc-ico " viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"></rect><path d="M10.5 5.5V4.3A1.8 1.8 0 0 0 8.7 2.5H4.3A1.8 1.8 0 0 0 2.5 4.3v4.4a1.8 1.8 0 0 0 1.8 1.8h1.2"></path></svg><span>Copy</span></button></div><pre>lsof -nP -iTCP:3000 -sTCP:LISTEN</pre></div><p>The <b>PID</b> column is the process. Stop it with <code>kill &lt;PID&gt;</code>, or <code>kill -9 &lt;PID&gt;</code> if it ignores that.</p><ul><li><code>-nP</code> keeps addresses and ports as numbers, which is faster.</li><li><code>-sTCP:LISTEN</code> shows only the server, not its clients.</li></ul></div><div class="qc-foot"><button type="button" class="qc-icon sm" data-act="copyans" data-i="0" title="Copy"><svg class="qc-ico " viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.8"></rect><path d="M10.5 5.5V4.3A1.8 1.8 0 0 0 8.7 2.5H4.3A1.8 1.8 0 0 0 2.5 4.3v4.4a1.8 1.8 0 0 0 1.8 1.8h1.2"></path></svg></button><button type="button" class="qc-icon sm" data-act="again" data-i="0" title="Ask again"><svg class="qc-ico " viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8A5.2 5.2 0 1 1 11.6 4.3M13.2 2.6v3.1h-3.1"></path></svg></button><span>answered by Haiku 5.5 · 2.4 s</span></div></div><div class="qc-compose"><textarea class="qc-ta" id="qcta" rows="1" placeholder="Reply…" aria-label="Message" style="height: auto;"></textarea><div class="qc-row"><button type="button" class="qc-chip" data-act="m-model" aria-haspopup="menu">Haiku 5.5<svg class="qc-ico sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5L8 10l3.5-3.5"></path></svg></button><button type="button" class="qc-chip" data-act="m-think" aria-haspopup="menu" title="Thinking"><svg class="qc-ico " viewBox="0 0 16 16" aria-hidden="true"><path d="M6.1 12.4h3.8M6.6 14.3h2.8M8 1.8a4.3 4.3 0 0 0-2.6 7.7c.4.3.6.8.6 1.3v.2h4v-.2c0-.5.2-1 .6-1.3A4.3 4.3 0 0 0 8 1.8z"></path></svg><span class="qc-n">Thinking&nbsp;</span>off<svg class="qc-ico sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5L8 10l3.5-3.5"></path></svg></button><span class="qc-sp"></span><button type="button" class="qc-send idle" data-act="send" title="Send (Return)" aria-label="Send"><svg class="qc-ico " viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M3.8 7.5L8 3.3l4.2 4.2"></path></svg></button></div></div></div></div>
+    <p class="sk-why" id="qcwhy" style="margin-top:10px">Under each answer: Copy, Ask again, and the model that answered. Code blocks have their own Copy. No ratings or read-aloud: ratings would need telemetry. The pencil starts a new chat and shrinks the window back to the bar.</p>
   </div>
 </section>
 
@@ -2157,7 +2158,7 @@ body { background: #101012; }
 <section class="sk-step">
   <div class="when"><div class="t">THE ACCOUNT LINE</div><h2>Who answers, and how full their week is</h2><p>The window's top line, in cl_audit's colours: green, amber from 50%, red from 80%, crimson from 95%.</p></div>
   <div>
-    <div class="qc-levels" id="qclevels"></div>
+    <div class="qc-levels" id="qclevels"><div class="qc-head"><span class="qc-who"><b>Main</b><span class="qc-mail">u••••••@example.com</span></span><span class="qc-lv"><span class="qc-meter"><i style="width:34%;background:#22c55e"></i></span><b style="color:#22c55e">34%</b> week · resets Thu</span><span class="qc-sp"></span></div><div class="qc-head"><span class="qc-who"><b>Main</b><span class="qc-mail">u••••••@example.com</span></span><span class="qc-lv"><span class="qc-meter"><i style="width:62%;background:#f59e0b"></i></span><b style="color:#f59e0b">62%</b> week · resets Thu</span><span class="qc-sp"></span></div><div class="qc-head"><span class="qc-who"><b>Main</b><span class="qc-mail">u••••••@example.com</span></span><span class="qc-lv"><span class="qc-meter"><i style="width:86%;background:#ef4444"></i></span><b style="color:#ef4444">86%</b> week · resets Thu</span><span class="qc-sp"></span></div><div class="qc-head"><span class="qc-who"><b>Main</b><span class="qc-mail">u••••••@example.com</span></span><span class="qc-lv"><span class="qc-meter"><i style="width:97%;background:#eb445b"></i></span><b style="color:#eb445b">97%</b> week · resets Thu</span><span class="qc-sp"></span></div><div class="qc-head"><span class="qc-who"><b>Main</b><span class="qc-mail">u••••••@example.com</span></span><span class="qc-lv"><span class="qc-meter"><i style="width:100%;background:#eb445b"></i></span><b style="color:#eb445b">full</b> week · back Thu 17:30</span><span class="qc-sp"></span></div></div>
     <p class="sk-why" style="margin-top:10px">The profile, the address of the account in use (masked, as everywhere in cl_audit, unless Privacy shows addresses) and its week. The bar shows the profile and the week only. A full 5-hour limit takes the week's place until it resets. After a switch, the line shows the new account and the next message goes there.</p>
   </div>
 </section>
@@ -2178,8 +2179,8 @@ body { background: #101012; }
           <div class="srow vcol stk"><span>Shortcut <i class="idot">i</i></span>
             <div class="qc-col">
               <span class="ctl-pair"><button type="button" class="mswitch" id="qsw" aria-label="Quick chat shortcut"></button><span class="sw-t" id="qswt">Off</span></span>
-              <select class="menu" id="qkey" aria-label="Shortcut"><option value="opt">⌥Space</option><option value="ctlopt">⌃⌥Space</option><option value="cmd">⌘Space</option><option value="ctl">⌃Space</option><option value="rec">Record another…</option></select>
-              <p class="g-note sub" id="qclash"></p>
+              <select class="menu" id="qkey" aria-label="Shortcut" disabled=""><option value="opt">⌥Space</option><option value="ctlopt">⌃⌥Space</option><option value="cmd">⌘Space</option><option value="ctl">⌃Space</option><option value="rec">Record another…</option></select>
+              <p class="g-note sub" id="qclash">Off: the quick chat opens from cl_audit's menu bar menu only.</p>
             </div></div>
           <div class="srow vcol stk"><span>Profile <i class="idot">i</i></span>
             <div class="qc-col"><select class="menu" aria-label="Profile"><option>Main</option><option>Work</option></select>
@@ -2201,8 +2202,8 @@ body { background: #101012; }
           <div class="srow vcol stk"><span>Remove <i class="idot">i</i></span>
             <div class="qc-col">
               <div class="qc-rm" id="qrm"><button type="button" class="key k" id="qrmkey">Remove quick chat data…</button><small>The chats, the work folder and the settings. cl_audit and Main stay as they are.</small></div>
-              <div class="qc-confirm" id="qrmask" hidden><span><b>Remove 14 quick chats (1.2 MB), the work folder and the settings?</b> This can't be undone. The shortcut turns off.</span><span class="qc-acts"><button type="button" class="pill small" id="qrmno">Cancel</button><button type="button" class="pill small tint t-red" id="qrmyes">Remove</button></span></div>
-              <p class="g-note sub" id="qrmdone" hidden>Removed. Nothing of the quick chat is left on this Mac; it starts fresh the next time you open it.</p>
+              <div class="qc-confirm" id="qrmask" hidden=""><span><b>Remove 14 quick chats (1.2 MB), the work folder and the settings?</b> This can't be undone. The shortcut turns off.</span><span class="qc-acts"><button type="button" class="pill small" id="qrmno">Cancel</button><button type="button" class="pill small tint t-red" id="qrmyes">Remove</button></span></div>
+              <p class="g-note sub" id="qrmdone" hidden="">Removed. Nothing of the quick chat is left on this Mac; it starts fresh the next time you open it.</p>
             </div></div>
         </div>
       </div></div>
@@ -2243,236 +2244,6 @@ body { background: #101012; }
 </section>
 
 </div>
-<script>
-// ── colours, as the app draws them (WidgetViews.swift): a level by its number
-const C = { green: '#22c55e', amber: '#f59e0b', red: '#ef4444', crimson: '#eb445b' };
-const lvl = (p) => Math.round(p) >= 95 ? C.crimson : p >= 80 ? C.red : p >= 50 ? C.amber : C.green;
-const meter = (p) => `<span class="qc-meter"><i style="width:${Math.min(100, p)}%;background:${lvl(p)}"></i></span>`;
-// you@example.com → y••••••@example.com (Privacy.mask)
-const mask = (e) => { const at = e.indexOf('@'); const l = e.slice(0, at); return l[0] + '•'.repeat(Math.max(3, Math.min(l.length - 1, 7))) + e.slice(at); };
-const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const svg = (p, cls = '') => `<svg class="qc-ico ${cls}" viewBox="0 0 16 16" aria-hidden="true">${p}</svg>`;
-const ICON = {
-  chev: svg('<path d="M4.5 6.5L8 10l3.5-3.5"/>', 'sm'),
-  next: svg('<path d="M6 4l4 4-4 4"/>', 'sm'),
-  up: svg('<path d="M8 13V3.5M3.8 7.5L8 3.3l4.2 4.2"/>'),
-  stop: '<svg class="qc-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.2" fill="currentColor" stroke="none"/></svg>',
-  copy: svg('<rect x="5.5" y="5.5" width="8" height="8" rx="1.8"/><path d="M10.5 5.5V4.3A1.8 1.8 0 0 0 8.7 2.5H4.3A1.8 1.8 0 0 0 2.5 4.3v4.4a1.8 1.8 0 0 0 1.8 1.8h1.2"/>'),
-  again: svg('<path d="M13.2 8A5.2 5.2 0 1 1 11.6 4.3M13.2 2.6v3.1h-3.1"/>'),
-  pencil: svg('<path d="M7.2 2.8H4.2A1.7 1.7 0 0 0 2.5 4.5v7.3a1.7 1.7 0 0 0 1.7 1.7h7.3a1.7 1.7 0 0 0 1.7-1.7V8.8"/><path d="M11.4 2.3l2.3 2.3-5.6 5.6H5.8V7.9z"/>'),
-  close: svg('<path d="M4.3 4.3l7.4 7.4M11.7 4.3l-7.4 7.4"/>'),
-  think: svg('<path d="M6.1 12.4h3.8M6.6 14.3h2.8M8 1.8a4.3 4.3 0 0 0-2.6 7.7c.4.3.6.8.6 1.3v.2h4v-.2c0-.5.2-1 .6-1.3A4.3 4.3 0 0 0 8 1.8z"/>'),
-  check: svg('<path d="M3.3 8.4l3 3 6.4-6.6"/>'),
-};
 
-// the account line (the window's top line), and the five levels under the demo
-const ACC1 = { email: 'ultra-1@example.com', pct: 62, reset: 'Thu' };
-const lvHTML = (a, long) => a.pct >= 100
-  ? `<span class="qc-lv">${meter(100)}<b style="color:${C.crimson}">full</b>${long ? ' week · back Thu 17:30' : ''}</span>`
-  : `<span class="qc-lv">${meter(a.pct)}<b style="color:${lvl(a.pct)}">${a.pct}%</b>${long ? ` week · resets ${a.reset}` : ''}</span>`;
-const headHTML = (a, keys) => `<div class="qc-head"><span class="qc-who"><b>Main</b><span class="qc-mail">${mask(a.email)}</span></span>${lvHTML(a, true)}<span class="qc-sp"></span>`
-  + (keys ? `<button type="button" class="qc-icon" data-act="new" title="New chat (⌘N)" aria-label="New chat">${ICON.pencil}</button><button type="button" class="qc-icon" data-act="hide" title="Hide (Esc)" aria-label="Hide">${ICON.close}</button>` : '') + '</div>';
-document.getElementById('qclevels').innerHTML = [34, 62, 86, 97, 100].map(p => headHTML({ ...ACC1, pct: p }, false)).join('');
 
-// ── a little Markdown: paragraphs, "- " lists, ``` fences, `code`, **bold**; an open fence while streaming is still a block
-const inl = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
-const md = (src) => {
-  const L = src.split('\n'); let h = '', para = [], list = false, i = 0;
-  const flushP = () => { if (para.length) { h += `<p>${inl(para.join(' '))}</p>`; para = []; } };
-  const flushL = () => { if (list) { h += '</ul>'; list = false; } };
-  while (i < L.length) {
-    const l = L[i];
-    if (l.startsWith('```')) { flushP(); flushL(); const lang = l.slice(3).trim() || 'text'; const b = []; i++;
-      while (i < L.length && !L[i].startsWith('```')) b.push(L[i++]); i++;
-      h += `<div class="qc-pre"><div class="qc-pre-h">${esc(lang)}<button type="button" data-act="copy">${ICON.copy}<span>Copy</span></button></div><pre>${esc(b.join('\n'))}</pre></div>`; continue; }
-    if (l.startsWith('- ')) { flushP(); if (!list) { h += '<ul>'; list = true; } h += `<li>${inl(l.slice(2))}</li>`; i++; continue; }
-    if (!l.trim()) { flushP(); flushL(); i++; continue; }
-    flushL(); para.push(l); i++;
-  }
-  flushP(); flushL(); return h;
-};
-
-// ── the canned chat (generic, anonymous)
-const Q1 = 'How do I find which process is using port 3000 on macOS?';
-const A1 = "Use `lsof`:\n```zsh\nlsof -nP -iTCP:3000 -sTCP:LISTEN\n```\nThe **PID** column is the process. Stop it with `kill <PID>`, or `kill -9 <PID>` if it ignores that.\n- `-nP` keeps addresses and ports as numbers, which is faster.\n- `-sTCP:LISTEN` shows only the server, not its clients.";
-const Q2 = 'And only the PID, for a script?';
-const A2 = "Add `-t`, which prints bare PIDs, one per line:\n```zsh\nkill $(lsof -t -iTCP:3000 -sTCP:LISTEN)\n```\nIf nothing listens, `lsof` prints nothing and `kill` complains, so add `|| true` where a script must not stop.";
-const THOUGHT = 'They want it for a script, so only the PIDs. lsof -t prints exactly that; worth saying what happens when nothing listens.';
-const MODELS = [['Haiku 5.5', 'Fast, and light on the week. The default.'], ['Sonnet 5.5', 'For harder questions.'], ['Opus 5.5', 'The most capable. Uses the week fastest.'], ["Main's own default", 'What Main uses in Claude Code, now Sonnet 5.5.']];
-const THINK = [['Off', 'Answers at once. The default.'], ['Low', 'Thinks briefly first.'], ['Medium', 'Thinks a while first.'], ['High', 'For harder questions.'], ['Extra', 'Thinks longest, and uses the week fastest.']];
-const DEF = { model: 'Haiku 5.5', think: 'Off' };
-const T1 = () => ({ q: Q1, a: A1, model: 'Haiku 5.5', think: 'Off', done: true, t: '2.4 s' });
-const T2 = () => ({ q: Q2, a: A2, model: 'Sonnet 5.5', think: 'High', tt: '5 s', done: true, t: '7.8 s' });
-
-// ── state
-let S, timer = null, cur = 'answer';
-const base = () => ({ open: true, anim: false, hidden: false, menu: null, acct: { ...ACC1 }, turns: [], field: '', ...DEF, note: null, sys: null });
-const WHY = {
-  closed: "Nothing on screen until you ask. With the shortcut on, ⌥Space opens the bar over any app, on any Space; cl_audit's menu bar menu opens it too. Click the keys to open it.",
-  hidden: "Esc hid it. The chat is kept, and an answer still on its way keeps coming. ⌥Space brings it back as it was.",
-  bar: "⌥Space opens a bar, like ChatGPT's classic one, in Claude's colours. Under the field: the model, thinking, and Main's week so far. It never brings cl_audit or the Claude app forward.",
-  typing: "The bar grows with the text. Return sends, Shift-Return adds a line, Esc hides it and keeps what you typed.",
-  model: "The model picker, in the bar and in the window. Haiku 5.5 by default: fast, and light on the week. A pick holds for this chat; New chat goes back to the default set in General.",
-  answering: "The first message opens the bar into a chat window that stays floating, and the answer streams in. The stop button ends it where it is; Esc hides the window while the answer keeps coming.",
-  answer: "Under each answer: Copy, Ask again, and the model that answered. Code blocks have their own Copy. No ratings or read-aloud: ratings would need telemetry. The pencil starts a new chat and shrinks the window back to the bar.",
-  followup: "A follow-up continues the same Claude Code session, so it remembers the chat. One claude process stays open per chat, so a follow-up starts at once. Here the second answer came from Sonnet 5.5 with thinking on, and says so.",
-  thinking: "Thinking is off by default, so answers come at once. Low to Extra let Claude think first; the answer then shows how long it thought, and that line opens to show the thinking. A pick holds for this chat.",
-  full: "When the week is full, the bar says so before you send and offers the existing switch, to the account with the most room. What you typed waits and goes once the switch is done. A full 5-hour limit gets the same notice, with its own time. Click Switch account… to see it.",
-  failed: "If Claude Code stops, the window stays. It keeps what arrived, says what happened, and offers Retry, which asks again in the same session. If Claude Code isn't installed or isn't signed in, the same place says so, with a button to Main's settings.",
-};
-const PRESET = {
-  closed: () => ({ ...base(), open: false }),
-  bar: () => ({ ...base(), anim: true }),
-  typing: () => ({ ...base(), field: Q1 }),
-  model: () => ({ ...base(), field: Q1, menu: 'model' }),
-  answering: () => ({ ...base(), anim: true, turns: [{ q: Q1, a: '', model: 'Haiku 5.5', think: 'Off' }] }),
-  answer: () => ({ ...base(), turns: [T1()] }),
-  followup: () => ({ ...base(), model: 'Sonnet 5.5', think: 'High', turns: [T1(), T2()] }),
-  thinking: () => ({ ...base(), turns: [T1()], menu: 'think' }),
-  full: () => ({ ...base(), acct: { email: 'ultra-1@example.com', pct: 100 }, field: Q1, note: 'full' }),
-  failed: () => ({ ...base(), turns: [{ q: Q1, a: A1.slice(0, 120), model: 'Haiku 5.5', think: 'Off', failed: true }] }),
-};
-
-const desk = document.getElementById('qcdesk');
-const backdrop = (menuOpen) => `<div class="qc-mb"><b>Notes</b><span class="qc-dim qc-hide-n">File</span><span class="qc-dim qc-hide-n">Edit</span><span class="qc-dim qc-hide-n">View</span>
-  <span class="qc-mb-r"><span class="qc-mbi${menuOpen ? ' open' : ''}">MAIN <i style="background:${lvl(S.acct.pct)}"></i><i style="background:${C.green}"></i></span><span class="qc-dim qc-hide-n">Wi‑Fi</span><span>Sun 14:05</span></span></div>`
-  + `<div class="qc-bgwin"><div class="tb"><i></i><i></i><i></i></div>${'<div class="ln"></div>'.repeat(10)}</div>`;
-
-// the pickers and the send button: one row, in the bar and in the window
-const popHTML = () => {
-  if (S.menu === 'model') return `<div class="qc-pop" role="menu"><div class="qc-pop-h">Model</div>${MODELS.map(([m, d]) => `<button type="button" class="qc-pop-it" data-model="${esc(m)}"><span class="ck">${m === S.model ? ICON.check : ''}</span><span>${esc(m)}</span><small>${esc(d)}</small></button>`).join('')}<div class="qc-pop-f">For this chat. New chat goes back to the default in General ▸ Quick chat.</div></div>`;
-  if (S.menu === 'think') return `<div class="qc-pop" role="menu" style="${window.innerWidth > 520 ? 'left:96px' : ''}"><div class="qc-pop-h">Thinking</div>${THINK.map(([m, d]) => `<button type="button" class="qc-pop-it" data-think="${m}"><span class="ck">${m === S.think ? ICON.check : ''}</span><span>${m}</span><small>${d}</small></button>`).join('')}<div class="qc-pop-f">For this chat. New chat goes back to the default in General ▸ Quick chat.</div></div>`;
-  return '';
-};
-const rowHTML = (inBar) => {
-  const live = timer !== null, blocked = S.note === 'full', empty = !S.field.trim();
-  const think = S.think === 'Off' ? `<span class="qc-n">Thinking&nbsp;</span>off` : S.think;
-  return `<div class="qc-row">`
-    + `<button type="button" class="qc-chip${S.menu === 'model' ? ' open' : ''}" data-act="m-model" aria-haspopup="menu">${esc(S.model.replace("Main's own default", 'Default'))}${ICON.chev}</button>`
-    + `<button type="button" class="qc-chip${S.think !== 'Off' ? ' on' : ''}${S.menu === 'think' ? ' open' : ''}" data-act="m-think" aria-haspopup="menu" title="Thinking">${ICON.think}${think}${ICON.chev}</button>`
-    + `<span class="qc-sp"></span>`
-    + (inBar ? `<span class="qc-lv" title="Main, ${mask(S.acct.email)}: this week"><span class="qc-n">Main</span>${meter(S.acct.pct)}<b style="color:${lvl(S.acct.pct)}">${S.acct.pct >= 100 ? 'full' : S.acct.pct + '%'}</b></span>` : '')
-    + (live ? `<button type="button" class="qc-send stop" data-act="stop" title="Stop" aria-label="Stop">${ICON.stop}</button>`
-            : `<button type="button" class="qc-send${empty ? ' idle' : ''}" data-act="send" ${blocked ? 'disabled' : ''} title="Send (Return)" aria-label="Send">${ICON.up}</button>`)
-    + `</div>` + popHTML();
-};
-
-const turnHTML = (t, i, live) => {
-  const thinks = t.think && t.think !== 'Off';
-  let h = `<div class="qc-user"><span>${esc(t.q)}</span></div>`;
-  if (thinks) h += `<button type="button" class="qc-thought${t.open ? ' open' : ''}" data-act="thought" data-i="${i}">${t.a || !live ? `Thought for ${t.tt}` : 'Thinking…'}${ICON.next}</button>` + (t.open ? `<div class="qc-thinking">${esc(THOUGHT)}</div>` : '');
-  if (t.a || (live && !thinks)) h += `<div class="qc-ans${live ? ' qc-caret' : ''}">${md(t.a)}</div>`;
-  if (t.done || t.stopped) h += `<div class="qc-foot"><button type="button" class="qc-icon sm" data-act="copyans" data-i="${i}" title="Copy">${ICON.copy}</button><button type="button" class="qc-icon sm" data-act="again" data-i="${i}" title="Ask again">${ICON.again}</button>`
-    + `<span>${t.stopped ? `${t.model} · stopped by you` : `answered by ${t.model}${thinks ? `, thinking ${t.think.toLowerCase()}` : ''} · ${t.t}`}</span></div>`;
-  if (t.failed) h += `<div class="qc-notice"><i></i><span><b>Claude Code stopped before the answer was done.</b> What arrived is kept above.</span><small>claude exited with code 1: "API Error: Connection error."</small><span class="qc-acts"><button type="button" class="qc-btn" data-act="retry" data-i="${i}">Retry</button></span></div>`;
-  return h;
-};
-
-function render() {
-  const live = timer !== null;
-  if (!S.open) {
-    desk.innerHTML = backdrop(!S.hidden) + `<div class="mb-menu qc-mbmenu" ${S.hidden ? 'hidden' : ''}><div class="mbm-info" style="padding:3px 8px;opacity:.5">Main · ultra-1 · week ${S.acct.pct}%</div><hr><button type="button" class="mbm-it" data-act="open">Quick chat<span class="r">⌥Space</span></button><button type="button" class="mbm-it">Open cl_audit</button><hr><button type="button" class="mbm-it">Quit cl_audit</button></div>`
-      + `<div class="qc-closed"><button type="button" class="qc-caps" data-act="open" aria-label="Press Option Space"><span class="qc-cap">⌥</span><span class="qc-cap wide">SPACE</span></button><p>${S.hidden ? 'Hidden, chat kept.' : 'Closed.'} ⌥Space opens the bar over any app, on any Space.</p></div>`;
-    return;
-  }
-  const ta = (ph) => `<textarea class="qc-ta" id="qcta" rows="1" placeholder="${ph}" aria-label="Message">${esc(S.field)}</textarea>`;
-  if (!S.turns.length) {
-    const note = S.note === 'full' ? `<div class="qc-notice"><i></i><span><b>This account's week is full</b> until Thu 17:30. Main's other account, ultra-3, has 88% of its week left.</span><span class="qc-acts"><button type="button" class="qc-btn" data-act="switch">Switch account…</button></span></div>` : '';
-    desk.innerHTML = backdrop(false) + `<div class="qc-bar${S.anim ? ' qc-in' : ''}" role="dialog" aria-label="Quick chat">${note}${ta('Ask anything')}${rowHTML(true)}</div>`;
-  } else {
-    const msgs = (S.sys ? `<div class="qc-sys">${S.sys}</div>` : '') + S.turns.map((t, i) => turnHTML(t, i, live && i === S.turns.length - 1)).join('');
-    desk.innerHTML = backdrop(false) + `<div class="qc-win${S.anim ? ' qc-in' : ''}" role="dialog" aria-label="Quick chat">${headHTML(S.acct, true)}<div class="qc-msgs" id="qcmsgs">${msgs}</div>`
-      + `<div class="qc-compose">${ta('Reply…')}${rowHTML(false)}</div></div>`;
-  }
-  S.anim = false;
-  grow(document.getElementById('qcta'));
-  const m = document.getElementById('qcmsgs'); if (m) m.scrollTop = m.scrollHeight;
-}
-// (an empty field keeps one line: Chrome counts the placeholder in scrollHeight)
-const grow = (ta) => { if (!ta) return; ta.style.height = 'auto'; if (ta.value) ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; };
-
-function stopStream() { if (timer) { clearInterval(timer); timer = null; } }
-function stream(t, text, secs) {
-  stopStream(); t.a = ''; t.done = false; t.stopped = false; t.failed = false;
-  const thinks = t.think !== 'Off'; let n = 0, wait = thinks ? 40 : 0;
-  if (thinks) t.tt = '5 s';
-  timer = setInterval(() => {
-    if (wait > 0) { wait--; render(); return; }
-    n = Math.min(text.length, n + 3); t.a = text.slice(0, n);
-    if (n >= text.length) { stopStream(); t.done = true; t.t = secs; if (cur === 'answering') mark(S.turns.length > 1 ? 'followup' : 'answer'); }
-    render();
-  }, 22);
-  render();
-}
-const mark = (s) => { cur = s; document.querySelectorAll('#qcpick button').forEach(b => b.classList.toggle('on', b.dataset.s === s)); document.getElementById('qcwhy').textContent = WHY[s]; };
-function show(s) {
-  stopStream(); S = PRESET[s](); mark(s); render();
-  if (s === 'answering') stream(S.turns[0], A1, '2.4 s');
-}
-function send() {
-  const ta = document.getElementById('qcta'); const q = (ta ? ta.value : S.field).trim(); if (!q || S.note === 'full' || timer) return;
-  const first = !S.turns.length; S.field = ''; S.note = null; S.menu = null; S.anim = first;
-  const t = { q, a: '', model: S.model, think: S.think }; S.turns.push(t); mark('answering');
-  stream(t, first ? A1 : A2, first ? '2.4 s' : '1.9 s');
-}
-const keepField = () => { const ta = document.getElementById('qcta'); if (ta) S.field = ta.value; };
-desk.addEventListener('click', (ev) => {
-  const el = ev.target.closest('[data-act], [data-model], [data-think]');
-  if (!el) { if (S.menu && !ev.target.closest('.qc-pop')) { keepField(); S.menu = null; render(); } return; }
-  if (el.dataset.model) { keepField(); S.model = el.dataset.model; S.menu = null; render(); return; }
-  if (el.dataset.think) { keepField(); S.think = el.dataset.think; S.menu = null; render(); return; }
-  const a = el.dataset.act, i = +el.dataset.i;
-  if (a === 'open') { S.open = true; S.hidden = false; S.anim = true; if (cur === 'closed') mark(S.turns.length ? 'answer' : 'bar'); render(); document.getElementById('qcta').focus(); }
-  else if (a === 'hide') { keepField(); S.open = false; S.hidden = true; S.menu = null; document.getElementById('qcwhy').textContent = WHY.hidden; render(); }
-  else if (a === 'new') { stopStream(); S = { ...base(), acct: S.acct, anim: true }; mark('bar'); render(); document.getElementById('qcta').focus(); }
-  else if (a === 'm-model' || a === 'm-think') { keepField(); const m = a.slice(2); S.menu = S.menu === m ? null : m; render(); }
-  else if (a === 'send') send();
-  else if (a === 'stop') { stopStream(); const t = S.turns[S.turns.length - 1]; t.stopped = true; render(); }
-  else if (a === 'retry' || a === 'again') { const t = S.turns[i]; mark('answering'); stream(t, i === 0 ? A1 : A2, '2.6 s'); }
-  else if (a === 'thought') { S.turns[i].open = !S.turns[i].open; render(); }
-  else if (a === 'switch') { keepField(); S.acct = { email: 'ultra-3@example.com', pct: 12, reset: 'Sat' }; S.sys = 'Main switched to ultra-3. Sending what you typed.'; S.note = null; send(); }
-  else if (a === 'copy' || a === 'copyans') {
-    const text = a === 'copy' ? el.closest('.qc-pre').querySelector('pre').textContent : S.turns[i].a;
-    try { navigator.clipboard.writeText(text).catch(() => {}); } catch (e) {}
-    if (a === 'copy') { const sp = el.querySelector('span'); sp.textContent = 'Copied'; setTimeout(() => { if (sp.isConnected) sp.textContent = 'Copy'; }, 1400); }
-    else { el.innerHTML = ICON.check; setTimeout(() => { if (el.isConnected) el.innerHTML = ICON.copy; }, 1400); }
-  }
-});
-desk.addEventListener('input', (ev) => {
-  if (ev.target.id !== 'qcta') return;
-  grow(ev.target); S.field = ev.target.value;
-  const b = desk.querySelector('.qc-send[data-act="send"]'); if (b) b.classList.toggle('idle', !S.field.trim());
-});
-desk.addEventListener('keydown', (ev) => {
-  if (ev.target.id !== 'qcta') return;
-  if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); send(); }
-  if (ev.key === 'Escape') { ev.preventDefault(); keepField(); if (S.menu) S.menu = null; else { S.open = false; S.hidden = true; document.getElementById('qcwhy').textContent = WHY.hidden; } render(); }
-});
-document.querySelectorAll('#qcpick button').forEach(b => b.addEventListener('click', () => show(b.dataset.s)));
-show('answer');
-
-// ── General ▸ Quick chat: the shortcut's switch and clash check, Counting, Remove
-const CLASH = {
-  opt: ['a', "⌥Space also opens the Claude app's Quick Entry when that's turned on. Pick another here, or change the Quick Entry shortcut in the Claude app's settings."],
-  ctlopt: ['ok', 'Free on this Mac.'],
-  cmd: ['a', "⌘Space is Spotlight's. Pick another, or change Spotlight's in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Spotlight."],
-  ctl: ['a', '⌃Space switches between input sources. Fine if this Mac has only one.'],
-  rec: ['sub', 'Press the shortcut you want; cl_audit checks it before keeping it.'],
-};
-const qsw = document.getElementById('qsw'), qkey = document.getElementById('qkey'), qclash = document.getElementById('qclash');
-const shortcutUI = () => {
-  const on = qsw.classList.contains('on'); qkey.disabled = !on;
-  document.getElementById('qswt').textContent = on ? qkey.options[qkey.selectedIndex].text.replace('…', '') + ' opens the quick chat' : 'Off';
-  const [k, t] = on ? CLASH[qkey.value] : ['sub', "Off: the quick chat opens from cl_audit's menu bar menu only."];
-  qclash.className = 'g-note ' + (k === 'a' ? 'caution' : 'sub'); qclash.innerHTML = k === 'ok' ? `<span class="qc-ok">● ${t}</span>` : t;
-};
-qsw.addEventListener('click', () => { qsw.classList.toggle('on'); shortcutUI(); });
-qkey.addEventListener('change', shortcutUI); shortcutUI();
-const qcount = document.getElementById('qcount');
-qcount.addEventListener('click', () => { qcount.classList.toggle('on'); document.getElementById('qcountt').textContent = qcount.classList.contains('on') ? "Counted in Main's session counts and backups" : "Left out of Main's session counts and backups"; });
-const rm = (s) => { document.getElementById('qrm').hidden = s !== 'idle'; document.getElementById('qrmask').hidden = s !== 'ask'; document.getElementById('qrmdone').hidden = s !== 'done'; };
-document.getElementById('qrmkey').addEventListener('click', () => rm('ask'));
-document.getElementById('qrmno').addEventListener('click', () => rm('idle'));
-document.getElementById('qrmyes').addEventListener('click', () => { rm('done'); qsw.classList.remove('on'); shortcutUI(); setTimeout(() => rm('idle'), 4000); });
-</script>
 </body></html>

@@ -1,8 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cl_audit T4 Sketch</title>
 <style>
   * { box-sizing: border-box; }
@@ -310,16 +309,7 @@
   <p class="why">Dashboard: the Show chips become keys with an LED in each profile's colour; 24 H / 7 D / 30 D a three-key strip; totals in a display. Settings: the profile strip is a key row; on/off switches are LED keys; steppers are − / + keys around a small display; menus are recessed. FAQ: each question is a module with a + / − key. The Claude windows, Terminals and the Dock pop-ups stay as macOS draws them.</p>
 </section>
 </main>
-<script>
-  const facts = [
-    ["The password is never seen", "Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (<code>claude auth login</code>) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic."],
-    ["The saved login is read-only, in memory", "Claude Code saves its login in the Mac's Keychain. cl_audit reads it the way Claude Code does, with Apple's <code>security</code> tool, so macOS asks nothing. It keeps only the short-lived part, in memory, and never writes, renews or logs it. Any app running as the same user could read it the same way; cl_audit doesn't change that."],
-    ["It is sent only to Anthropic", "The login is used for two requests to Anthropic's own server, <code>api.anthropic.com</code>: the 5-hour and weekly usage, and which account a profile is signed in to. Nothing else leaves the Mac."],
-    ["Usage history stays on the Mac", "The charts come from the session files Claude Code already writes on the Mac: only time, model, token counts, project folder and where Claude was used. Nothing is uploaded."],
-    ["No server, analytics or sign-up", "cl_audit has no server of its own, collects no statistics and needs no account. Its code is open: the login is read in <code>Login.read</code> (Sources/Model.swift)."],
-  ];
-  const tabs = [...document.querySelectorAll("#tabs .k")], out = document.getElementById("readout");
-  tabs.forEach((b, i) => b.addEventListener("click", () => { tabs.forEach((x) => x.classList.toggle("on", x === b)); out.innerHTML = `<b>${facts[i][0]}</b><p>${facts[i][1]}</p>`; }));
-</script>
-</body>
-</html>
+
+
+
+</body></html>

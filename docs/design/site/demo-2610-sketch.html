@@ -1,6 +1,5 @@
-<!doctype html>
-<html lang="en">
-<head>
+<!DOCTYPE html>
+<html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cl_audit site demo update</title>
@@ -1610,7 +1609,7 @@ h2.sec .n { font: 700 11px var(--mono); color: #ff7a3d; margin-right: 8px; verti
     <div class="side"><span class="cap">Before</span>
       <div class="appwin"><div class="content settings"><div class="card"><h4>Clicking and panels <i class="idot">i</i></h4>
         <div class="srow"><span>Click</span><select class="menu"><option>Usage, then Claude</option></select></div>
-        <div class="srow"><span>Show usage for</span><span class="stepper"><button type="button">−</button><span data-value>3 s</span><button type="button">+</button></span></div>
+        <div class="srow"><span>Show usage for</span><span class="stepper"><button type="button">−</button><span data-value="">3 s</span><button type="button">+</button></span></div>
         <div class="srow"><span>Press and hold <i class="idot">i</i></span><button type="button" class="mswitch on"></button></div>
         <div class="srow"><span>Panel design</span><span class="sub">Glow · Rings · Numbers · <b>Segments</b> · Pace</span></div>
       </div></div></div>
@@ -1618,7 +1617,7 @@ h2.sec .n { font: 700 11px var(--mono); color: #ff7a3d; margin-right: 8px; verti
     <div class="side after"><span class="cap">After</span>
       <div class="appwin"><div class="content settings"><div class="card"><h4>Dock icon clicks <i class="idot" title="What a click on this profile's Dock icon does, and how the usage panel it opens looks. Double-click or ⌥-click always opens the large panel.">i</i></h4>
         <div class="srow"><span>Click <i class="idot" title="Usage, then Claude: the usage panel for a moment, then the Claude window. Open Claude: the Claude window straight away. Details panel: the large usage panel, and Claude only when you ask.">i</i></span><select class="menu"><option>Usage, then Claude</option></select></div>
-        <div class="srow"><span>Usage shows for <i class="idot" title="How long the usage panel stays up after a click before the Claude window opens.">i</i></span><span class="stepper"><button type="button">−</button><span data-value>3 s</span><button type="button">+</button></span></div>
+        <div class="srow"><span>Usage shows for <i class="idot" title="How long the usage panel stays up after a click before the Claude window opens.">i</i></span><span class="stepper"><button type="button">−</button><span data-value="">3 s</span><button type="button">+</button></span></div>
         <div class="srow"><span>Press and hold <i class="idot">i</i></span><button type="button" class="mswitch on"></button></div>
         <div class="srow"><span>Usage panel <i class="idot" title="How the usage panel looks when you click or press and hold this Dock icon. The dashboard's cards have one style for all profiles, in General.">i</i></span><span class="sub">Glow · Rings · Numbers · <b>Segments</b> · Pace</span></div>
       </div></div></div>
@@ -1664,7 +1663,7 @@ h2.sec .n { font: 700 11px var(--mono); color: #ff7a3d; margin-right: 8px; verti
         <div class="card faded"><h4>Dock icon clicks <i class="idot">i</i></h4>
           <div class="notinuse"><span class="lbl">Not in use · show in the Dock to click it</span><button type="button" class="pill small">Show in the Dock</button></div>
           <div class="srow"><span>Click</span><select class="menu"><option>Usage, then Claude</option></select></div>
-          <div class="srow"><span>Usage shows for</span><span class="stepper"><button type="button">−</button><span data-value>3 s</span><button type="button">+</button></span></div>
+          <div class="srow"><span>Usage shows for</span><span class="stepper"><button type="button">−</button><span data-value="">3 s</span><button type="button">+</button></span></div>
           <div class="srow"><span>Press and hold</span><button type="button" class="mswitch on"></button></div>
         </div>
         <div class="card faded"><h4>Icon</h4>
@@ -1756,20 +1755,7 @@ h2.sec .n { font: 700 11px var(--mono); color: #ff7a3d; margin-right: 8px; verti
   </div>
 </div>
 </div>
-<script>
-const root = document.documentElement;
-function setFace(f) {
-  root.classList.toggle("face-black", f === "black");
-  root.classList.toggle("face-silver", f === "silver");
-  document.body.classList.toggle("pg-silver", f === "silver");
-  document.querySelectorAll("[data-face]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.face === f)));
-  document.querySelectorAll("[data-face-card]").forEach(c => c.classList.toggle("on", c.dataset.faceCard === f));
-  try { localStorage.setItem("sk-face", f); } catch (e) {}
-}
-document.addEventListener("click", e => { const b = e.target.closest("[data-face]"); if (b) setFace(b.dataset.face); });
-let f0 = "std";
-try { f0 = new URLSearchParams(location.hash.slice(1)).get("face") || localStorage.getItem("sk-face") || "std"; } catch (e) {}
-setFace(f0);
-</script>
-</body>
-</html>
+
+
+
+</body></html>

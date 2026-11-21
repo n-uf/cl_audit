@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en" class="dot-home dot-work"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cl_audit · quick chat follow-ups</title>
 <style>/* cl-audit-ui/app.css */
@@ -2004,10 +2004,10 @@ body { background: #101012; }
   <div class="when"><div class="t">WHEN THE AGENT ISN'T RUNNING</div><h2>Quick chat from the Dock menu</h2><p>The chat lives in cl_audit's agent. Today, with the agent stopped, Quick chat in a Dock icon's menu does nothing. Pick a moment.</p></div>
   <div>
     <div class="sk-picker"><span class="switch" id="apick">
-      <button type="button" data-s="menu">Quick chat chosen</button><button type="button" data-s="now">Today</button><button type="button" data-s="ask">Not running</button><button type="button" data-s="restarting">Restarting</button><button type="button" data-s="opened">Opened</button><button type="button" data-s="failed">Didn't start</button>
+      <button type="button" data-s="menu">Quick chat chosen</button><button type="button" data-s="now">Today</button><button type="button" data-s="ask" class="on">Not running</button><button type="button" data-s="restarting">Restarting</button><button type="button" data-s="opened">Opened</button><button type="button" data-s="failed">Didn't start</button>
     </span></div>
-    <div class="fu-desk" id="adesk"></div>
-    <p class="sk-why" id="awhy" style="margin-top:10px"></p>
+    <div class="fu-desk" id="adesk"><div class="fu-alert"><div class="ico">MAIN</div><b>cl_audit's agent isn't running</b><p>It runs the quick chat and reads usage for all your profiles. Restart it to open the chat.</p><div class="btns"><button type="button" class="pri" data-go="restarting">Restart</button><button type="button" data-go="now">Not now</button></div></div><div class="fu-dock"><i></i><i></i><i class="me">MAIN</i><i></i></div></div>
+    <p class="sk-why" id="awhy" style="margin-top:10px">The Dock icon checks the agent first, as the cl_audit window does. With no alive mark, or no answer within 2 s, it shows this alert. Restart starts the agent the way the Start reading button does in Settings ▸ General ▸ Usage in the background. Click Restart.</p>
   </div>
 </section>
 
@@ -2016,7 +2016,7 @@ body { background: #101012; }
   <div class="when"><div class="t">SETTINGS ▸ GENERAL ▸ QUICK CHAT</div><h2>Record another shortcut</h2><p>The five Space shortcuts stay in the menu; the last item records a different one. Pick a moment, or choose Record another… and press keys.</p></div>
   <div>
     <div class="sk-picker"><span class="switch" id="bpick">
-      <button type="button" data-s="preset">A preset</button><button type="button" data-s="recording">Recording</button><button type="button" data-s="free">Free</button><button type="button" data-s="clash">Clashes</button><button type="button" data-s="bare">Not allowed</button><button type="button" data-s="taken">Taken</button><button type="button" data-s="kept">Kept</button>
+      <button type="button" data-s="preset" class="on">A preset</button><button type="button" data-s="recording">Recording</button><button type="button" data-s="free">Free</button><button type="button" data-s="clash">Clashes</button><button type="button" data-s="bare">Not allowed</button><button type="button" data-s="taken">Taken</button><button type="button" data-s="kept">Kept</button>
     </span></div>
     <div class="appwin sk-win"><main class="content"><div class="content-inner"><div class="settings">
       <div class="s-cols one"><div class="s-col">
@@ -2024,14 +2024,14 @@ body { background: #101012; }
           <div class="srow vcol stk"><span>Shortcut <i class="idot">i</i></span>
             <div class="fu-col">
               <span class="ctl-pair"><button type="button" class="mswitch on" aria-label="Quick chat shortcut"></button><span class="sw-t" id="bswt">⌥Space opens it</span></span>
-              <div class="fu-rec" id="brec"></div>
-              <p class="fu-note" id="bnote"></p>
+              <div class="fu-rec" id="brec"><select class="menu" aria-label="Shortcut" id="bsel"><option selected="">⌥Space</option><option>⌃⌥Space</option><option>⌥⇧Space</option><option>⌃Space</option><option>⌘Space</option><option>Record another…</option></select></div>
+              <p class="fu-note warn" id="bnote">⌥Space also opens the Claude app's Quick Entry when that's turned on. Pick another, or change the shortcut in the Claude app.</p>
             </div></div>
           <div class="srow vcol stk"><span>Profile <i class="idot">i</i></span><select class="menu" aria-label="Profile"><option>The first, Main</option></select></div>
         </div>
       </div></div>
     </div></div></main></div>
-    <p class="sk-why" id="bwhy" style="margin-top:10px"></p>
+    <p class="sk-why" id="bwhy" style="margin-top:10px">As shipped: five Space shortcuts. The menu gets one more item, Record another…, last. Choose it.</p>
   </div>
 </section>
 
@@ -2048,86 +2048,6 @@ body { background: #101012; }
 </section>
 
 </div>
-<script>
-// ── A: the press, and the agent not running
-const desk = document.getElementById('adesk');
-const dock = '<div class="fu-dock"><i></i><i></i><i class="me">MAIN</i><i></i></div>';
-const menu = (hl) => `<div class="mb-menu fu-menu"><div class="mbm-info" style="padding:3px 8px;opacity:.5">Claude Main · ultra-1 in use</div><hr>
-  <button type="button" class="mbm-it${hl ? ' hl' : ''}">Quick chat</button><button type="button" class="mbm-it">Open Claude window</button><button type="button" class="mbm-it">Refresh now</button><hr>
-  <button type="button" class="mbm-it">Dashboard</button><button type="button" class="mbm-it">Profile settings…</button></div>`;
-const alert = (body, btns) => `<div class="fu-alert"><div class="ico">MAIN</div>${body}<div class="btns">${btns}</div></div>`;
-const bar = '<div class="fu-bar">Ask anything<div class="row"><span>Haiku 5.5 ⌄</span><span>💡 Thinking off ⌄</span><span></span></div></div>';
-const A = {
-  menu: [() => dock + menu(true), "A profile's Dock icon menu has Quick chat, which asks cl_audit's agent to open the chat. The menu bar icon's menu has it too, but that menu belongs to the agent, so it isn't there when the agent is stopped."],
-  now: [() => dock, "Today, with the agent stopped (force-quit, or crashed and waiting before it starts again), choosing Quick chat reaches nothing: no chat, no word."],
-  ask: [() => alert('<b>cl_audit\'s agent isn\'t running</b><p>It runs the quick chat and reads usage for all your profiles. Restart it to open the chat.</p>',
-                    '<button type="button" class="pri" data-go="restarting">Restart</button><button type="button" data-go="now">Not now</button>') + dock,
-        "The Dock icon checks the agent first, as the cl_audit window does. With no alive mark, or no answer within 2 s, it shows this alert. Restart starts the agent the way the Start reading button does in Settings ▸ General ▸ Usage in the background. Click Restart."],
-  restarting: [() => alert('<b>Restarting cl_audit\'s agent…</b><p>The chat opens as soon as it\'s running.</p>', '<button type="button"><span class="spin"></span>Restarting…</button>') + dock,
-               "The alert stays while the agent starts, at most 15 s, so choosing Quick chat is never lost."],
-  opened: [() => bar + dock, "Running again: the alert closes and the chat opens, as if the agent had been there all along."],
-  failed: [() => alert('<b>cl_audit\'s agent didn\'t start</b><p>Settings ▸ General ▸ Usage in the background says why and what to do.</p>',
-                       '<button type="button" class="pri">Open settings</button><button type="button" data-go="now">Close</button>') + dock,
-           "If it doesn't start within 15 s, the alert says so and leads to Settings ▸ General ▸ Usage in the background, which already gives the reason (not registered, waiting for approval, in the Trash) and the fix."],
-};
-const showA = (s) => {
-  document.querySelectorAll('#apick button').forEach(b => b.classList.toggle('on', b.dataset.s === s));
-  desk.innerHTML = A[s][0](); document.getElementById('awhy').textContent = A[s][1];
-  if (s === 'restarting') setTimeout(() => { if (document.querySelector('#apick .on')?.dataset.s === 'restarting') showA('opened'); }, 1800);
-};
-desk.addEventListener('click', (e) => { const g = e.target.closest('[data-go]'); if (g) showA(g.dataset.go); });
-document.querySelectorAll('#apick button').forEach(b => b.addEventListener('click', () => showA(b.dataset.s)));
-showA('ask');
 
-// ── B: the recorder
-const rec = document.getElementById('brec'), note = document.getElementById('bnote');
-const menuSel = (v) => `<select class="menu" aria-label="Shortcut" id="bsel">${['⌥Space', '⌃⌥Space', '⌥⇧Space', '⌃Space', '⌘Space'].map(o => `<option${o === v ? ' selected' : ''}>${o}</option>`).join('')}${v && !v.includes('Space') ? `<option selected>${v}</option>` : ''}<option>Record another…</option></select>`;
-const keys = (s) => s.split(' ').map(k => `<kbd>${k}</kbd>`).join('');
-const B = {
-  preset: { row: () => menuSel('⌥Space'), sw: '⌥Space opens it', note: ['warn', "⌥Space also opens the Claude app's Quick Entry when that's turned on. Pick another, or change the shortcut in the Claude app."],
-            why: 'As shipped: five Space shortcuts. The menu gets one more item, Record another…, last. Choose it.' },
-  recording: { row: () => `<span class="fu-well rec">Press the shortcut…</span><button type="button" class="pill small" data-go="preset">Cancel</button>`, sw: '⌥Space opens it',
-               note: ['sub', 'Hold ⌘, ⌃ or ⌥ and press a key. Esc cancels; ⌥Space stays until a new one is kept.'],
-               why: 'The row turns into a box that listens for keys, with a blinking red dot. Nothing changes until a shortcut is kept, so the old one still works meanwhile. Try it: press keys now.' },
-  free: { row: () => `<span class="fu-well">${keys('⌃ ⌥ K')}</span><button type="button" class="pill small tint t-green" data-go="kept">Keep</button><button type="button" class="pill small" data-go="recording">Record again</button><button type="button" class="pill small" data-go="preset">Cancel</button>`,
-          sw: '⌥Space opens it', note: ['ok', '● No clash found.'], why: "Pressed ⌃⌥K: checked at once against macOS's own shortcuts and the Claude app's Quick Entry. Other apps' shortcuts show up only after the agent tries it. Keep makes it the shortcut; Record again tries another." },
-  clash: { row: () => `<span class="fu-well">${keys('⌥ ⌘ Space')}</span><button type="button" class="pill small" data-go="kept">Keep anyway</button><button type="button" class="pill small" data-go="recording">Record again</button><button type="button" class="pill small" data-go="preset">Cancel</button>`,
-           sw: '⌥Space opens it', note: ['warn', "⌥⌘Space opens a Finder search window on this Mac. Keep it anyway, or record another."],
-           why: 'A clash with something macOS lets you change (in System Settings ▸ Keyboard ▸ Keyboard Shortcuts) is a warning, not a refusal: Keep anyway is offered, as it is for the presets today. ⌘Space, Spotlight\'s, is the same.' },
-  bare: { row: () => `<span class="fu-well">${keys('⇧ K')}</span><button type="button" class="pill small" data-go="recording">Record again</button><button type="button" class="pill small" data-go="preset">Cancel</button>`,
-          sw: '⌥Space opens it', note: ['bad', '⇧K would type a capital K everywhere. Hold ⌘, ⌃ or ⌥ too.'],
-          why: "Never kept: a shortcut without ⌘, ⌃ or ⌥, and macOS's fixed app keys (⌘Q, ⌘W, ⌘Tab, ⌘H, ⌘M), which say e.g. \"⌘Q quits the app you're in. Pick another.\" No Keep button, only Record again." },
-  taken: { row: () => menuSel('⌃⌥K'), sw: '⌃⌥K is taken by another app', note: ['bad', 'Another app already uses ⌃⌥K. Record another, or free it in that app.'],
-           why: "Kept, but another app had registered ⌃⌥K first, so that app got it. The agent says so after it tries, as it does for the presets." },
-  kept: { row: () => menuSel('⌃⌥K'), sw: '⌃⌥K opens it', note: ['ok', '● No clash found.'],
-          why: 'Kept: the menu shows ⌃⌥K above Record another…, the switch reads "⌃⌥K opens it", and the agent registers it at once. The Quick chat items in the menu bar and Dock menus show it too.' },
-};
-const showB = (s) => {
-  document.querySelectorAll('#bpick button').forEach(b => b.classList.toggle('on', b.dataset.s === s));
-  const st = B[s]; rec.innerHTML = st.row(); document.getElementById('bswt').textContent = st.sw;
-  note.className = 'fu-note ' + st.note[0]; note.textContent = st.note[1]; document.getElementById('bwhy').textContent = st.why;
-  const sel = document.getElementById('bsel'); if (sel) sel.addEventListener('change', () => { if (sel.value === 'Record another…') showB('recording'); });
-};
-rec.addEventListener('click', (e) => { const g = e.target.closest('[data-go]'); if (g) showB(g.dataset.go); });
-document.querySelectorAll('#bpick button').forEach(b => b.addEventListener('click', () => showB(b.dataset.s)));
-// in Recording, real keys: a modifier plus a key gives Free, Clash or Not allowed
-document.addEventListener('keydown', (e) => {
-  if (document.querySelector('#bpick .on')?.dataset.s !== 'recording') return;
-  if (e.key === 'Escape') { showB('preset'); return; }
-  if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return;
-  e.preventDefault();
-  const mods = (e.ctrlKey ? '⌃ ' : '') + (e.altKey ? '⌥ ' : '') + (e.shiftKey ? '⇧ ' : '') + (e.metaKey ? '⌘ ' : '');
-  const k = e.code === 'Space' ? 'Space' : (e.code.startsWith('Key') ? e.code.slice(3) : e.code.startsWith('Digit') ? e.code.slice(5) : e.key.toUpperCase());
-  const combo = (mods + k).trim();
-  const fixed = { Q: 'quits the app you\'re in', W: 'closes the window you\'re in', H: 'hides the app you\'re in', M: 'minimises the window you\'re in', Tab: 'switches apps' };
-  const isFixed = e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && fixed[k];
-  const st = !(e.ctrlKey || e.altKey || e.metaKey) || isFixed ? 'bare' : (e.metaKey && k === 'Space' && !e.ctrlKey && !e.shiftKey) ? 'clash' : 'free';
-  showB(st); const w = rec.querySelector('.fu-well'); if (w) w.innerHTML = keys(combo);
-  const flat = combo.replace(/ /g, '');
-  if (isFixed) note.textContent = `${flat} ${fixed[k]}. Pick another.`;
-  else if (st === 'bare') note.textContent = `${flat} would type into whatever has the keyboard. Hold ⌘, ⌃ or ⌥ too.`;
-  else if (st === 'clash') note.textContent = e.altKey ? '⌥⌘Space opens a Finder search window on this Mac. Keep it anyway, or record another.' : "⌘Space opens Spotlight on this Mac. Keep it anyway, or record another.";
-});
-showB('preset');
-</script>
+
 </body></html>

@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Login badge sketch</title>
 <style>
@@ -73,31 +73,70 @@ h2 small { font: 600 11px var(--mono); letter-spacing: .12em; color: #ff7a3d; ma
 
   <h2><small>NOW</small>Today: a display window</h2>
   <p class="note">Dark glass with glowing cyan printing, LOGIN dimmed. On Silver the site's displays are lit white with dark printing.</p>
-  <div class="row" data-v="now"></div>
+  <div class="row" data-v="now"><div><div class="face std"><div class="head">
+      <span class="disp now"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Std</div></div><div><div class="face black"><div class="head">
+      <span class="disp now"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Black</div></div><div><div class="face silver"><div class="head">
+      <span class="disp now"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Silver</div></div></div>
 
   <h2><small>A</small>Lit panel</h2>
   <p class="note">The glass itself is lit in the cyan of SECURITY, with a faint glow around it and the display's top sheen. Printing is dark teal; LOGIN is a step lighter than SECURITY. It stays a display, just switched on. On Silver it's the same lit cyan, without the glow.</p>
-  <div class="row" data-v="a"></div>
+  <div class="row" data-v="a"><div><div class="face std"><div class="head">
+      <span class="disp a"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Std</div></div><div><div class="face black"><div class="head">
+      <span class="disp a"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Black</div></div><div><div class="face silver"><div class="head">
+      <span class="disp a"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Silver</div></div></div>
 
   <h2><small>B</small>Flat label</h2>
   <p class="note">The same cyan, flat: no glow and no sheen, like a printed tag. Dark text. Quieter than A; on Silver a slightly deeper cyan so it holds against the light plate.</p>
-  <div class="row" data-v="b"></div>
+  <div class="row" data-v="b"><div><div class="face std"><div class="head">
+      <span class="disp b"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Std</div></div><div><div class="face black"><div class="head">
+      <span class="disp b"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Black</div></div><div><div class="face silver"><div class="head">
+      <span class="disp b"><em>Login</em>Security</span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Silver</div></div></div>
 
   <h2><small>C</small>Split</h2>
   <p class="note">LOGIN stays in the dark window and SECURITY is the lit part, like a backlit key in a display. Only half of it is bright.</p>
-  <div class="row" data-v="c"></div>
+  <div class="row" data-v="c"><div><div class="face std"><div class="head">
+      <span class="disp c"><em>Login</em><b>Security</b></span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Std</div></div><div><div class="face black"><div class="head">
+      <span class="disp c"><em>Login</em><b>Security</b></span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Black</div></div><div><div class="face silver"><div class="head">
+      <span class="disp c"><em>Login</em><b>Security</b></span>
+      <h3>How does cl_audit handle your Claude login?</h3></div>
+      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
+    <div class="cap">Silver</div></div></div>
 
   <p class="rec"><b>Recommended: A.</b> It is what you asked for (solid bright background, darker text) and still reads as the site's display hardware: a lit window rather than a sticker. B if you want it flatter; C keeps more of today's look.</p>
 </div>
-<script>
-const faces = [["std", "Std"], ["black", "Black"], ["silver", "Silver"]];
-document.querySelectorAll("[data-v]").forEach((row) => {
-  const v = row.dataset.v;
-  row.innerHTML = faces.map(([f, n]) => `<div><div class="face ${f}"><div class="head">
-      ${v === "c" ? '<span class="disp c"><em>Login</em><b>Security</b></span>' : `<span class="disp ${v}"><em>Login</em>Security</span>`}
-      <h3>How does cl_audit handle your Claude login?</h3></div>
-      <div class="title-sm" style="margin-top:8px">Source-available · runs locally · no account or server</div></div>
-    <div class="cap">${n}</div></div>`).join("");
-});
-</script>
+
+
 </body></html>

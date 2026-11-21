@@ -1,8 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Login Section Sketches</title>
 <style>
   :root { --bg:#1c1c1e; --card:#262628; --line:rgba(255,255,255,.08); --text:#ececee; --muted:#9a9aa0; --green:#4ade80; --greenA:rgba(34,197,94,.14); --greenB:rgba(34,197,94,.4); --red:#f87171; }
@@ -357,8 +356,8 @@
   <p class="why">The tabs you picked, polished: one segmented control with a sliding highlight, matching line icons, one green accent. The explanation area keeps one height and cross-fades, so the page never moves. Arrow keys move between tabs. On a phone the tabs scroll sideways. No icons; the title carries the green accent.</p>
   <div class="stage"><div class="card R D1" data-r="seg">
     <div class="head"><h3 class="title hl">How cl_audit handles the Claude login</h3><a class="more" href="#">Details ›</a></div>
-    <div class="seg" role="tablist" aria-label="Claude login"><span class="ind" aria-hidden="true"></span></div>
-    <div class="pane" role="tabpanel"><div class="ptext"><b></b><p></p></div></div>
+    <div class="seg" role="tablist" aria-label="Claude login"><span class="ind" aria-hidden="true" style="width: 151px; transform: translateX(4px);"></span><button class="stab" role="tab" title="Password never seen" aria-selected="true" tabindex="0"><span>Password never seen</span></button><button class="stab" role="tab" title="Read-only, in memory" aria-selected="false" tabindex="-1"><span>Read-only, in memory</span></button><button class="stab" role="tab" title="Sent only to Anthropic" aria-selected="false" tabindex="-1"><span>Sent only to Anthropic</span></button><button class="stab" role="tab" title="History stays local" aria-selected="false" tabindex="-1"><span>History stays local</span></button><button class="stab" role="tab" title="No server or analytics" aria-selected="false" tabindex="-1"><span>No server or analytics</span></button></div>
+    <div class="pane" role="tabpanel" style="--pane-h: 111px;"><div class="ptext"><b>The password is never seen</b><p>Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (<code>claude auth login</code>) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic.</p></div></div>
   </div></div>
 </section>
 
@@ -366,9 +365,9 @@
   <h2>D2 · Tabs as a side list</h2>
   <p class="why">Same content, tabs stacked on the left like a settings list; the explanation sits on the right with room to breathe. Long labels never squeeze; on a phone the list goes above the text.</p>
   <div class="stage"><div class="card R" data-r="rail">
-    <div class="head"><span class="badge">LOCK</span><h3 class="title">How cl_audit handles the Claude login</h3><a class="more" href="#">Details ›</a></div>
-    <div class="railwrap"><div class="rail" role="tablist" aria-label="Claude login"></div>
-      <div class="pane railpane" role="tabpanel"><span class="ptile"></span><div class="ptext"><b></b><p></p></div></div></div>
+    <div class="head"><span class="badge"><svg class="ico" viewBox="0 0 16 16" style="width:13px;height:13px;stroke-width:1.8"><rect x="3" y="7" width="10" height="7" rx="2"></rect><path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7"></path></svg></span><h3 class="title">How cl_audit handles the Claude login</h3><a class="more" href="#">Details ›</a></div>
+    <div class="railwrap"><div class="rail" role="tablist" aria-label="Claude login"><button class="rtab" role="tab" aria-selected="true" tabindex="0"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="10.5" r="3"></circle><path d="M7.7 8.3L14 2"></path><path d="M11.5 4.5L13.5 6.5"></path><path d="M9.8 6.2L11.3 7.7"></path></svg><span>Password never seen</span></button><button class="rtab" role="tab" aria-selected="false" tabindex="-1"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg><span>Read-only, in memory</span></button><button class="rtab" role="tab" aria-selected="false" tabindex="-1"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3H3.5v9.5H13V9.5"></path><path d="M9.5 2.5h4v4"></path><path d="M13.5 2.5L7.5 8.5"></path></svg><span>Sent only to Anthropic</span></button><button class="rtab" role="tab" aria-selected="false" tabindex="-1"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.8V8l2.3 1.4"></path></svg><span>History stays local</span></button><button class="rtab" role="tab" aria-selected="false" tabindex="-1"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M3.8 12.2l8.4-8.4"></path></svg><span>No server or analytics</span></button></div>
+      <div class="pane railpane" role="tabpanel" style="--pane-h: 111px;"><span class="ptile"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="10.5" r="3"></circle><path d="M7.7 8.3L14 2"></path><path d="M11.5 4.5L13.5 6.5"></path><path d="M9.8 6.2L11.3 7.7"></path></svg></span><div class="ptext"><b>The password is never seen</b><p>Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (<code>claude auth login</code>) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic.</p></div></div></div>
   </div></div>
 </section>
 
@@ -376,9 +375,9 @@
   <h2>D3 · Icon tabs</h2>
   <p class="why">Five round icons with a short word each, like a small toolbar; the picked one is green. Most visual and the lightest text; the explanation below says the rest.</p>
   <div class="stage"><div class="card R" data-r="icons">
-    <div class="head"><span class="badge">LOCK</span><h3 class="title">How cl_audit handles the Claude login</h3><a class="more" href="#">Details ›</a></div>
-    <div class="itabs" role="tablist" aria-label="Claude login"></div>
-    <div class="pane" role="tabpanel"><div class="ptext"><b></b><p></p></div></div>
+    <div class="head"><span class="badge"><svg class="ico" viewBox="0 0 16 16" style="width:13px;height:13px;stroke-width:1.8"><rect x="3" y="7" width="10" height="7" rx="2"></rect><path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7"></path></svg></span><h3 class="title">How cl_audit handles the Claude login</h3><a class="more" href="#">Details ›</a></div>
+    <div class="itabs" role="tablist" aria-label="Claude login"><button class="itab" role="tab" title="Password never seen" aria-selected="true" tabindex="0"><span class="ring"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="10.5" r="3"></circle><path d="M7.7 8.3L14 2"></path><path d="M11.5 4.5L13.5 6.5"></path><path d="M9.8 6.2L11.3 7.7"></path></svg></span><span class="lbl">Password</span></button><button class="itab" role="tab" title="Read-only, in memory" aria-selected="false" tabindex="-1"><span class="ring"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg></span><span class="lbl">Read-only</span></button><button class="itab" role="tab" title="Sent only to Anthropic" aria-selected="false" tabindex="-1"><span class="ring"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3H3.5v9.5H13V9.5"></path><path d="M9.5 2.5h4v4"></path><path d="M13.5 2.5L7.5 8.5"></path></svg></span><span class="lbl">Anthropic</span></button><button class="itab" role="tab" title="History stays local" aria-selected="false" tabindex="-1"><span class="ring"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.8V8l2.3 1.4"></path></svg></span><span class="lbl">History</span></button><button class="itab" role="tab" title="No server or analytics" aria-selected="false" tabindex="-1"><span class="ring"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M3.8 12.2l8.4-8.4"></path></svg></span><span class="lbl">No server</span></button></div>
+    <div class="pane" role="tabpanel" style="--pane-h: 111px;"><div class="ptext"><b>The password is never seen</b><p>Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (<code>claude auth login</code>) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic.</p></div></div>
   </div></div>
 </section>
 
@@ -387,32 +386,32 @@
 <section class="var">
   <h2>A · Chips (live now, refined)</h2>
   <p class="why">Five short facts as chips; one click expands the strip with its explanation. Densest; reads as a checklist.</p>
-  <div class="stage"><div class="card A" data-group>
+  <div class="stage"><div class="card A" data-group="">
     <div class="head"><span class="badge">🔒</span><h3 class="title">How cl_audit handles the Claude login</h3><a class="more" href="#">Details ›</a></div>
-    <ul class="chips" data-list></ul>
-    <div class="expl" data-expl><div><div class="body"><b></b><span></span></div></div></div>
+    <ul class="chips" data-list=""><li><button class="chip" data-i="0" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>Password never seen: Claude's own sign-in<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></li><li><button class="chip" data-i="1" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>Login read-only, kept in memory<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></li><li><button class="chip" data-i="2" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>Sent only to Anthropic<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></li><li><button class="chip" data-i="3" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>History from Claude Code's logs on the Mac<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></li><li><button class="chip" data-i="4" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>No server, analytics or sign-up<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></li></ul>
+    <div class="expl" data-expl=""><div><div class="body"><b></b><span></span></div></div></div>
   </div></div>
 </section>
 
 <section class="var">
   <h2>B · The path a login takes</h2>
   <p class="why">Shows where the login goes: from Claude's sign-in, through your Mac, to Anthropic, and nowhere else. Click a step for its explanation.</p>
-  <div class="stage"><div class="card" data-group>
+  <div class="stage"><div class="card" data-group="">
     <div class="head"><span class="badge">🔒</span><h3 class="title">How cl_audit handles the Claude login</h3><a class="more" href="#">Details ›</a></div>
-    <div class="path" data-path></div>
+    <div class="path" data-path=""><button class="node mac" data-i="0" aria-expanded="false"><span class="box"><span class="ic">👤</span><b>You sign in</b><small>in Claude's own screens</small></span></button><button class="node mac" data-i="1" aria-expanded="false"><span class="box"><span class="ic">🔐</span><b>Keychain</b><small>Claude Code saves the login</small></span></button><button class="node mac" data-i="1" aria-expanded="false"><span class="box"><span class="ic">◉</span><b>cl_audit</b><small>reads it read-only, in memory</small></span></button><button class="node " data-i="2" aria-expanded="false"><span class="box"><span class="ic">A</span><b>api.anthropic.com</b><small>usage and account only</small></span></button><button class="node " data-i="4" aria-expanded="false"><span class="box"><span class="ic">∅</span><b>Anywhere else</b><small>no server, analytics, sign-up</small></span></button></div>
     <div class="zone"><span class="ok">on your Mac</span><span class="ok">Anthropic</span><span class="no">nowhere else</span></div>
-    <div class="expl" data-expl><div><div class="body"><b></b><span></span></div></div></div>
+    <div class="expl" data-expl=""><div><div class="body"><b></b><span></span></div></div></div>
   </div></div>
 </section>
 
 <section class="var">
   <h2>C · Does / never does</h2>
   <p class="why">Two short columns, like a spec. Each row opens in place (accordion), so the explanation sits right under its line.</p>
-  <div class="stage"><div class="card" data-acc>
+  <div class="stage"><div class="card" data-acc="">
     <div class="head"><span class="badge">🔒</span><h3 class="title">How cl_audit handles the Claude login</h3><a class="more" href="#">Details ›</a></div>
     <div class="cols">
-      <div class="col"><h3>cl_audit does</h3><div data-does></div></div>
-      <div class="col"><h3>cl_audit never</h3><div data-never></div></div>
+      <div class="col"><h3>cl_audit does</h3><div data-does=""><button class="row" data-i="0" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>Opens Claude's own sign-in<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><div class="expl"><div><div class="body"></div></div></div><button class="row" data-i="1" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>Reads the saved login read-only<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><div class="expl"><div><div class="body"></div></div></div><button class="row" data-i="2" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>Asks Anthropic for usage<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><div class="expl"><div><div class="body"></div></div></div><button class="row" data-i="3" aria-expanded="false"><svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>Charts history from local logs<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><div class="expl"><div><div class="body"></div></div></div></div></div>
+      <div class="col"><h3>cl_audit never</h3><div data-never=""><button class="row" data-i="0" aria-expanded="false"><span class="x">✕</span>Sees the password<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><div class="expl"><div><div class="body"></div></div></div><button class="row" data-i="1" aria-expanded="false"><span class="x">✕</span>Writes, renews or logs the login<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><div class="expl"><div><div class="body"></div></div></div><button class="row" data-i="2" aria-expanded="false"><span class="x">✕</span>Sends it anywhere but Anthropic<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><div class="expl"><div><div class="body"></div></div></div><button class="row" data-i="4" aria-expanded="false"><span class="x">✕</span>Runs a server, analytics or sign-up<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button><div class="expl"><div><div class="body"></div></div></div></div></div>
     </div>
   </div></div>
 </section>
@@ -420,141 +419,17 @@
 <section class="var">
   <h2>E · One sentence</h2>
   <p class="why">Quietest: one plain sentence; its key phrases are links that expand the explanation. Fits a single line on desktop.</p>
-  <div class="stage"><div class="card Ewrap" data-sentence>
+  <div class="stage"><div class="card Ewrap" data-sentence="">
     <div class="E"><span class="badge">🔒</span>
-      <span class="sentence">cl_audit <a data-k="0">never sees the password</a>, reads Claude Code's saved login <a data-k="1">read-only</a>, sends it <a data-k="2">only to Anthropic</a>, and has <a data-k="4">no server or analytics</a>.</span>
+      <span class="sentence">cl_audit <a data-k="0" data-i="0">never sees the password</a>, reads Claude Code's saved login <a data-k="1" data-i="1">read-only</a>, sends it <a data-k="2" data-i="2">only to Anthropic</a>, and has <a data-k="4" data-i="4">no server or analytics</a>.</span>
       <a class="more" href="#">Details ›</a>
     </div>
-    <div class="expl" data-expl><div><div class="body" style="margin-top:0"><b></b><span></span></div></div></div>
+    <div class="expl" data-expl=""><div><div class="body" style="margin-top:0"><b></b><span></span></div></div></div>
   </div></div>
 </section>
 </main>
 
-<script>
-const facts = [
-  { short: "Password never seen", long: "Password never seen: Claude's own sign-in", icon: "🔑",
-    text: "Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (claude auth login) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic." },
-  { short: "Read-only, in memory", long: "Login read-only, kept in memory", icon: "👁",
-    text: "Claude Code saves its login in the Mac's Keychain. cl_audit reads it the same way Claude Code does, with Apple's security tool, so macOS asks nothing. It keeps only the short-lived part, in memory, and never writes, renews or logs it. Any app running as the same user could read it the same way; cl_audit doesn't change that." },
-  { short: "Sent only to Anthropic", long: "Sent only to Anthropic", icon: "↗",
-    text: "cl_audit uses the login for two requests to Anthropic's own server, api.anthropic.com: the 5-hour and weekly usage, and which account a profile is signed in to. Nothing else leaves the Mac." },
-  { short: "History stays local", long: "History from Claude Code's logs on the Mac", icon: "🕘",
-    text: "The usage charts come from the session files Claude Code already writes on the Mac: only time, model, token counts, project folder and where Claude was used. Nothing is uploaded." },
-  { short: "No server, analytics or sign-up", long: "No server, analytics or sign-up", icon: "∅",
-    text: "cl_audit has no server of its own, collects no statistics and needs no account. Its code is open: how it reads the login is in Login.read (Sources/Model.swift)." },
-];
-const tick = '<svg class="tick" width="11" height="11" viewBox="0 0 12 12"><path d="M2.2 6.4l2.4 2.4 5.2-5.6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-const chev = '<svg class="chev" width="9" height="9" viewBox="0 0 10 10"><path d="M2.5 3.8L5 6.3l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-// a group of triggers sharing one expanding explanation
-function expander(root, triggers, onPick) {
-  const expl = root.querySelector("[data-expl]");
-  let open = null;
-  const set = (t, i) => {
-    triggers.forEach(x => x.setAttribute("aria-expanded", String(x === t)));
-    if (t === open) { open = null; expl.classList.remove("open"); triggers.forEach(x => x.setAttribute("aria-expanded", "false")); onPick && onPick(-1); return; }
-    open = t; const f = facts[i];
-    expl.querySelector("b").textContent = f.long; expl.querySelector("span").textContent = f.text;
-    expl.classList.add("open"); onPick && onPick(i);
-  };
-  triggers.forEach(t => t.addEventListener("click", e => { e.preventDefault(); set(t, +t.dataset.i); }));
-}
 
-// ── D refined ──────────────────────────────────────────────────────
-const ICON = {
-  key:   '<circle cx="5.5" cy="10.5" r="3"/><path d="M7.7 8.3L14 2"/><path d="M11.5 4.5L13.5 6.5"/><path d="M9.8 6.2L11.3 7.7"/>',
-  eye:   '<path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>',
-  send:  '<path d="M6.5 3H3.5v9.5H13V9.5"/><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5L7.5 8.5"/>',
-  clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.8V8l2.3 1.4"/>',
-  none:  '<circle cx="8" cy="8" r="6"/><path d="M3.8 12.2l8.4-8.4"/>',
-  lock:  '<rect x="3" y="7" width="10" height="7" rx="2"/><path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7"/>',
-};
-const svg = (k) => `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true">${ICON[k]}</svg>`;
-const R = [
-  { tab: "Password never seen", word: "Password", ic: "key",
-    title: "The password is never seen", text: "Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (<code>claude auth login</code>) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic." },
-  { tab: "Read-only, in memory", word: "Read-only", ic: "eye",
-    title: "The saved login is read-only, in memory", text: "Claude Code saves its login in the Mac's Keychain. cl_audit reads it the way Claude Code does, with Apple's <code>security</code> tool, so macOS asks nothing. It keeps only the short-lived part, in memory, and never writes, renews or logs it. Any app running as the same user could read it the same way; cl_audit doesn't change that." },
-  { tab: "Sent only to Anthropic", word: "Anthropic", ic: "send",
-    title: "It is sent only to Anthropic", text: "The login is used for two requests to Anthropic's own server, <code>api.anthropic.com</code>: the 5-hour and weekly usage, and which account a profile is signed in to. Nothing else leaves the Mac." },
-  { tab: "History stays local", word: "History", ic: "clock",
-    title: "Usage history stays on the Mac", text: "The charts come from the session files Claude Code already writes on the Mac: only time, model, token counts, project folder and where Claude was used. Nothing is uploaded." },
-  { tab: "No server or analytics", word: "No server", ic: "none",
-    title: "No server, analytics or sign-up", text: "cl_audit has no server of its own, collects no statistics and needs no account. Its code is open: the login is read in <code>Login.read</code> (Sources/Model.swift)." },
-];
-document.querySelectorAll(".R .badge").forEach(b => b.innerHTML = `<svg class="ico" viewBox="0 0 16 16" style="width:13px;height:13px;stroke-width:1.8">${ICON.lock}</svg>`);
 
-function tabs(root, list, make) {
-  list.innerHTML += R.map((r, i) => make(r, i)).join("");
-  const btns = [...list.querySelectorAll('[role="tab"]')];
-  const pane = root.querySelector(".pane"), text = pane.querySelector(".ptext"), tile = pane.querySelector(".ptile");
-  // one height for every tab: the tallest explanation
-  const measure = () => {
-    let h = 0; const keep = text.innerHTML;
-    R.forEach(r => { text.innerHTML = `<b>${r.title}</b><p>${r.text}</p>`; h = Math.max(h, text.offsetHeight); });
-    text.innerHTML = keep; pane.style.setProperty("--pane-h", h + "px");
-  };
-  const ind = list.querySelector(".ind");
-  const place = (b) => { if (!ind) return; ind.style.width = b.offsetWidth + "px"; ind.style.transform = `translateX(${b.offsetLeft}px)`; };
-  let cur = -1;
-  const pick = (i, focus) => {
-    if (i === cur) return; const first = cur < 0; cur = i;
-    btns.forEach((b, k) => { b.setAttribute("aria-selected", String(k === i)); b.tabIndex = k === i ? 0 : -1; });
-    place(btns[i]); if (focus) btns[i].focus();
-    const fill = () => { text.innerHTML = `<b>${R[i].title}</b><p>${R[i].text}</p>`; if (tile) tile.innerHTML = svg(R[i].ic); text.classList.remove("fade"); };
-    if (first) fill(); else { text.classList.add("fade"); setTimeout(fill, 140); }
-  };
-  btns.forEach((b, k) => b.addEventListener("click", () => pick(k)));
-  list.addEventListener("keydown", e => {
-    const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]; if (!d) return;
-    e.preventDefault(); pick((cur + d + R.length) % R.length, true);
-  });
-  pick(0); measure();
-  // re-measure whenever the section's width changes (window resize, fonts, a page that loaded narrow)
-  new ResizeObserver(() => { place(btns[cur]); measure(); }).observe(list);
-}
-{ const root = document.querySelector('[data-r="seg"]');
-  tabs(root, root.querySelector(".seg"), (r) => `<button class="stab" role="tab" title="${r.tab}"><span>${r.tab}</span></button>`); }
-{ const root = document.querySelector('[data-r="rail"]');
-  tabs(root, root.querySelector(".rail"), (r) => `<button class="rtab" role="tab">${svg(r.ic)}<span>${r.tab}</span></button>`); }
-{ const root = document.querySelector('[data-r="icons"]');
-  tabs(root, root.querySelector(".itabs"), (r) => `<button class="itab" role="tab" title="${r.tab}"><span class="ring">${svg(r.ic)}</span><span class="lbl">${r.word}</span></button>`); }
-
-// A
-{ const root = document.querySelector(".A"), list = root.querySelector("[data-list]");
-  list.innerHTML = facts.map((f, i) => `<li><button class="chip" data-i="${i}" aria-expanded="false">${tick}${f.long}${chev}</button></li>`).join("");
-  expander(root, [...list.querySelectorAll(".chip")]); }
-
-// B
-{ const root = document.querySelector("[data-path]").closest("[data-group]"), path = root.querySelector("[data-path]");
-  const steps = [
-    { ic: "👤", b: "You sign in", s: "in Claude's own screens", i: 0, mac: true },
-    { ic: "🔐", b: "Keychain", s: "Claude Code saves the login", i: 1, mac: true },
-    { ic: "◉", b: "cl_audit", s: "reads it read-only, in memory", i: 1, mac: true },
-    { ic: "A", b: "api.anthropic.com", s: "usage and account only", i: 2 },
-    { ic: "∅", b: "Anywhere else", s: "no server, analytics, sign-up", i: 4 },
-  ];
-  path.innerHTML = steps.map(s => `<button class="node ${s.mac ? "mac" : ""}" data-i="${s.i}" aria-expanded="false"><span class="box"><span class="ic">${s.ic}</span><b>${s.b}</b><small>${s.s}</small></span></button>`).join("");
-  expander(root, [...path.querySelectorAll(".node")]); }
-
-// C (accordion: each row has its own)
-{ const root = document.querySelector("[data-acc]");
-  const does = [[0, "Opens Claude's own sign-in"], [1, "Reads the saved login read-only"], [2, "Asks Anthropic for usage"], [3, "Charts history from local logs"]];
-  const never = [[0, "Sees the password"], [1, "Writes, renews or logs the login"], [2, "Sends it anywhere but Anthropic"], [4, "Runs a server, analytics or sign-up"]];
-  const x = '<span class="x">✕</span>';
-  const rows = (arr, mark) => arr.map(([i, t]) => `<button class="row" data-i="${i}" aria-expanded="false">${mark}${t}${chev}</button><div class="expl"><div><div class="body"></div></div></div>`).join("");
-  root.querySelector("[data-does]").innerHTML = rows(does, tick);
-  root.querySelector("[data-never]").innerHTML = rows(never, x);
-  root.querySelectorAll(".row").forEach(r => r.addEventListener("click", () => {
-    const ex = r.nextElementSibling, on = r.getAttribute("aria-expanded") === "true";
-    root.querySelectorAll(".row").forEach(o => { o.setAttribute("aria-expanded", "false"); o.nextElementSibling.classList.remove("open"); });
-    if (!on) { ex.querySelector(".body").textContent = facts[+r.dataset.i].text; r.setAttribute("aria-expanded", "true"); ex.classList.add("open"); }
-  })); }
-
-// E
-{ const root = document.querySelector("[data-sentence]"); const links = [...root.querySelectorAll(".sentence a")];
-  links.forEach(a => a.dataset.i = a.dataset.k);
-  expander(root, links, i => links.forEach(a => a.classList.toggle("on", +a.dataset.i === i))); }
-</script>
-</body>
-</html>
+</body></html>

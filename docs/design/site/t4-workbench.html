@@ -1,8 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cl_audit T4 Final Options</title>
 <style>
   * { box-sizing: border-box; }
@@ -318,23 +317,23 @@
   <defs>
     <!-- side by side: two windows next to each other -->
     <symbol id="i-pair" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="1.8" y="5" width="9.2" height="14" rx="2"/><rect x="13" y="5" width="9.2" height="14" rx="2"/><path d="M1.8 8.5h9.2M13 8.5h9.2"/></symbol>
+      <rect x="1.8" y="5" width="9.2" height="14" rx="2"></rect><rect x="13" y="5" width="9.2" height="14" rx="2"></rect><path d="M1.8 8.5h9.2M13 8.5h9.2"></path></symbol>
     <!-- side by side: windows stacked in depth -->
     <symbol id="i-stack" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M5 8V5.5A2 2 0 0 1 7 3.5h12A2 2 0 0 1 21 5.5V15a2 2 0 0 1-2 2h-2"/><rect x="3" y="8" width="14" height="12.5" rx="2"/><path d="M3 11.5h14"/></symbol>
+      <path d="M5 8V5.5A2 2 0 0 1 7 3.5h12A2 2 0 0 1 21 5.5V15a2 2 0 0 1-2 2h-2"></path><rect x="3" y="8" width="14" height="12.5" rx="2"></rect><path d="M3 11.5h14"></path></symbol>
     <!-- side by side: three app tiles on a shelf -->
     <symbol id="i-tiles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="1.8" y="7" width="5.6" height="5.6" rx="1.5"/><rect x="9.2" y="7" width="5.6" height="5.6" rx="1.5"/><rect x="16.6" y="7" width="5.6" height="5.6" rx="1.5"/><path d="M1.5 16.5h21"/></symbol>
+      <rect x="1.8" y="7" width="5.6" height="5.6" rx="1.5"></rect><rect x="9.2" y="7" width="5.6" height="5.6" rx="1.5"></rect><rect x="16.6" y="7" width="5.6" height="5.6" rx="1.5"></rect><path d="M1.5 16.5h21"></path></symbol>
     <!-- usage in the Dock: a Dock shelf with two tiles, each with its level bar -->
     <symbol id="i-dock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M2 19.5h20"/><rect x="4" y="6" width="7" height="10.5" rx="1.8"/><rect x="13" y="6" width="7" height="10.5" rx="1.8"/>
-      <path d="M7.5 14v-2.5M16.5 14V9" stroke-width="2.2"/></symbol>
+      <path d="M2 19.5h20"></path><rect x="4" y="6" width="7" height="10.5" rx="1.8"></rect><rect x="13" y="6" width="7" height="10.5" rx="1.8"></rect>
+      <path d="M7.5 14v-2.5M16.5 14V9" stroke-width="2.2"></path></symbol>
     <!-- usage: a gauge above the Dock line -->
     <symbol id="i-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3.5 15a8.5 8.5 0 0 1 17 0"/><path d="M12 15l4-5"/><circle cx="12" cy="15" r="1.2" fill="currentColor"/><path d="M2 20h20"/></symbol>
+      <path d="M3.5 15a8.5 8.5 0 0 1 17 0"></path><path d="M12 15l4-5"></path><circle cx="12" cy="15" r="1.2" fill="currentColor"></circle><path d="M2 20h20"></path></symbol>
     <!-- usage: two level bars, 5-hour and week (like the Dock icon) -->
     <symbol id="i-bars" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="5" y="3" width="5" height="18" rx="1.5"/><rect x="14" y="3" width="5" height="18" rx="1.5"/><path d="M7.5 18v-6M16.5 18v-10" stroke-width="2.6"/></symbol>
+      <rect x="5" y="3" width="5" height="18" rx="1.5"></rect><rect x="14" y="3" width="5" height="18" rx="1.5"></rect><path d="M7.5 18v-6M16.5 18v-10" stroke-width="2.6"></path></symbol>
   </defs>
 </svg>
 
@@ -425,188 +424,18 @@
 <p class="lead">After OVERVIEW: three pairs, each the Claude window as a display pictogram (a chat bubble in a rounded-square frame, lit orange lines) and its usage as two rings bare on the glass (5-hour outside, week inside, each in its level colour: green, amber from 50, red from 80). The Dock starts with one pair, the other two launch into it, growing from its centre; then every usage drifts on its own clock with eased changes, a 5-hour window resetting after it fills. When a usage first turns red (80 %) and when it reaches 100 %, an alert is typed in at the right end of the display for 3 s, worded to fit the free space; then it shrinks to a warning sign with the profile's name under it while that profile stays red.</p>
 <section class="var">
   <h2 class="pick">Large</h2>
-  <div class="stage" style="background:#050708;padding:24px"><span class="pjrow big"><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="19.7 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="4.1 33.9"/></svg></span><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#ef4444" style="color:#ef4444" stroke-dasharray="48.0 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#f59e0b" style="color:#f59e0b" stroke-dasharray="20.7 33.9"/></svg></span><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="6.9 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="13.6 33.9"/></svg></span></span></div>
+  <div class="stage" style="background:#050708;padding:24px"><span class="pjrow big"><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"></rect><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"></path><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"></path></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="19.7 57.8"></circle><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="4.1 33.9"></circle></svg></span><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"></rect><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"></path><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"></path></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#ef4444" style="color:#ef4444" stroke-dasharray="48.0 57.8"></circle><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#f59e0b" style="color:#f59e0b" stroke-dasharray="20.7 33.9"></circle></svg></span><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"></rect><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"></path><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"></path></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="6.9 57.8"></circle><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="13.6 33.9"></circle></svg></span></span></div>
 </section>
 <section class="var">
   <h2 class="pick">On the display, with the red-usage alert</h2>
-  <div class="stage"><div class="tdisp"><em>Overview</em><span class="pjrow"><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="19.7 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="4.1 33.9"/></svg></span><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#ef4444" style="color:#ef4444" stroke-dasharray="48.0 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#f59e0b" style="color:#f59e0b" stroke-dasharray="20.7 33.9"/></svg></span><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="6.9 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="13.6 33.9"/></svg></span></span><span>Claude apps side by side</span><em>·</em><span class="sub">each one's usage in the Dock</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;color:#ef4444;text-shadow:0 0 3px rgba(239,68,68,.8)"><svg viewBox="0 0 24 24" fill="none" style="width:15px;height:15px;stroke:#ef4444"><path d="M12 3.6 21.4 20H2.6z" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 9.5v5M12 17.3v.1" stroke-width="2" stroke-linecap="round"/></svg>work · 5-hour 83%</span></div></div>
+  <div class="stage"><div class="tdisp"><em>Overview</em><span class="pjrow"><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"></rect><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"></path><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"></path></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="19.7 57.8"></circle><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="4.1 33.9"></circle></svg></span><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"></rect><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"></path><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"></path></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#ef4444" style="color:#ef4444" stroke-dasharray="48.0 57.8"></circle><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#f59e0b" style="color:#f59e0b" stroke-dasharray="20.7 33.9"></circle></svg></span><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"></rect><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"></path><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"></path></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="6.9 57.8"></circle><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"></circle><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="13.6 33.9"></circle></svg></span></span><span>Claude apps side by side</span><em>·</em><span class="sub">each one's usage in the Dock</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;color:#ef4444;text-shadow:0 0 3px rgba(239,68,68,.8)"><svg viewBox="0 0 24 24" fill="none" style="width:15px;height:15px;stroke:#ef4444"><path d="M12 3.6 21.4 20H2.6z" stroke-width="1.8" stroke-linejoin="round"></path><path d="M12 9.5v5M12 17.3v.1" stroke-width="2" stroke-linecap="round"></path></svg>work · 5-hour 83%</span></div></div>
 </section>
 </main>
-<script>
-  // light the pairs one after another: 1, 1+2, 1+2+3, hold, all off, again
-  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  document.querySelectorAll(".anim, .anim2").forEach((a) => {
-    const ps = [...a.querySelectorAll(".pair, .ip, .ipct")];
-    if (still) { ps.forEach((p) => p.classList.add("on")); return; }
-    let k = 0;
-    const steps = ps.length + 2;   // n lit steps, a hold, then off
-    setInterval(() => {
-      k = (k + 1) % (steps + 1);
-      ps.forEach((p, i) => p.classList.toggle("on", k > i && k <= steps - 1));
-    }, 650);
-  });
-</script>
-<script>
-  // 3f: all lamps on, then each usage counts up to its figure, colour by level (as on the site); hold; dark; again
-  (() => {
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const lv = (p) => (p >= 80 ? "239,68,68" : p >= 50 ? "245,158,11" : "74,222,128");
-    const set = (l, v) => { l.querySelector(".lu").textContent = `${v}%`; l.style.setProperty("--lv", lv(v)); };
-    document.querySelectorAll(".anim3").forEach((row) => {
-      const ls = [...row.querySelectorAll(".ipf")];
-      if (still) { ls.forEach((l) => { l.classList.add("on"); set(l, +l.dataset.to); }); return; }
-      const cycle = () => {
-        ls.forEach((l) => { set(l, 0); l.classList.add("on"); });                 // 1 · all on
-        const t0 = performance.now() + 500, dur = 1600;
-        const step = (now) => {                                                    // 2 · count up, colour by level
-          const k = Math.min(1, Math.max(0, (now - t0) / dur)), e = 1 - Math.pow(1 - k, 3);
-          ls.forEach((l) => set(l, Math.round(+l.dataset.to * e)));
-          if (k < 1) requestAnimationFrame(step);
-          else setTimeout(() => { ls.forEach((l) => l.classList.remove("on")); setTimeout(cycle, 900); }, 3200);   // 3 · hold, dark, again
-        };
-        requestAnimationFrame(step);
-      };
-      cycle();
-    });
-  })();
-</script>
-<script>
-  // 3g: fade all on, climb 0 -> 100 slowly (eased), colour by level with soft transitions, hold, fade out, rest, again
-  (() => {
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const lv = (p) => (p >= 80 ? "239,68,68" : p >= 50 ? "245,158,11" : "74,222,128");
-    const set = (l, v) => { const u = l.querySelector(".lu"); if (u.textContent !== String(v)) u.textContent = v; l.style.setProperty("--lv", lv(v)); };
-    document.querySelectorAll(".anim4").forEach((row) => {
-      const ls = [...row.querySelectorAll(".iq")];
-      if (still) { ls.forEach((l) => { l.classList.add("on"); set(l, 34); }); return; }
-      const cycle = () => {
-        ls.forEach((l) => { set(l, 0); l.classList.add("on"); });                       // fade on
-        const t0 = performance.now() + 1100, dur = 6000;
-        const step = (now) => {
-          const k = Math.min(1, Math.max(0, (now - t0) / dur)), e = 1 - Math.pow(1 - k, 2);   // eases out near the top
-          ls.forEach((l) => set(l, Math.round(100 * e)));
-          if (k < 1) requestAnimationFrame(step);
-          else setTimeout(() => { ls.forEach((l) => l.classList.remove("on")); setTimeout(cycle, 2200); }, 3000);   // hold, fade out, rest
-        };
-        requestAnimationFrame(step);
-      };
-      cycle();
-    });
-  })();
-</script>
-<script>
-  // 3h: same calm sequence as 3g on the Dock-proportioned rows
-  (() => {
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const lv = (p) => (p >= 80 ? "239,68,68" : p >= 50 ? "245,158,11" : "74,222,128");
-    document.querySelectorAll(".anim5").forEach((row) => {
-      const us = [...row.querySelectorAll(".us")];
-      const set = (v) => us.forEach((u) => { if (u.textContent !== String(v)) u.textContent = v; u.style.setProperty("--lv", lv(v)); });
-      if (still) { row.classList.add("on"); set(34); return; }
-      const cycle = () => {
-        set(0); row.classList.add("on");
-        const t0 = performance.now() + 1100, dur = 6000;
-        const step = (now) => {
-          const k = Math.min(1, Math.max(0, (now - t0) / dur)), e = 1 - Math.pow(1 - k, 2);
-          set(Math.round(100 * e));
-          if (k < 1) requestAnimationFrame(step);
-          else setTimeout(() => { row.classList.remove("on"); setTimeout(cycle, 2200); }, 3000);
-        };
-        requestAnimationFrame(step);
-      };
-      cycle();
-    });
-  })();
-</script>
-<script>
-  // 3i · a live little Dock. Launch: the frame widens, the pair pops in, one after another. Live: each usage moves on
-  // its own clock (small irregular rises, a 5-hour reset after it fills), every change eased.
-  (() => {
-    const NS = "http://www.w3.org/2000/svg";
-    const lv = (p) => (p >= 80 ? "#ef4444" : p >= 50 ? "#f59e0b" : "#22c55e");
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const START = [[34, 12], [78, 61], [12, 40]];
-    const rnd = (a, b) => a + Math.random() * (b - a);
-    function ringSvg(kind) {
-      const svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", "0 0 24 24");
-      const rings = kind === "twin" ? [[9, 2.3], [5.4, 2.3]] : [[8.6, 2.4]];
-      const arcs = rings.map(([r, w]) => {
-        const c = 2 * Math.PI * r;
-        const tr = document.createElementNS(NS, "circle"); tr.setAttribute("class", "tr"); Object.entries({ cx: 12, cy: 12, r, fill: "none", "stroke-width": w }).forEach(([k, v]) => tr.setAttribute(k, v));
-        const a = document.createElementNS(NS, "circle"); a.setAttribute("class", "arc");
-        Object.entries({ cx: 12, cy: 12, r, fill: "none", "stroke-width": w, "stroke-linecap": "round", transform: "rotate(-90 12 12)", "stroke-dasharray": `0 ${c}` }).forEach(([k, v]) => a.setAttribute(k, v));
-        svg.append(tr, a); return { a, c };
-      });
-      let text = null;
-      if (kind !== "twin") { text = document.createElementNS(NS, "text"); Object.entries({ x: 12, y: 12.3, "text-anchor": "middle", "dominant-baseline": "central" }).forEach(([k, v]) => text.setAttribute(k, v)); text.textContent = "0"; svg.append(text); }
-      return { svg, arcs, text };
-    }
-    // one usage figure: eases from its shown value to a target
-    function gauge(arc, text) {
-      let shown = 0, raf = 0;
-      return (to, ms = 1400) => {
-        cancelAnimationFrame(raf);
-        const from = shown, t0 = performance.now();
-        const step = (now) => {
-          const k = still ? 1 : Math.min(1, (now - t0) / ms), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-          shown = from + (to - from) * e;
-          const v = Math.round(shown);
-          arc.a.setAttribute("stroke-dasharray", `${(arc.c * shown) / 100} ${arc.c}`);
-          arc.a.style.opacity = shown < .6 ? "0" : "1";          // no round-cap dot at 0
-          arc.a.setAttribute("stroke", lv(v)); arc.a.style.color = lv(v);
-          if (text && text.textContent !== String(v)) text.textContent = v;
-          if (k < 1) raf = requestAnimationFrame(step);
-        };
-        raf = requestAnimationFrame(step);
-      };
-    }
-    function build(slot) {
-      const size = +slot.dataset.size, kind = slot.dataset.dock, tile = slot.dataset.tile;
-      const g = size * .179, pairW = 2 * size + g, border = size > 30 ? 1.5 : 1;
-      const width = (k) => (k === 0 ? 2 * g : k * pairW + (k - 1) * g + 2 * g) + 2 * border;
-      slot.style.width = width(3) + "px";
-      slot.innerHTML = "";
-      const fr = document.createElement("span"); fr.className = "lfr" + (size > 30 ? " big" : ""); fr.style.width = width(0) + "px"; slot.append(fr);
-      const pairs = START.map(([five, week]) => {
-        const p = document.createElement("span"); p.className = "lp";
-        const t = document.createElement("span"); t.className = "ltile" + (tile === "c2" ? " win" : "");
-        const u = document.createElement("span"); u.className = "lu";
-        const r = ringSvg(kind); u.append(r.svg); p.append(t, u);
-        const set = [gauge(r.arcs[0], r.text)]; if (r.arcs[1]) set.push(gauge(r.arcs[1], null));
-        return { el: p, set, five, week };
-      });
-      let timers = [];
-      const later = (fn, ms) => timers.push(setTimeout(fn, ms));
-      const launch = () => {
-        timers.forEach(clearTimeout); timers = [];
-        fr.style.width = width(0) + "px"; fr.innerHTML = "";
-        pairs.forEach((p) => { p.el.classList.remove("in"); p.set.forEach((f) => f(0, 1)); });
-        pairs.forEach((p, i) => later(() => {
-          fr.append(p.el); fr.style.width = width(i + 1) + "px";                        // the Dock opens a place
-          later(() => { p.el.classList.add("in"); later(() => { p.set[0](p.five, 1600); p.set[1]?.(p.week, 1900); }, 350); }, 260);   // the pair pops in, its usage fills
-        }, 500 + i * 1500));
-        pairs.forEach((p, i) => later(() => live(p), 500 + 3 * 1500 + 1500 + i * 900));
-      };
-      const live = (p) => {                                                                // every profile on its own clock
-        const tick = () => {
-          if (p.five >= 100) {                                                             // full: hold a while, then the 5-hour window resets
-            later(() => { p.five = Math.round(rnd(3, 9)); p.set[0](p.five, 2200); later(tick, rnd(3000, 6000)); }, rnd(3500, 6000));
-            return;
-          }
-          p.five = Math.min(100, p.five + Math.round(rnd(1, 3)));
-          p.set[0](p.five, 1300);
-          if (p.set[1] && Math.random() < .35) { p.week = Math.min(100, p.week + 1); p.set[1](p.week, 1600); }
-          later(tick, rnd(2200, 5600));
-        };
-        later(tick, rnd(1500, 4000));
-      };
-      if (still) { pairs.forEach((p, i) => { fr.append(p.el); p.el.classList.add("in"); p.set[0](p.five); p.set[1]?.(p.week); }); fr.style.width = width(3) + "px"; return () => {}; }
-      launch();
-      return launch;
-    }
-    const launches = [...document.querySelectorAll(".lslot[data-dock]")].map(build);
-    document.querySelector("[data-replay]")?.addEventListener("click", () => launches.forEach((l) => l()));
-  })();
-</script>
-</body>
-</html>
+
+
+
+
+
+
+
+</body></html>

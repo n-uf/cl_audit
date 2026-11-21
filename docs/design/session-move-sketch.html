@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cl_audit · switch accounts, keep the sessions</title>
 <style>
@@ -361,9 +361,6 @@ code { font: 12.5px var(--mono); background: rgba(255,255,255,.07); padding: 0 4
 </div>
 
 </div>
-<script>
-document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => seg.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b)))));
-document.querySelectorAll('.sw').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));
-document.querySelectorAll('[data-go]').forEach(k => k.addEventListener('click', () => document.getElementById(k.dataset.go).scrollIntoView({behavior: 'smooth'})));
-</script>
+
+
 </body></html>
