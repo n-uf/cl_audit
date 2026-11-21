@@ -96,6 +96,12 @@ do {
     check(again == renamed, "read again: the same profiles (the leftovers listed once, not twice)")
     check(tree(home + "/.claude-ultra-1") + tree(home + "/.claude-ultra-2") + tree(home + "/.claude-ultra-3") == before && trashed.isEmpty,
           "nothing in those folders changed, nothing went to the Trash")
+    // a hand-edited refresh period: read as 1 to 60 minutes, so the readers' seconds never overflow
+    let polls = [Int.max, 0, -5, 61, 10].map { n -> Int? in
+        try? JSONDecoder().decode(AccountEntry.self, from: Data(#"{"id":"p","configDir":"~/.claude","pollMinutes":\#(n)}"#.utf8)).pollMinutes
+    }
+    let unset = try? JSONDecoder().decode(AccountEntry.self, from: Data(#"{"id":"p","configDir":"~/.claude"}"#.utf8)).pollMinutes
+    check(polls == [60, 1, 1, 60, 10] && unset == 5, "pollMinutes is read as 1 to 60 (Int.max, 0, -5, 61, 10 → \(polls)), 5 when unset (\(String(describing: unset)))")
 }
 
 // ============ 2. the folders from before: offered, asked about, moved to the Trash ============

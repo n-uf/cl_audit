@@ -176,7 +176,9 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         default: desktop = .standard
         }
         style = try c.decodeIfPresent(IconStyle.self, forKey: .style) ?? .bars
-        pollMinutes = try c.decodeIfPresent(Int.self, forKey: .pollMinutes) ?? 5
+        // 1 to 60 minutes, as a move carries it (SessionsMove.fieldOK): a hand-edited or hostile value can't overflow the
+        // readers' seconds (Reader's poll, Store.heldLifetime) or poll faster than once a minute
+        pollMinutes = min(max(try c.decodeIfPresent(Int.self, forKey: .pollMinutes) ?? 5, 1), 60)
         notify = try c.decodeIfPresent(Bool.self, forKey: .notify) ?? true
         notifyPercent = try c.decodeIfPresent(Int.self, forKey: .notifyPercent) ?? 90
         notifyBack = try c.decodeIfPresent(Bool.self, forKey: .notifyBack) ?? true
