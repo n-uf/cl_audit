@@ -208,6 +208,18 @@ enum SessionTransfer {
 
     /// The tasks stayed where they were, nothing of them written and none of their steps left in the record: `why` says
     /// why, `ids` are the source's task ids (their sessions stay with them).
+    // Two checks' seams. Only a test build (compiled with -D CL_AUDIT_TESTING) has them as variables; in the shipped app they
+    // are constants (no hook). `beforeTaskBackup`: called with each task file's backup path just before it is written, so a
+    // check can make that backup fail. `afterTaskWrite`: called after task file k (0 the source, 1 the target) is written,
+    // so a check can make the next write and the put-back fail.
+    #if CL_AUDIT_TESTING
+    nonisolated(unsafe) static var beforeTaskBackup: ((String) -> Void)? = nil
+    nonisolated(unsafe) static var afterTaskWrite: ((Int) -> Void)? = nil
+    #else
+    static let beforeTaskBackup: ((String) -> Void)? = nil
+    static let afterTaskWrite: ((Int) -> Void)? = nil
+    #endif
+
     struct TasksStayed: Error {
         let why: String
         let ids: Set<String>
@@ -287,6 +299,7 @@ enum SessionTransfer {
                 // the backup is the very bytes read (never a copy made later, which a link swapped in meanwhile could redirect)
                 if let was {
                     try? fm.removeItem(atPath: backup)
+                    beforeTaskBackup?(backup)
                     guard CreateOnly.write(was, as: backup, temp: backup + ".tmp", sync: true) == .created else {
                         throw SwitchError.failed("couldn't back up scheduled-tasks.json")
                     }
@@ -337,6 +350,7 @@ enum SessionTransfer {
             }
             r.steps[w.step].done = true
             try save(r)
+            afterTaskWrite?(k)
         }
     }
 

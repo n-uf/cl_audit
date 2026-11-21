@@ -271,7 +271,8 @@ run_docktile() {
 
 run_accounts() {
   local dir="$WORK/accounts"; mkdir -p "$dir"
-  compile "$dir/cl_audit-checks-accounts" "$HERE/accounts/main.swift" || return 1
+  # (-D CL_AUDIT_TESTING: a scheduled-tasks backup and a task file's put-back can be made to fail, seams only a test build has)
+  compile "$dir/cl_audit-checks-accounts" "$HERE/accounts/main.swift" -D CL_AUDIT_TESTING || return 1
   run_binary "$dir" "$dir/cl_audit-checks-accounts"
 }
 

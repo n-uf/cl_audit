@@ -957,6 +957,53 @@ do {
           && goneR?.problems.contains { $0.contains("changed since the switch was planned") } == true,
           "the old account's task file emptied after the plan: the task's session stays, the free one moves, said: \(goneR?.problems ?? [])")
     if let goneR { SwitchEngine.markLinked(goneR.id) }
+    // the data-safety edges, through the test build's seams (SessionTransfer.beforeTaskBackup / afterTaskWrite)
+    func taskLeftovers(_ r: SwitchReceipt?) -> [String] {
+        guard let r else { return ["no receipt"] }
+        return ((try? fm.contentsOfDirectory(atPath: SwitchEngine.root.appendingPathComponent(r.id).path)) ?? []).filter { $0.hasPrefix("scheduled-tasks.") }
+    }
+    // the new account's task backup fails (a temp is in its way): the tasks stay, nothing of them written, no backup or temp left
+    let noBackup = taskSwitch("tc15", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: "")
+    guard case .success(let pb) = SwitchEngine.plan(noBackup.e, standby: noBackup.e.standby[0], dataDir: noBackup.wd, owned: []) else { check(false, "plan tc15"); exit(1) }
+    let nbBefore = (bytes(noBackup.src + "/scheduled-tasks.json"), bytes(noBackup.dst + "/scheduled-tasks.json"))
+    SessionTransfer.beforeTaskBackup = { path in
+        if path.hasSuffix("scheduled-tasks.target.json") { try? fm.createDirectory(atPath: path + ".tmp", withIntermediateDirectories: false) }
+    }
+    let nbR = try? SwitchEngine.run(pb, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc15"))
+    SessionTransfer.beforeTaskBackup = nil
+    check(nbR?.finished != nil && nbR?.steps.contains { $0.kind == .tasks } == false && nbR?.tasksMoved == nil
+          && bytes(noBackup.src + "/scheduled-tasks.json") == nbBefore.0 && bytes(noBackup.dst + "/scheduled-tasks.json") == nbBefore.1
+          && nbBefore.0 != nil && nbBefore.1 != nil,
+          "a task backup that fails: the tasks stay, both files byte for byte, no task step written")
+    check(taskLeftovers(nbR).isEmpty, "…no task backup or temp left in the switch's folder: \(taskLeftovers(nbR))")
+    check(fm.fileExists(atPath: "\(noBackup.src)/local_\(uuid(962)).json") && !fm.fileExists(atPath: "\(noBackup.dst)/local_\(uuid(962)).json")
+          && fm.fileExists(atPath: "\(noBackup.dst)/local_\(uuid(961)).json")
+          && nbR?.problems.contains { $0.contains("couldn't back up scheduled-tasks.json") && $0.contains("Fix that") } == true,
+          "…the task's session stays with it, the free one moves, said: \(nbR?.problems ?? [])")
+    if let nbR { SwitchEngine.markLinked(nbR.id) }
+    // the source emptied, then the new account's file can't be written and the source can't be put back (both folders made
+    // read-only after the first write): the switch stops for Undo, nothing of the sessions moved; Undo puts the old
+    // account's file back from the backup byte for byte
+    let stuck = taskSwitch("tc16", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: "")
+    guard case .success(let ps) = SwitchEngine.plan(stuck.e, standby: stuck.e.standby[0], dataDir: stuck.wd, owned: []) else { check(false, "plan tc16"); exit(1) }
+    let stBefore = (bytes(stuck.src + "/scheduled-tasks.json"), bytes(stuck.dst + "/scheduled-tasks.json"))
+    SessionTransfer.afterTaskWrite = { k in
+        if k == 0 { for d in [stuck.src, stuck.dst] { try? fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: d) } }
+    }
+    var stuckWhy = ""
+    do { _ = try SwitchEngine.run(ps, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc16")) } catch { stuckWhy = "\(error)" }
+    SessionTransfer.afterTaskWrite = nil
+    for d in [stuck.src, stuck.dst] { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: d) }
+    let stuckR = SwitchEngine.unfinished(profile: "tc16").first
+    check(!stuckWhy.isEmpty && stuckWhy.contains("Undo puts them back") && stuckR != nil && stuckR?.finished == nil
+          && bytes(stuck.src + "/scheduled-tasks.json") != stBefore.0 && bytes(stuck.dst + "/scheduled-tasks.json") == stBefore.1,
+          "the source emptied and not put back: the switch stops for Undo, the new account's file as it was (\(stuckWhy))")
+    check(fm.fileExists(atPath: "\(stuck.src)/local_\(uuid(961)).json") && fm.fileExists(atPath: "\(stuck.src)/local_\(uuid(962)).json")
+          && stuckR?.moved == 0, "…no session moved (the tasks go first)")
+    _ = try? SwitchEngine.undo(stuckR?.id ?? "", windowClosed: { true })
+    check(bytes(stuck.src + "/scheduled-tasks.json") == stBefore.0 && stBefore.0 != nil && bytes(stuck.dst + "/scheduled-tasks.json") == stBefore.1
+          && SwitchEngine.unfinished(profile: "tc16").isEmpty,
+          "…Undo puts the old account's task file back from the backup byte for byte, nothing left unfinished")
     // an entry that can't be read whole (too large here): held like an owned one, but said apart, never "Claude Code is running"
     let big = taskSwitch("tc7", from: tA, to: tB, srcTask: "", dstTask: "")
     put("\(big.src)/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)
