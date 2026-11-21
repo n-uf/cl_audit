@@ -706,6 +706,27 @@ MainActor.assumeIsolated {
         let paths = Setup.commandPaths(inSettings: big, home: home)
         let took = Date().timeIntervalSince(t0)
         check(paths.count == 200_000 && paths.first == "/p/0" && took < 5, "scripts: 200,000 paths in one hook command are read once each, in order, quickly (\(paths.count) in \(String(format: "%.2f", took)) s)")
+        // the same crafted settings.json against a folder of 20,000 files: each file one lookup (paths × files would take minutes)
+        let rels = (0..<20_000).map { "skills/s\($0)/run.sh" } + ["p/7"]
+        let t1 = Date()
+        let named = Setup.namedPaths(in: big, among: rels)
+        let took1 = Date().timeIntervalSince(t1)
+        check(named == ["p/7"] && took1 < 5, "scripts: 200,000 named paths against 20,000 files, matched by their tails quickly (\(named.count) in \(String(format: "%.2f", took1)) s)")
+        // a `cd` to a folder, then ./ (or ../) in the same command: that file is named; a bare relative word and one without a cd aren't
+        let cdj = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd ~/.claude/skills/guard && ./run.sh --x ../shared/lib.sh"}]},{"hooks":[{"type":"command","command":"./other.sh run.sh"}]}]}}"#.utf8)
+        check(Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh", "run.sh"]) == ["skills/guard/run.sh", "skills/shared/lib.sh"],
+              "scripts: cd ~/.claude/skills/guard && ./run.sh names run.sh (and ../shared/lib.sh); a ./ with no cd before it, or a bare word, names nothing: \(Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh", "run.sh"]).sorted())")
+        // the setup row's ~: only where the home folder is a whole path's start
+        check(SetupRow.tildeHome("node /Users/ann/a.js --log /Users/ann", home: "/Users/ann") == "node ~/a.js --log ~"
+              && SetupRow.tildeHome("node /Users/anna/a.js /x/Users/ann/b", home: "/Users/ann") == "node /Users/anna/a.js /x/Users/ann/b"
+              && SetupRow.tildeHome("sh \"/Users/ann/x y.sh\"", home: "/Users/ann") == "sh \"~/x y.sh\"",
+              "setup row: the home folder becomes ~ only as a path's start, never inside /Users/anna or another path")
+        // an export's names: one that two of the backup's names become once an address in them is replaced gets a free name
+        var taken = Set<String>()
+        let names = ["transcripts/p/s1/tool-results/ab12.txt", "transcripts/p/s1/tool-results/AB12.txt", "transcripts/p/s1/tool-results/ab12.txt", "transcripts/p/s2.jsonl"]
+            .map { SessionsExport.uniqueName($0, taken: &taken) }
+        check(names == ["transcripts/p/s1/tool-results/ab12.txt", "transcripts/p/s1/tool-results/AB12 2.txt", "transcripts/p/s1/tool-results/ab12 3.txt", "transcripts/p/s2.jsonl"],
+              "export names: a name taken (in any case) gets the next free one beside it, never a refusal: \(names)")
         let c5 = e2 + "/.claude-e2m"
         w(c5, "settings.json", #"{"mcpServers":{"x":{"command":"\#(c5)/bin/mcp.sh"}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\#(c5)/bin/x.sh"}]}]}}"#)
         w(c5, "bin/x.sh", "#!/bin/sh\n", exec: true); w(c5, "bin/mcp.sh", "#!/bin/sh\n", exec: true)
