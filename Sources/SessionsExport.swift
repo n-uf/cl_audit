@@ -742,7 +742,7 @@ enum SessionsExport {
                 if ClaudeFiles.isEntryName(leaf) { pv.entries += 1 }
                 pv.windowBytes += f.bytes
                 // an entry or the task file of 64 MB or more is never read, so an export leaves it out whichever the file (as the run does)
-                if ClaudeFiles.isEntryName(leaf) || leaf == "scheduled-tasks.json", f.bytes >= 64 << 20 { pv.unreadable += 1; continue }
+                if ClaudeFiles.isEntryName(leaf) || leaf == "scheduled-tasks.json", f.bytes > 64 << 20 { pv.unreadable += 1; continue }
                 // an entry as a zip will hold it: without its two fields (counted), and not at all when it can't be read (counted apart);
                 // what only the encrypted image would carry (keys in those two fields) is counted apart too, for when the file is one
                 if ClaudeFiles.isEntryName(leaf), let d = FileManager.default.contents(atPath: f.src) {
@@ -1439,11 +1439,12 @@ enum SessionsExport {
         for (it, c) in markers {
             if cancel() { throw ArchiveError("Stopped.") }
             guard let mk = marker(of: it.path), exportedSessions.contains(mk.project + "/" + mk.id) else { po.markersLeftOut += 1; leftOut += 1; continue }
-            guard let f = reader.file(c), f.st.st_size <= 1 << 20, let raw = SessionsRestore.read(f.fd, size: f.st.st_size) else { po.markersLeftOut += 1; leftOut += 1; continue }
+            guard let f = reader.file(c) else { po.markersLeftOut += 1; leftOut += 1; continue }
+            guard f.st.st_size <= 1 << 20, let raw = SessionsRestore.read(f.fd, size: f.st.st_size) else { close(f.fd); po.markersLeftOut += 1; leftOut += 1; continue }
             close(f.fd)
             if !SecretScan.scan(raw).isEmpty, keys == .leaveOut { po.markersLeftOut += 1; leftOut += 1; continue }
             let data = scrubber.data(raw)
-            let mrel = free(scrubber.name(it.path))
+            let mrel = free(it.path)
             try write(data, to: URL(fileURLWithPath: create(mrel)))
             items.append(SessionsBackup.Item(role: .transcript, original: mrel, path: mrel, bytes: Int64(data.count)))
             cloned += 1; po.bytes += Int64(data.count)
