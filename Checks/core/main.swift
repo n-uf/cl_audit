@@ -193,9 +193,10 @@ do {
     for id in [Calendar.Identifier.buddhist, .japanese, .islamicUmmAlQura] {
         var other = Calendar(identifier: id); other.timeZone = TimeZone(identifier: "GMT")!
         let next = gmt.date(from: DateComponents(year: 2027, month: 1, day: 12))!
-        // (whether the year is written follows the caller's calendar, as before: 12 Jan 2027 is still 1448 in the Hijri one)
+        // (whether the year is written follows the caller's calendar, as before: `now` (13 Nov 2026) and 12 Jan 2027 are both 1448 in the
+        // Hijri one, so only that calendar writes "12 Jan"; the Buddhist and Japanese years turn on 1 Jan, so they write "12 Jan 2027")
         let words = TimeWords.when(next, now: now, calendar: other)
-        check((words == "12 Jan 2027" || (id == .islamicUmmAlQura && words == "12 Jan")) && TimeWords.when(nextMonth, now: now, calendar: other) == "24 Dec"
+        check(words == (id == .islamicUmmAlQura ? "12 Jan" : "12 Jan 2027") && TimeWords.when(nextMonth, now: now, calendar: other) == "24 Dec"
               && TimeWords.when(today, now: now, calendar: other) == "15:28", "a \(id) calendar: Gregorian words (\(words))")
     }
     var tokyo = gmt; tokyo.timeZone = TimeZone(identifier: "Asia/Tokyo")!
@@ -262,7 +263,7 @@ do {
         let lines = ((try? String(contentsOf: core.appendingPathComponent(f), encoding: .utf8)) ?? "").components(separatedBy: "\n")
         for (i, l) in lines.enumerated() {
             let code = l.components(separatedBy: "//").first ?? ""        // comments may name things; code may not
-            if l.hasPrefix("import "), !["import Foundation", "import CryptoKit", "import os"].contains(l) { found.append("\(f):\(i + 1) \(l)") }
+            if l.hasPrefix("import "), l != "import Foundation" { found.append("\(f):\(i + 1) \(l)") }
             for bad in ["usage-n-uf", "status/", "accounts.json", "config.json", "Privacy", "UserDefaults", "NSWorkspace", "NSRunningApplication",
                         "FileManager", "contentsOf:", "static var ", "nonisolated(unsafe)"] where code.contains(bad) {
                 found.append("\(f):\(i + 1) \(bad)")
