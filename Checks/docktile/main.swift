@@ -95,7 +95,7 @@ func check(_ ok: Bool, _ what: String, line: Int = #line) {
     if ok { passed += 1 } else { failed += 1; print("FAIL (line \(line)): \(what)") }
 }
 let now = Date()
-let ann = Seat(account: "00000000-0000-4000-8000-000000000001", organization: "00000000-0000-4000-8000-000000000101", email: "ann@example.com")
+let ann = Seat(account: "00000000-0000-4000-8000-000000000001", organization: "00000000-0000-4000-8000-0000000000d1", email: "ann@example.com")
 var e = AccountEntry(id: id, name: "Dock", label: "DOCK", configDir: profileDir); e.seat = ann
 e.standby = [StandbyAccount(email: "bob@example.com", id: standbyID)]
 func saveProfiles() { try! Store.save([e]) }
