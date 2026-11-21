@@ -3800,6 +3800,18 @@ do {
     check(neverNote.contains("nothing opens one") && !neverNote.contains("is kept") && !neverNote.contains("needs no new sign-in")
           && neverNote.contains("gets its own folder and asks for a sign-in on its first start"),
           "note on switching the window off, folder never made: no kept words, own folder and sign-in on the first start")
+    func onNote(_ e: AccountEntry) -> String? {
+        var on = e; on.claudeWindow = true
+        var off = e; off.claudeWindow = false
+        return SettingNotes.note(from: off, to: on)?.text
+    }
+    check(onNote(keptEntry)?.contains("has a Claude window again, signed in to its account") == true,
+          "note on switching the window on, folder exists: today's words")
+    check(onNote(usualEntry)?.contains("has a Claude window again") == true, "note on switching the window on, the usual app: today's words")
+    let neverOn = onNote(neverEntry) ?? ""
+    check(neverOn.contains("has a Claude window now") && !neverOn.contains("again") && !neverOn.contains("signed in to its account")
+          && neverOn.contains("asks for a sign-in on its first start"),
+          "note on switching the window on, folder never made: no \"again\" or \"signed in\", a sign-in on the first start")
 
     // on, then off, with the folder made by the switch (setClaudeWindow): the folder is there, so what the helper says follows it
     let wm = SettingsModel()
