@@ -52,6 +52,10 @@ git checkout v26.10.1     # optional: exactly a released version (see CHANGELOG.
 ./build.sh --no-install   # build into ./build only
 ```
 
+The modules cl_audit shares with cl_quick (ProfileCore, Runs, ClaudeAuth) are compiled from source too: a tagged
+release of [cl_kit](https://github.com/n-uf/cl_kit) copied into `Vendor/cl_kit-<tag>/` (`scripts/vendor.sh <tag>`
+copies a newer one; the copy is never edited here). `Checks/run.sh kit` runs cl_kit's own suites on that copy.
+
 Then open **cl_audit**. On a Mac with no profile yet it opens **Set up cl_audit** (see [First run](#first-run)):
 Claude Code, then the account, then a name. After that, **New profile** in Settings adds more. With **Usage in the Dock** on,
 cl_audit installs "cl_audit &lt;profile&gt;" in `/Applications` and puts it in the Dock. The first time,
