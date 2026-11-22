@@ -366,7 +366,7 @@ final class SettingsModel: ObservableObject {
         signInGenerations[id] = generation
         signIns[id] = .waiting
         // the folder is the picked profile's own (SignInWindow.folder): the SAVED list must hold this profile with this folder
-        // (never the list being edited), and no other profile may own it
+        // (never the list being edited), and no other profile's folder may be it (its account may be another profile's too)
         SignInWindow.start(claude, profile: e, saved: saved, listed: true, wanted: SignInWindow.wanted(for: e, email: email)) { [weak self] end in
             guard let self, self.signInGenerations[id] == generation else { return }
             // another profile's account that signed in is taken like any other (shared seats), with the amber note that
@@ -646,7 +646,7 @@ final class SettingsModel: ObservableObject {
         for a in accounts { if let p = a.problem { return "\(a.name.isEmpty ? "New profile" : a.name): \(p)" } }
         let names = accounts.map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
         if Set(names).count != names.count { return "Two profiles have the same name." }
-        return FolderRules.clash(in: accounts)          // one account per Claude Code folder and per window
+        return FolderRules.clash(in: accounts)          // one profile per Claude Code folder and per window
     }
 
     func binding(_ id: String) -> Binding<AccountEntry>? {
@@ -1644,32 +1644,19 @@ struct AccountSettings: View {
     var view: AccountView { show.view }
     /// The in-use box's profile as the card has it (its lamp, line, numbers and notice with its key): the box draws this.
     var inUseRow: AccountRow { AccountRow(entry: entry, show: show) }
-    /// The in-use box's plan: the record's (ProfileShow.plan, none in a clash), or in the split the one the profile
-    /// remembers for the app's account (activePlan).
+    /// The in-use box's plan: the record's (ProfileShow.plan), or in the split the one the profile remembers for the app's
+    /// account (activePlan).
     var inUsePlan: String? { entry.activePlan(view, recordPlan: show.plan) }
-    /// The red in-use box's keys: Sign in… when the value has a key (as the card's), Open with the profile whose account
-    /// the folder is on; none while the box isn't red.
-    var inUseKeys: (signIn: Bool, open: AccountEntry?) {
-        guard let n = UsageNotice.of(inUseRow), n.tone == .red else { return (false, nil) }
-        return (n.key == .signIn, elsewhere?.owner)
-    }
-
-    /// Claude Code's folder on another profile's account in use, as the profile's record says it (AccountResolver):
-    /// refused (FolderRules.noteAccounts), or nil. That profile by its id (names needn't be unique); by its name only in a
-    /// record from before the id.
-    var elsewhere: (seat: Seat, owner: AccountEntry)? {
-        let clashID = status?.resolved?.clashID
-        guard let name = view.clash,
-              let owner = model.accounts.first(where: { p in p.id != entry.id && (clashID.map { id in p.id == id } ?? (p.name == name)) })
-        else { return nil }
-        return (Seat(account: "", organization: nil, email: view.numbersOwner), owner)
+    /// The red in-use box's key: Sign in… when the value has a key (as the card's); none while the box isn't red.
+    var inUseSignInKey: Bool {
+        guard let n = UsageNotice.of(inUseRow), n.tone == .red else { return false }
+        return n.key == .signIn
     }
 
     /// Account: one row for everything about this folder's sign-in, first in the card (as on New profile). Its value is
     /// the pop-up, drawn like the Folder one; only when something needs a choice, the keys for it sit under the pop-up
     /// in the same row (wrapping in a narrow column), with one grey line under the row. Renew sign-in is a pop-up item.
     @ViewBuilder func accountRows(stacked: Bool) -> some View {
-        let move = elsewhere
         // "was X, now on standby": only while X is on standby in the boxes too (never the active account or Claude Code's)
         let linkedLately: (was: String, at: Date)? = entry.seat.flatMap { s in
             guard let was = s.was, let at = s.linkedAt, Date().timeIntervalSince(at) < 7 * 86400,
@@ -1684,10 +1671,10 @@ struct AccountSettings: View {
                 // a switch of this profile running, or refused before anything: one line, the Switch page's strip words
                 SwitchStripLine(runner: model.runner(of: entry.id))
                 if let n = entry.accountNote { accountNoteRow(n) }
-                inUseBox(move)
+                inUseBox
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
                 // Claude Code's account while the Claude app is still on another (right after a switch): its own row
-                if move == nil, let code = view.codeRow { codeBox(code) }
+                if let code = view.codeRow { codeBox(code) }
                 // the others, the one a full limit offers first on top (held still while one is selected); click one to
                 // select it, again to deselect
                 ForEach(standbyOrder) { s in standbyBox(s) }
@@ -1701,10 +1688,7 @@ struct AccountSettings: View {
             }
         }
         // one grey line, worded like New profile's and short enough for one line in a 460 pt column
-        // the account in use is another profile's too (shared seats): one amber line, nothing refused
-        if let shared = FolderRules.sharedNote(FolderRules.seatSharers(entry.seat, among: model.accounts, except: entry.id)) {
-            rowLine(shared, color: face.caution)
-        } else if mismatch {
+        if mismatch {
             rowLine("The Keychain's sign-in is another account than the folder's .claude.json names.")
         } else if status?.state == "denied" {
             rowLine(FetchState.deniedWords, color: face.caution)
@@ -1712,6 +1696,10 @@ struct AccountSettings: View {
             rowLine(Self.unreadableWords(version: model.claudeVersion), color: face.caution)
         } else if let l = linkedLately {
             rowLine(linkedWords(was: l.was, at: l.at))
+        }
+        // the account in use is another profile's too (shared seats): one amber line after any other, never instead of one
+        if let shared = FolderRules.sharedNote(FolderRules.seatSharers(entry.seat, among: model.accounts, except: entry.id)) {
+            rowLine(shared, color: face.caution)
         }
         // the Claude app on another account than Claude Code: the in-use box shows the app's account and says whose the
         // numbers are ("Usage: Claude Code on b…"), no red, nothing to choose
@@ -1723,14 +1711,13 @@ struct AccountSettings: View {
     /// The account in use: its address as the pop-up it always was (the account Claude Code in the folder is signed in
     /// to, ticked; logging back in to the profile's own; Renew sign-in), its plan, IN USE, its limits as bars, and the one
     /// key a problem needs.
-    func inUseBox(_ move: (seat: Seat, owner: AccountEntry)?) -> some View {
+    var inUseBox: some View {
         // the active account and the one line of state, from the profile's record (AccountResolver)
         let v = view
         // Claude Code on another account than the Claude app: this box is the app's account, whatever Claude Code's sign-in
         // says (expired, another address); that is said, with its key, on Claude Code's own row (codeBox)
-        let split = move == nil && v.codeRow != nil
-        let title = Self.inUseTitle(v, state: status?.state, loginEmail: status?.loginEmail, expected: expected, mismatch: mismatch,
-                                    moveEmail: move.map { $0.seat.email ?? "another account" })
+        let split = v.codeRow != nil
+        let title = Self.inUseTitle(v, state: status?.state, loginEmail: status?.loginEmail, expected: expected, mismatch: mismatch)
         let (tint, icon): (Color?, String?) = title.tone == .danger ? (face.danger, "exclamationmark.triangle.fill")
             : title.tone == .caution ? (face.caution, "clock.badge.exclamationmark") : (nil, nil)
         let shown = title.text
@@ -1771,16 +1758,8 @@ struct AccountSettings: View {
                     BoxNote(text: notice.line, size: 12, tone: .danger).fixedSize(horizontal: false, vertical: true)
                 }
                 // the value's key, as the card's (none in the split with the app's account known by its id only: the line
-                // says what to do), and Open while the folder is on another profile's account; neither: no row at all
-                let keys = inUseKeys
-                if keys.signIn || keys.open != nil {
-                    HStack(spacing: 7) {
-                        if keys.signIn { logInKey(email: show.loginAddress) }
-                        if let owner = keys.open {
-                            Button("Open \(owner.name)") { model.selection = owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                        }
-                    }
-                }
+                // says what to do)
+                if inUseSignInKey { logInKey(email: show.loginAddress) }
             } else if switching, let code = v.codeRow {
                 // a switch waits for the Claude app: this account stays in use until then (Claude Code's row is lit below)
                 BoxNote(text: "In use until the switch to \(AddressSettings.words(code)) finishes.", size: 11.5)
@@ -1790,23 +1769,16 @@ struct AccountSettings: View {
                 limitsOrWhy(row.limits, credits: row.usage?.credits, status, none: status?.state == "noLogin" ? noSignInWords
                                                        : status?.state == "expired" ? "The sign-in ran out: Sign in…, or turn on Renew sign-in." : nil)
                 // signed out or expired: that line alone says it (no "Claude Code's account shows" beside it)
-                if let n = row.line, move == nil, !["noLogin", "expired"].contains(status?.state) {
+                if let n = row.line, !["noLogin", "expired"].contains(status?.state) {
                     BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if !red {
-                if let move {
-                    // one key; signing back in to the profile's own account is in the pop-up, under this account
-                    Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                } else if !split {
-                    signInKeys(email: inUseKeyAddress)
-                }
-            }
+            if !red && !split { signInKeys(email: inUseKeyAddress) }
             signInAgainLine
         }
     }
 
-    /// The address the in-use box's Log in… fills in: the profile's own account's (in a clash never the folder's).
+    /// The address the in-use box's Log in… fills in (ProfileShow.loginAddress).
     var inUseKeyAddress: String? { show.loginAddress }
     /// The address Claude Code's own row's Log in… fills in: that row is about Claude Code's own account, the folder's.
     var codeKeyAddress: String? { expected }
@@ -1826,14 +1798,12 @@ struct AccountSettings: View {
 
     enum TitleTone { case plain, danger, caution }
     /// The IN USE box's title. While Claude Code is on another account than the Claude app (AccountView.codeRow), always the
-    /// active account: Claude Code's address, expired or not, is its own row's. Otherwise as before: another profile's
-    /// account, another address than the folder's, an expired sign-in, else the active account.
-    static func inUseTitle(_ v: AccountView, state: String?, loginEmail: String?, expected: String?, mismatch: Bool,
-                           moveEmail: String?) -> (text: String, tone: TitleTone) {
+    /// active account: Claude Code's address, expired or not, is its own row's. Otherwise as before: another address than
+    /// the folder's, an expired sign-in, else the active account.
+    static func inUseTitle(_ v: AccountView, state: String?, loginEmail: String?, expected: String?, mismatch: Bool) -> (text: String, tone: TitleTone) {
         let active = v.label ?? (v.recordTooLarge ? "account not known (record too large)" : "not signed in yet")
-        if moveEmail == nil, v.codeRow != nil { return (active, .plain) }
+        if v.codeRow != nil { return (active, .plain) }
         if mismatch { return (loginEmail ?? "another account", .danger) }
-        if let m = moveEmail { return (m, .danger) }
         if state == "expired" { return (loginEmail ?? expected ?? "expired", .caution) }
         return (active, .plain)
     }
@@ -2116,8 +2086,7 @@ struct AccountSettings: View {
     /// folder; its own line below has Cancel).
     var signingIn: Bool { model.signIns[entry.id] == .waiting }
 
-    /// `email`: the address to sign in to, as given (the in-use box's: ProfileShow.loginAddress, in a clash the profile's own
-    /// account, never the folder's); nil: the plain sign-in with no address filled in, as the card's.
+    /// `email`: the address to sign in to, as given (the in-use box's: ProfileShow.loginAddress); nil: the plain sign-in with no address filled in, as the card's.
     func signInAgain(email: String?) {
         guard !signingIn else { return }          // its window is open: no second sign-in on the folder
         // a folder that is gone is never made again: nothing starts, the line says so (A4)
@@ -2225,44 +2194,29 @@ struct AccountSettings: View {
         var action: () -> Void = {}
     }
 
-    /// The address the pop-up's Sign in… signs in to: the one value's (ProfileShow.loginAddress: the folder's, in a clash
-    /// the profile's own, in the split the Claude app's), never the account the sign-in happens to be on (that can be the
-    /// wrong one). Nil (the split with the app's account known by its id only, a clash with no account of its own): the
-    /// plain sign-in with no address filled in, as the card's.
+    /// The address the pop-up's Sign in… signs in to: the one value's (ProfileShow.loginAddress: the folder's, in the split
+    /// the Claude app's), never the account the sign-in happens to be on (that can be the wrong one). Nil (the split with the
+    /// app's account known by its id only): the plain sign-in with no address filled in, as the card's.
     var popUpSignInAddress: String? { show.loginAddress }
 
     /// What the account in use's pop-up lists, telling the same story as its label (the account Claude Code in this
-    /// folder is signed in to, ticked): when that is another profile's account, the profile's own one to sign back in to
-    /// comes next; then Renew sign-in. Other accounts are listed by themselves (AccountList).
+    /// folder is signed in to, ticked), then Sign in… and Renew sign-in. Other accounts are listed by themselves (AccountList).
     var loginItems: [LoginItem] {
-        let name = entry.name.isEmpty ? "this profile" : entry.name
-        let move = elsewhere
         let here = view.numbersOwner ?? status?.loginEmail ?? expected
-        let plan = show.plan.map(Account.planWords)            // (none in a clash: ProfileShow.plan)
+        let plan = show.plan.map(Account.planWords)
         let canSignIn = !model.claudeKnownMissing
         func line(_ email: String, _ detail: [String?]) -> String {
             ([AddressSettings.words(email)] + [detail.compactMap { $0 }.joined(separator: " · ")].filter { !$0.isEmpty }).joined(separator: "   ")
         }
         var items: [LoginItem] = []
         if let here {
-            items.append(LoginItem(id: "here", title: line(here, [plan, move == nil ? "this profile" : "signed in here"]), checked: true))
-        }
-        if move != nil {
-            // the profile's own account (the one value's address: the app's when it decided, else the seat's), as every Sign in
-            if let back = show.loginAddress {
-                items.append(LoginItem(id: "back", title: line(back, ["\(name)'s account", "sign in…"]), enabled: canSignIn && !signingIn) {
-                    if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
-                    else if let claude = model.requireClaude() { model.startSignIn(claude, entry: entry, email: back) }
-                })
-            }
+            items.append(LoginItem(id: "here", title: line(here, [plan, "this profile"]), checked: true))
         }
         // other accounts are the standby boxes below: this pop-up is about the account in use
         items.append(LoginItem(id: "d2", kind: .divider))
         // without Claude Code the items that need it are greyed; this one, right above them, says why
         if !canSignIn { items.append(LoginItem(id: "install", title: ClaudeInstall.missingInstall) { model.showInstallHelp() }) }
-        if move == nil {
-            items.append(LoginItem(id: "again", title: "Sign in…", enabled: canSignIn && !signingIn) { signInAgain(email: popUpSignInAddress) })
-        }
+        items.append(LoginItem(id: "again", title: "Sign in…", enabled: canSignIn && !signingIn) { signInAgain(email: popUpSignInAddress) })
         items.append(LoginItem(id: "renew", title: "Renew sign-in by itself", enabled: canSignIn, kind: .toggle(entry.autoRenew)) {
             entry.autoRenew.toggle()
         })

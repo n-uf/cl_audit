@@ -13,8 +13,7 @@
 //   ("Usage: Claude Code on <account>": the record keeps only the fact and the account, `codeUsageLine` and `codeName`, and
 //   ResolvedAccount.lineText builds the sentence when a surface shows it, so it follows Show emails);
 // - Claude Code's folder on an account another profile uses too (shared seats, operator 2026-11-22): the numbers are that
-//   seat's, shown on every profile that has it, never "another profile has them" (no clash: `clash` stays nil now; a record
-//   from an older build may still carry one until its next save).
+//   seat's, shown on every profile that has it (the record's old `clash` fields are only still decoded, never written).
 // - The numbers are labelled with the address they were read for (`loginEmail`), and "differs" compares that reading's
 //   account with the active one (by the ids where both are known, else the addresses), so a read from just before a
 //   sign-in changed and the resolver always agree.
@@ -73,7 +72,6 @@ enum AccountResolver {
                                 numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: nil, at: now,
                                 codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
                                 clashID: nil)
-        // (another profile on the same account: a shared seat, its numbers shown here too; never a clash)
         // the folder's organisation in three states, so a reader of the record knows the seat in full: its id; "" when the
         // record names the seat with none (no organizationUuid, null or empty: ClaudeFiles.Record keeps each as nil or "");
         // nil only with no seat (and in a record from before this field): not known
@@ -115,7 +113,7 @@ enum AccountResolver {
         // the split as a switch waiting for the Claude app: the newest switch went to Claude Code's account (the same
         // rule as Settings' Claude Code row, AccountSettings.switchTarget), and the app is still on the account it left
         // (a switch linked more than a day ago waits no more: then it's a split by hand)
-        if r.fromApp, r.differs, r.clash == nil, let n = newestSwitch, let id = r.account,
+        if r.fromApp, r.differs, let n = newestSwitch, let id = r.account,
            AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code.map { AccountID.normal($0.account) }, now: now) != nil,
            byID(id).sameAccount(byID(n.from.account)), n.linkedLately(now: now) ?? true {
             r.switchWaits = true
@@ -225,7 +223,6 @@ struct AccountView: Equatable {
     var label: String?              // the active account: its address, or "account <8>"; nil: none known
     var numbersOwner: String?       // Claude Code's account, whose numbers they are (or will be, after a switch's first read)
     var lit: Bool                 // the green lamp and "in use"
-    var clash: String?              // another profile's name, when Claude Code's folder is on its account
     /// The active account's id (lower case), from the record; nil for a record from before the resolver.
     var account: String? = nil
     /// The account isn't known because Claude Code's record is too large to read (never shown as "not signed in").
@@ -241,15 +238,15 @@ struct AccountView: Equatable {
     var line: String? { resolved?.lineText() }
 
     static func of(_ s: IconStatus?) -> AccountView {
-        guard let s else { return AccountView(label: nil, numbersOwner: nil, lit: false, clash: nil) }
+        guard let s else { return AccountView(label: nil, numbersOwner: nil, lit: false) }
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.codeName ?? r.numbersFor,
-                               lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true,
+                               lit: r.lit, account: r.account, recordTooLarge: r.recordTooLarge == true,
                                differs: r.differs, codeAccount: r.codeAccount, resolved: r)
         }
         // a record from before the resolver (or none written yet): the sign-in it was read for
         let who = s.loginEmail ?? s.expectedEmail
-        return AccountView(label: who, numbersOwner: who, lit: who != nil, clash: nil)
+        return AccountView(label: who, numbersOwner: who, lit: who != nil)
     }
 
     /// "ultra-1": the account in use with no label (showing it, with its lamp, says it's in use).
@@ -265,8 +262,8 @@ struct AccountView: Equatable {
 
     /// Claude Code's account when it isn't the active one (the Claude app is still on another, e.g. right after a switch):
     /// Settings ▸ Accounts gives it a row of its own, with the numbers (they are its). nil when the numbers are the active
-    /// account's, or when Claude Code's folder is on another profile's account (that profile has them).
-    var codeRow: String? { differs && clash == nil ? numbersOwner : nil }
+    /// account's.
+    var codeRow: String? { differs ? numbersOwner : nil }
 
     /// Claude Code's own row is this account: by its id first (a row named "account <8>" has no address), else its address
     /// (the one owner rule, the record naming no organisation).

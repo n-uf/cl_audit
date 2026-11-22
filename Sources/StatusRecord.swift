@@ -79,13 +79,6 @@ struct IconStatus: Codable {
         scoped = nil; credits = nil
     }
 
-    /// Claude Code's folder on another profile's account in use (a clash): the numbers and the plan are that profile's
-    /// account's, so the record keeps none of them (every reader of it, the widget too, shows none); `line` says why.
-    mutating func dropForClash(_ line: String?) {
-        dropNumbers(); noFiveHour = nil; plan = nil
-        problem = line
-    }
-
     /// The sign-in needs the person: another account than the folder names, run out, or none. Every surface then shows
     /// one key, Sign in… (the card's needsLogin, the Dock menu's and the menu bar's).
     var needsLogin: Bool { mismatch || state == "expired" || state == "noLogin" }
@@ -159,7 +152,7 @@ struct ResolvedAccount: Codable, Equatable {
     var differs: Bool               // the numbers aren't the active account's
     var line: String?               // the one line of state, or nil
     var lit: Bool                   // the green lamp: an account is in use and its numbers may show
-    var clash: String?              // another profile's name: Claude Code's folder is on its account in use
+    var clash: String?              // an older build's: another profile's name (one profile per account). Decoded only, never used
     var at: Date
     /// Claude Code's .claude.json is too large to read: its account isn't known (said so, never "signed out").
     var recordTooLarge: Bool? = nil
@@ -175,7 +168,7 @@ struct ResolvedAccount: Codable, Equatable {
     /// still open or linked (not undone, not left as it is), and the app is still on the account it left. Then the line
     /// asks for the app's sign-in and there is no key to log Claude Code back in (SplitUsage.switched).
     var switchWaits: Bool? = nil
-    /// The id of the profile `clash` names (names needn't be unique: this one says which); nil in a record from before it.
+    /// An older build's: the id of the profile `clash` named. Decoded only, never used (shared seats).
     var clashID: String? = nil
     /// Claude Code's folder account's organisation id (lower case), with `codeAccount`: one seat (a login's personal and
     /// Team seats are two). "": the folder's record names the seat with no organisation; nil: not known (no seat, or a
@@ -203,7 +196,7 @@ struct ResolvedAccount: Codable, Equatable {
         let label = numbersFor.flatMap { $0.contains("@") ? identity(nil, $0) : nil }
         return Headline.Owner(inUse: fromApp ? identity(account, email) : nil,
                               signIn: (codeName ?? numbersFor).map { identity(codeAccount, $0) }, reading: reading, label: label,
-                              differs: differs, elsewhere: clash != nil, switchWaits: switchWaits == true,
+                              differs: differs, elsewhere: false, switchWaits: switchWaits == true,
                               readStale: readStale == true, unconfirmed: unconfirmed)
     }
 }

@@ -31,16 +31,6 @@ func check(_ ok: Bool, _ what: String, line: Int = #line) {
 }
 func uuid(_ n: Int) -> String { "00000000-0000-4000-8000-" + String(format: "%012d", n) }
 func seat(_ n: Int, _ email: String) -> Seat { Seat(account: uuid(n), organization: uuid(n + 100), email: email) }
-/// A record as a build before shared seats wrote it for Claude Code's folder on another profile's account in use (a clash):
-/// the resolver makes none now (both profiles show the seat's numbers), but such a record is read until its next save, so
-/// the surfaces still say it as they did.
-func olderClash(_ s: IconStatus, _ o: AccountEntry) -> IconStatus {
-    var s = s
-    s.resolved?.clash = o.name; s.resolved?.clashID = o.id
-    s.resolved?.line = "Claude Code's folder is on \(o.name)'s account: its numbers show on \(o.name)."
-    s.resolved?.lit = s.resolved?.fromApp ?? false
-    return s
-}
 func put(_ path: String, _ text: String) {
     try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
     fm.createFile(atPath: path, contents: Data(text.utf8))
@@ -336,22 +326,22 @@ do {
             ("menu bar", MenuBarItems.Profile(show: ProfileShow.load(main)).view),
             ("card", cardRow(main).view),
             ("palette row", { let row = cardRow(main)
-                              var v = row.view; v.label = row.needsLogin || row.view.clash != nil ? v.label : row.subtitle; return v }()),
+                              var v = row.view; v.label = row.needsLogin ? v.label : row.subtitle; return v }()),
             ("Settings", AccountSettings(entry: .constant(main), model: model).view),
             ("Switch page", SwitchPage(entry: main, standby: main.standby[0], model: model, runner: model.runner(of: main.id)).view)]
         for (s, v) in views { check(v == want, "\(name): \(s) agrees on the account, the numbers' owner and the line") }
         // the Dock panel from the one value (each case here is signed in and readable: the lamp is the record's)
         let panel = dockPanelOf(main, ProfileShow.load(main))         // (through the Dock app's own detailsInfo, as the Dock icon builds it)
         let splitHere = ProfileShow.load(main).display.split != nil
-        // (in a clash the app didn't decide, every surface names the profile's own account, never the folder's: step 3c)
-        let named = want.clash != nil && Store.status("main")?.resolved?.fromApp != true ? main.seat?.email : want.label
+        // (every surface names the record's account in use; another profile's account is this one's too: shared seats)
+        let named = want.label
         let mainShow = ProfileShow.load(main)
-        check(panel.accountLine?.text == named && (panel.activeNote == want.line || splitHere) && panel.activeLit == want.lit,
-              "\(name): the Dock panel agrees (as drawn: \(panel.accountLine?.text ?? "no account line"))")
+        check(panel.accountLine.text == named && (panel.activeNote == want.line || splitHere) && panel.activeLit == want.lit,
+              "\(name): the Dock panel agrees (as drawn: \(panel.accountLine.text))")
         // (the Dock menu's ticked row: the account in use, whole)
         let dockLines = DockTileMenu.lines(DockTileMenu.rows(main, mainShow, windowOpen: false), blur: false)
         check((named.map { n in dockLines.contains { $0.hasPrefix("✓ " + n) } } ?? !dockLines.contains { $0.hasPrefix("✓ ") })
-              && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree (\(dockLines))")
+              && mainShow.view.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree (\(dockLines))")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
         check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
               "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
@@ -1325,11 +1315,11 @@ do {
 
     // the IN USE box's title: always the active account while Claude Code is on another, even expired or another address
     func title(_ v: AccountView, _ state: String, mismatch: Bool = false) -> String {
-        AccountSettings.inUseTitle(v, state: state, loginEmail: ben.email, expected: ann.email, mismatch: mismatch, moveEmail: nil).text
+        AccountSettings.inUseTitle(v, state: state, loginEmail: ben.email, expected: ann.email, mismatch: mismatch).text
     }
     check(title(r5.v, "expired") == ann.email && title(r5.v, "ok", mismatch: true) == ann.email && title(r5.v, "ok") == ann.email,
           "05: the IN USE title is ann (the app's) whether Claude Code's sign-in is fine, expired or another address")
-    let t1 = AccountSettings.inUseTitle(r1.v, state: "expired", loginEmail: ann.email, expected: ann.email, mismatch: false, moveEmail: nil)
+    let t1 = AccountSettings.inUseTitle(r1.v, state: "expired", loginEmail: ann.email, expected: ann.email, mismatch: false)
     check(t1.text == ann.email && t1.tone == .caution, "one account, expired: its address in caution, as before")
     // the plan under the IN USE box: the active account's, never Claude Code's
     var m5 = r5.e; m5.standby = m5.standby.map { var s = $0; if s.email == ann.email { s.plan = "Max" }; return s }
@@ -1894,10 +1884,11 @@ do {
     var fresh = decoded["split"]!; fresh.resolved?.readStale = nil
     var unsure = fresh; unsure.ownerUnconfirmed = true
     var byHand = fresh; byHand.resolved?.switchWaits = nil
+    // (an older build's clash field is decoded only: never used, so that record is the split as without it, shared seats)
     var elsewhere = fresh; elsewhere.resolved?.clash = "Home"
     var nameless = fresh; nameless.resolved?.codeName = nil; nameless.resolved?.numbersFor = nil
     for (name, rec, waits) in [("unconfirmed", unsure, Bool?.none), ("fresh", fresh, true), ("by hand", byHand, false),
-                               ("elsewhere", elsewhere, nil), ("nameless", nameless, nil)] {
+                               ("an older clash record", elsewhere, true), ("nameless", nameless, nil)] {
         let words = SplitUsage.words(rec, Headline.split(rec.owner))
         check(Headline.split(rec.owner)?.switchWaits == waits && words?.switched == waits
               && (waits == nil || (words?.app == "pat@example.com" && words?.code == "mo@example.com")),
@@ -2078,24 +2069,14 @@ MainActor.assumeIsolated {
     let sharedShow = show(rec(login: u3.email, code: u3))
     check(Store.status("show")?.resolved?.clash == nil && sharedShow.display.clash == nil && sharedShow.display.lamp,
           "Claude Code's folder on another profile's account: a shared seat, no clash, the lamp on")
-    // an older build's clash record: the clash names that profile by its id (names needn't be unique), the lamp off
-    let clash = show(olderClash(rec(login: u3.email, code: u3), other))
-    check(Store.status("show")?.resolved?.clashID == "other" && clash.display.clash == ProfileDisplay.Clash(id: "other", name: "Other")
-          && !clash.display.lamp && !dockOf(e, clash).panel.activeLit,
-          "Claude Code's folder on another profile's account: the clash by id (other) and name, the lamp off")
-    // the review's record: the Claude app decided the account, Claude Code's folder on Other's account, the same address,
-    // state ok. Lit before on the menus only; Settings' in-use box is off (its `elsewhere` finds Other by name: `move == nil`
-    // fails), and now the 3a surfaces agree with it
+    // an older build's clash record (its clash fields decoded, never used): the surfaces show it as the record's account,
+    // lit, no key, nothing red
     let appClash = #"{"expectedEmail":"ultra-1@example.com","loginEmail":"ultra-1@example.com","resolved":{"account":"\#(u1.account)","at":1800000000,"clash":"Other","clashID":"other","differs":false,"email":"ultra-1@example.com","fromApp":true,"lit":true,"numbersFor":"ultra-1@example.com"},"state":"ok","updatedAt":\#(Int(now.timeIntervalSince1970) - 60),"weekly":40}"#
     let appClashShow = show(StatusCodec.decode(Data(appClash.utf8))!)
-    let settingsModel = SettingsModel(); settingsModel.accounts = [e, other]
     let appClashDock = dockOf(e, appClashShow)
-    check(AccountView.of(appClashShow.record).lit && !appClashShow.display.lamp && !appClashDock.panel.activeLit
-          && AccountSettings(entry: .constant(e), model: settingsModel).elsewhere?.owner.id == "other",
-          "an app-decided account with Claude Code on Other's: the lamp off on the menu bar row and the Dock panel, as Settings' (its move is Other)")
-    check(appClashShow.display.key == .logIn && appClashShow.loginAddress == u1.email && appClashDock.panel.needsLogin
-          && titles(appClashDock.menu).contains("Sign Terminal in to \(u1.email!)…") && titles(menuBarMenu(appClashShow)).contains("Sign Terminal in to \(u1.email!)…"),
-          "…and the sign-in (to the profile's own u1) on the Dock panel, the Dock menu and the menu bar menu, as on the card")
+    check(appClashShow.display.clash == nil && appClashShow.display.lamp && appClashDock.panel.activeLit && appClashShow.display.key == nil
+          && !titles(appClashDock.menu).contains { $0.hasPrefix("Sign Terminal in to ") } && appClashShow.loginAddress == u1.email,
+          "an older build's clash record: no clash on any surface, lit, no sign-in key, the folder's own address")
 
     // a value made a moment before a full limit's reset: drawn after it, no countdown (the face and the icon look again)
     let beforeReset = ProfileShow.of(e, raw: rec(week: 100, weekIn: -60), now: now.addingTimeInterval(-120))
@@ -2421,23 +2402,13 @@ do {
     check(mixed.notice?.heading == "Terminal is signed in to another account" && mixed.notice?.key == .signIn && mixed.row.tile.warn
           && !mixed.row.lit && mixed.row.subtitle == "sign-in is a different account", "the sign-in on another account than the folder's: red, Sign in…, the warning, the lamp off")
 
-    // another profile's account: by its id, and by its name in a record from before the id; the profile renamed since.
-    // The folder's .claude.json names Other's account (u3): the key signs Terminal in to Card's own (u1), never Other's
-    let ownLine = "Sign in as \(AddressSettings.words(u1.email!)) to read Card's usage."
-    // (an older build's clash record: the resolver makes none now, shared seats)
-    let clash = card(olderClash(rec(login: u3.email, code: u3), other), nil, "clash by id")
-    check(clash.row.display.clash == ProfileDisplay.Clash(id: "other", name: "Other") && clash.notice?.heading == "Terminal is signed in to Other's account"
-          && clash.notice?.key == .signIn && clash.row.display.key == .logIn && clash.notice?.line == ownLine
-          && clash.row.show.loginAddress == u1.email && clash.row.status?.expectedEmail == u3.email && !clash.row.lit,
-          "Claude Code on Other's account (by id): red, Sign in… as Card's own u1 (never Other's u3), the lamp off: \(clash.notice?.line ?? "-")")
-    // a clash has no numbers (the Reader drops a clash record's): the Dock panel's age line says there are none, never
-    // "Reading usage…" (they aren't on their way)
-    let clashNone = card(olderClash(rec(week: nil, five: nil, login: u3.email, code: u3), other), nil, "clash, no numbers")
-    let clashPanel = dockPanelOf(e, clashNone.row.show)         // (through the Dock app's own detailsInfo)
-    check(clashNone.row.show.display.usage == nil && clashPanel.noNumbers == "No usage: Terminal is on Other's account",
-          "a clash with no numbers: the Dock panel's age line says no usage here and whose account, never Reading usage…: \(clashPanel.noNumbers ?? "-")")
+    // shared seats: the folder on another profile's account (u3) is this profile's account too: no red, no key, its
+    // numbers its own
+    let shared = card(rec(login: u3.email, code: u3), nil, "another profile's account")
+    check(shared.row.display.clash == nil && shared.notice == nil && shared.row.display.key == nil && shared.row.lit && shared.row.weekly == 40,
+          "another profile's account: a shared seat, no notice, no key, lit, its numbers: \(shared.notice?.heading ?? "-")")
     // the record keeps the folder account's organisation beside its id; when the Claude app decided the account in use (the app
-    // on the profile's own u1, the folder on Other's u3) the record names the clash and says the app decided
+    // on the profile's own u1, the folder on Other's u3) the record says the app decided, and names no clash
     var win = e; win.claudeWindow = true
     func appRec(_ app: AppSignIn.Login, code: Seat) -> IconStatus {
         var s = rec(week: nil, five: nil, login: code.email, code: code)
@@ -2445,8 +2416,8 @@ do {
         return s
     }
     _ = Store.writeStatus(e.id, appRec(appU1, code: u3))
-    check(Store.status(e.id)?.resolved?.fromApp == true && Store.status(e.id)?.resolved?.clash == "Other",
-          "an app-decided clash: the record names Other's account and says the app decided")
+    check(Store.status(e.id)?.resolved?.fromApp == true && Store.status(e.id)?.resolved?.clash == nil,
+          "an app-decided account with the folder on Other's: the record says the app decided, and names no clash (shared seats)")
     _ = Store.writeStatus(e.id, rec())
     check(Store.status(e.id)?.resolved?.codeOrganization == u1.organization?.lowercased(),
           "the record keeps the folder account's organisation beside its id")
@@ -2483,90 +2454,26 @@ do {
 
     try? fm.createDirectory(atPath: expand(e.configDir), withIntermediateDirectories: true)
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
-    // Settings ▸ Accounts' Sign in… keys: the in-use box's on the profile's own account (u1), Claude Code's own row's on its
-    // own (the folder's u3)
+    // Settings ▸ Accounts' Sign in… keys on a shared seat: both on the folder's own account (u3, this profile's too)
     let keysModel = SettingsModel(); keysModel.accounts = [e, other]
     let keys = AccountSettings(entry: .constant(e), model: keysModel)
-    check(keys.inUseKeyAddress == u1.email && keys.codeKeyAddress == u3.email,
-          "Settings' Sign in… keys in a clash: the in-use box's on u1, Claude Code's own row's on its own account u3: \(keys.inUseKeyAddress ?? "-") / \(keys.codeKeyAddress ?? "-")")
-    // the plan beside the account in use: one rule (ProfileShow.plan), none in a clash, the record's outside one
-    let clashPlanShow = clashNone.row.show
-    check(clashPlanShow.record?.plan == "Max" && clashPlanShow.plan == nil && clashPanel.plan == nil
-          && SwitchPage.inUseDetail(plan: clashPlanShow.plan) == "" && SwitchPage.inUseDetail(plan: "max") == Account.planWords("max"),
-          "a clash: no plan beside the account (the record's Max is Other's account's) in the Dock panel and the Switch page's in-use box")
+    check(keys.inUseKeyAddress == u3.email && keys.codeKeyAddress == u3.email,
+          "Settings' Sign in… keys on a shared seat: on the folder's u3: \(keys.inUseKeyAddress ?? "-") / \(keys.codeKeyAddress ?? "-")")
+    // the plan beside the account in use: one rule (ProfileShow.plan), the record's, a shared seat's too
+    let sharedPlanShow = ProfileShow.load(e, now: now)
+    check(sharedPlanShow.plan == "Max" && dockPanelOf(e, sharedPlanShow).plan == "Max"
+          && SwitchPage.inUseDetail(plan: nil) == "" && SwitchPage.inUseDetail(plan: "max") == Account.planWords("max"),
+          "a shared seat: the record's plan beside the account, in the Dock panel and the Switch page's in-use box")
     check(fresh.row.show.plan == "Max" && dockPanelOf(e, fresh.row.show).plan == "Max",
-          "outside a clash: the record's plan, in the Dock panel too")
-    // a clash whose sign-in is also expired: the panel's age line agrees with the card's notice (the clash), in its long and short form
-    let clashExpired = card(rec("expired", week: nil, five: nil, login: u3.email, code: u3), nil, "clash, expired")
-    let clashExpiredPanel = dockPanelOf(e, clashExpired.row.show)         // (through the Dock app's own detailsInfo)
-    check(clashExpired.notice?.heading == "Terminal is signed in to Other's account"
-          && clashExpiredPanel.noNumbers == "No usage: Terminal is on Other's account" && clashExpiredPanel.noNumbersShort == "No usage here",
-          "a clash with the sign-in expired: the panel's age line says the clash like the card, not Sign-in expired: \(clashExpiredPanel.noNumbers ?? "-")")
-    var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
-    let oldClash = card(byName, nil, "clash by old name")
-    check(oldClash.row.display.clash == ProfileDisplay.Clash(id: nil, name: "Other") && oldClash.notice?.heading == "Terminal is signed in to Other's account"
-          && oldClash.notice?.key == .signIn && oldClash.notice?.line == ownLine && !oldClash.row.lit,
-          "a record from before the clash's id: by its name, the same notice and key to u1, the lamp off")
-    var renamed = other; renamed.name = "Work"
-    try! Store.save([e, renamed])
-    let renamedClash = card(rec(login: u3.email, code: u3), nil, "renamed clash profile")
-    check(renamedClash.notice?.tone == .red && renamedClash.notice?.key == .signIn && renamedClash.notice?.line == ownLine
-          && !renamedClash.row.lit && renamedClash.row.display.clash?.id == "other",
-          "the clash's profile renamed since the record: still red, Sign in… to u1, unlit, the clash by its id")
-    try! Store.save([e, other])
-    // the app decided the account in use (u2, not the seat's u1), Claude Code's folder on Other's: the app's address, never
-    // the folder's nor the seat's
+          "the record's plan, in the Dock panel too")
+    // an older build's record that still names a clash, the app's u2 deciding: no clash anywhere, the app's address for
+    // the key, the menu bar's and the Dock menu's too
     let appClash = #"{"expectedEmail":"ultra-3@example.com","loginEmail":"ultra-3@example.com","resolved":{"account":"\#(u2.account)","at":1800000000,"clash":"Other","clashID":"other","differs":true,"email":"ultra-2@example.com","fromApp":true,"lit":true,"numbersFor":"ultra-3@example.com"},"state":"ok","updatedAt":\#(Int(now.timeIntervalSince1970) - 60),"weekly":40}"#
-    let appDecided = card(StatusCodec.decode(Data(appClash.utf8))!, nil, "clash, the app's account")
-    check(appDecided.notice?.key == .signIn && appDecided.notice?.line == "Sign in as \(AddressSettings.words(u2.email!)) to read Card's usage."
-          && appDecided.row.show.loginAddress == u2.email,
-          "a clash with the app's account in use: Sign in… as the app's u2, never the folder's u3: \(appDecided.notice?.line ?? "-")")
-    // the menu bar and the Dock icon offer the same key there (the value's), to the same address
-    let clashShow = ProfileShow.load(e, now: now)
-    check(clashShow.keyWords(short: false) == "Sign in…" && clashShow.loginAddress == u2.email,
-          "the menu bar's and the Dock menu's key in a clash: Sign in…, to the app's u2")
-    // Settings ▸ Accounts' Sign in in a clash on a profile with no seat (the app not deciding): no address of its own is
-    // known, so the plain sign-in with none filled in, never the folder's (Other's u3). Wired for real up to the script
-    // (its claude found, the guard asked, nothing runs)
+    let appDecided = card(StatusCodec.decode(Data(appClash.utf8))!, nil, "an older clash record, the app's account")
+    check(appDecided.row.display.clash == nil && appDecided.notice?.heading != "Terminal is signed in to Other's account",
+          "an older build's clash record: no clash notice: \(appDecided.notice?.heading ?? "-")")
     var noSeat = e; noSeat.seat = nil
-    _ = Store.writeStatus(e.id, rec(login: u3.email, code: u3))
-    try? fm.createDirectory(atPath: expand(e.configDir), withIntermediateDirectories: true)
-    let settingsAddress = ProfileShow.load(noSeat, now: now).loginAddress
-    var launched: [String] = [], scripts: [String] = []
-    let keepLocator = ClaudeLocator.current, keepTerminal = ClaudeCLI.openTerminal
-    ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { ["/usr/bin/false"] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
-    FolderGuard.launchSeam = { what, dir in launched.append("\(what) \(dir)"); return true }
-    // (the plain sign-in is ClaudeSignIn's window: Terminal is handed its settings file, and the script it runs is a file of
-    // cl_audit's own work folder beside it, both read when Terminal is asked; the window opens on the sign-in's own queue)
-    let scriptsLock = NSLock()
-    ClaudeCLI.openTerminal = { u in
-        scriptsLock.lock(); defer { scriptsLock.unlock() }
-        scripts.append((try? String(contentsOf: u, encoding: .utf8)) ?? "")
-        let work = SignInWindow.work.path
-        for f in ((try? fm.contentsOfDirectory(atPath: work)) ?? []) where f.hasSuffix(".command") {
-            scripts.append((try? String(contentsOfFile: work + "/" + f, encoding: .utf8)) ?? "")
-        }
-        return true
-    }
-    // Terminal's kept profiles: this suite's own in-memory stand-in, set here and not left to SignInWindow's guess from the home folder
-    // (never this Mac's real preferences). The window's login guard looks through an empty process table of this suite's own
-    // (SignInWindow.processTable, a seam of the -D CL_AUDIT_TESTING build): the real one holds other sessions' stand-in
-    // `claude auth login`s whose folder can't be told, which refuse every sign-in on this Mac while they run.
-    let keepProfiles = SignInWindow.terminalProfiles
-    SignInWindow.terminalProfiles = TerminalProfiles(read: { nil }, write: { _ in })
-    SignInWindow.processTable = { [] }
-    defer { SignInWindow.terminalProfiles = keepProfiles; SignInWindow.processTable = nil }
     let clashModel = SettingsModel(); clashModel.accounts = [noSeat, other]
-    AccountSettings(entry: .constant(noSeat), model: clashModel).signInAgain(email: settingsAddress)
-    let opened = Date().addingTimeInterval(10)
-    while Date() < opened, { scriptsLock.lock(); defer { scriptsLock.unlock() }; return scripts.count < 2 }() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
-    scriptsLock.lock(); let said = scripts.joined(separator: "\n"); let sawScripts = scripts.count; scriptsLock.unlock()
-    check(settingsAddress == nil && launched == ["login \(Account(noSeat).configDir)"] && sawScripts == 2 && said.contains("auth login")
-          && !said.contains(u3.email!) && !said.contains("--email") && clashModel.runner(of: e.id).goal == nil,
-          "Settings' Sign in in a clash, no seat: the plain sign-in (the sign-in window), no address, never Other's u3: \(launched) \(sawScripts)")
-    clashModel.cancelSignIn(e.id)        // the stand-in Terminal never runs it: the window's sign-in ends here
-    RunLoop.main.run(until: Date().addingTimeInterval(0.5))
-    ClaudeLocator.current = keepLocator; ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
     // the address pop-up's Sign in… on a profile with no seat whose sign-in is on another account (u2; the folder names
     // u1): the folder's u1, never the account the sign-in is on (the pop-up's ticked line, u2)
     var onOther = IconStatus(state: "ok"); onOther.loginEmail = u2.email; onOther.expectedEmail = u1.email; onOther.updatedAt = now
@@ -2644,9 +2551,10 @@ do {
               "a switch waiting, Terminal's sign-in \(what): still the switch's notice, with Sign in…")
     }
     // which notice shows when several apply at once (UsageNotice.of's order, pinned as it is): the split (while Terminal is signed in,
-    // or a switch waits for the app), then the sign-in on another account than the folder's, then another profile's account (the
-    // clash), then expired, then signed out, then not readable (only without numbers). Every pair that can co-occur in a record:
-    let anotherAccount = "Terminal is signed in to another account", otherProfile = "Terminal is signed in to Other's account"
+    // or a switch waits for the app), then the sign-in on another account than the folder's, then expired, then signed out,
+    // then not readable (only without numbers). Another profile's account is no notice of its own (shared seats): the state
+    // says it. Every pair that can co-occur in a record:
+    let anotherAccount = "Terminal is signed in to another account"
     let expiredHead = "Terminal's sign-in has expired", outHead = "Terminal is signed out"
     let ownMo = "Terminal is signed in to \(AddressSettings.words(mo.email!))"
     try! Store.save([e, other, s])
@@ -2656,11 +2564,10 @@ do {
         ("signed out + the sign-in on another account", rec("noLogin", week: nil, five: nil, login: u2.email, code: u1), nil, outHead),
         ("not readable (denied, no numbers) + another account", rec("denied", week: nil, five: nil, login: u2.email, code: u1), nil, anotherAccount),
         ("not readable (unreadable, no numbers) + another account", rec("unreadable", week: nil, five: nil, login: u2.email, code: u1), nil, anotherAccount),
-        ("expired + another profile's account", rec("expired", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
-        // (H1: signed out, the clash's heading never says "signed in to")
-        ("signed out + another profile's account (the folder's record names Other's u3)", rec("noLogin", week: nil, five: nil, login: nil, code: u3), nil, "Terminal is signed out, last on Other's account"),
-        ("not readable (denied, no numbers) + another profile's account", rec("denied", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
-        ("not readable (unreadable, no numbers) + another profile's account", rec("unreadable", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
+        ("expired + another profile's account", rec("expired", week: nil, five: nil, login: u3.email, code: u3), nil, expiredHead),
+        ("signed out + another profile's account (the folder's record names Other's u3)", rec("noLogin", week: nil, five: nil, login: nil, code: u3), nil, outHead),
+        ("not readable (denied, no numbers) + another profile's account", rec("denied", week: nil, five: nil, login: u3.email, code: u3), nil, "Can't read Terminal's sign-in yet"),
+        ("not readable (unreadable, no numbers) + another profile's account", rec("unreadable", week: nil, five: nil, login: u3.email, code: u3), nil, "Can't read Terminal's sign-in"),
         ("another account + another profile's account (the sign-in on u2, the folder on Other's u3)", rec(login: u2.email, code: u3), nil, anotherAccount),
         // (the profile `csp`: the Claude app on pat, Claude Code on mo)
         ("the split + expired", { var r = splitRec(app: appPat); r.state = "expired"; return r }(), s, expiredHead),
@@ -2731,6 +2638,15 @@ MainActor.assumeIsolated {
     check(UsageNotice.of(expired.settings.inUseRow)?.key == .signIn && !expired.page.inUseRow.lit && expired.page.inUseRow.weekly == nil
           && expired.preview.needsLogin && expired.preview.noNumbers == "Sign-in expired" && same(expired.preview, expired.panel),
           "expired: Settings' Sign in…, the Switch page unlit with no numbers, the preview with Sign in… and its words as the panel")
+    // shared seats: the folder on another profile's account (Other's u3) is this profile's account too: lit, its numbers,
+    // no Open, the in-use box named u3 on every surface (the clash checks that stood here are retired below)
+    let sharedSeat = surfaces(rec(login: u3.email, code: u3))
+    check(sharedSeat.settings.inUseRow.lit && sharedSeat.page.inUseRow.lit && sharedSeat.page.inUseRow.weekly == 40
+          && UsageNotice.of(sharedSeat.settings.inUseRow) == nil && !sharedSeat.settings.inUseSignInKey
+          && sharedSeat.panel.accountLine.text == u3.email && sharedSeat.settings.inUsePlan == "Max",
+          "a shared seat: lit, its numbers and plan, no notice and no key, the panel naming u3")
+#if RETIRED_ONEOWNER
+    // (one profile per account, retired with shared seats 2026-11-22: the clash's surfaces, the move back, Open Other)
     // the short age line is the clash's alone: outside a clash it is the long one (expired, signed out, none)
     let signedOut = surfaces(rec("noLogin", week: nil, five: nil))
     check(expired.panel.noNumbersShort == expired.panel.noNumbers && signedOut.panel.noNumbersShort == signedOut.panel.noNumbers
@@ -2905,6 +2821,7 @@ MainActor.assumeIsolated {
     let app = surfaces(StatusCodec.decode(Data(appClash.utf8))!)
     check(app.page.inUseRow.show.inUseLabel == u2.email && app.settings.popUpSignInAddress == u2.email && app.settings.elsewhere?.owner.id == "other",
           "a clash with the app's account in use: the line and Sign in… name the app's u2")
+#endif
 
     // unconfirmed: as read, never full, said so in Settings and on the page
     var unsure = rec(week: 100); unsure.ownerUnconfirmed = true
@@ -2944,19 +2861,16 @@ MainActor.assumeIsolated {
     let anon = surfaces(splitRec(AppSignIn.Login(account: uuid(83), org: uuid(183), state: .known, source: "log", at: now)), s)
     check(UsageNotice.of(anon.settings.inUseRow)?.key == UsageNotice.Key.none && anon.settings.popUpSignInAddress == nil && same(anon.preview, anon.panel),
           "the split with the app's account by id only: no Sign in… in Settings' box, the pop-up's plain sign-in (never mo's)")
-    // Settings' red box's keys as the view draws them (inUseKeys): the value's key, Open only on a clash; none, no row
+    // Settings' red box's key as the view draws it (inUseSignInKey): the value's key; none, no row
     // (the views read the saved record when asked: each record is written again before its view is asked)
-    let anonKeys = anon.settings.inUseKeys
-    let byHandKeys = surfaces(splitRec(AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)), s).settings.inUseKeys
-    check(!anonKeys.signIn && anonKeys.open == nil && byHandKeys.signIn && byHandKeys.open == nil,
-          "Settings' red box: the split by id only has no key and no Open (no empty row); by hand, Sign in…")
+    let anonKey = anon.settings.inUseSignInKey
+    let byHandKey = surfaces(splitRec(AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)), s).settings.inUseSignInKey
+    check(!anonKey && byHandKey, "Settings' red box: the split by id only has no key (no empty row); by hand, Sign in…")
     model.accounts = [e, twin, other]; try! Store.save([e, twin, other])
-    check(!surfaces(rec()).settings.inUseKeys.signIn && surfaces(rec("expired")).settings.inUseKeys.signIn
-          && !surfaces(rec("denied", week: nil, five: nil)).settings.inUseKeys.signIn,
-          "Settings' box keys by state: none when fresh, Sign in… when expired, none (amber, Refresh now) when it can't be read")
+    check(!surfaces(rec()).settings.inUseSignInKey && surfaces(rec("expired")).settings.inUseSignInKey
+          && !surfaces(rec("denied", week: nil, five: nil)).settings.inUseSignInKey,
+          "Settings' box key by state: none when fresh, Sign in… when expired, none (amber, Refresh now) when it can't be read")
     model.accounts = [e, twin]
-    let gone = surfaces(rec(login: u3.email, code: u3))
-    check(gone.settings.inUseKeys.signIn && gone.settings.inUseKeys.open == nil, "a clash whose profile was removed: Sign in…, no Open")
     // a standby box says when it was last in use, never numbers (even with a last week remembered)
     var remembered = e.standby[0]; remembered.lastWeek = 77; remembered.lastWeekResets = now.addingTimeInterval(86400)
     let words = surfaces(rec()).settings.standbyWords(remembered, name: "Acc")
@@ -3039,11 +2953,11 @@ do {
     func clash(_ code: Seat, _ owner: AccountEntry = them) -> String? {
         AccountResolver.resolve(me, among: [me, owner], app: .unknown, code: code, loginEmail: code.email, names: [:], now: t0).clash
     }
-    // the clash owner: another profile's account in use
-    check(clash(upper(h1)) == "Hthem", "clash: another profile's account in use, ids in another case")
-    check(clash(Seat(account: h1.account, organization: "", email: h1.email), profile("hnil", "~/.claude-hnil", Seat(account: h1.account, organization: nil, email: h1.email))) == "Hnil",
-          "clash: no organisation (nil) and an empty one: the same account")
-    check(clash(otherOrg) == nil && clash(otherID) == nil, "clash: the same address in another organisation, or another id: another account, never the address")
+    // shared seats: another profile's account in use is never a clash (ids in any case, with or without an organisation)
+    check(clash(upper(h1)) == nil && clash(h1) == nil, "no clash: another profile's account in use, ids in another case, is shared")
+    check(clash(Seat(account: h1.account, organization: "", email: h1.email), profile("hnil", "~/.claude-hnil", Seat(account: h1.account, organization: nil, email: h1.email))) == nil,
+          "no clash: no organisation (nil) and an empty one")
+    check(clash(otherOrg) == nil && clash(otherID) == nil, "no clash: the same address in another organisation, or another id")
     // the Claude app's account among the profile's (`mine`), differs and the switch waiting for the app: by the id (the app
     // names no organisation for certain, so a seat's is left out)
     var sw = profile("hsw", "~/.claude-hsw", upper(h2)); sw.standby = [StandbyAccount(email: h1.email!, seat: upper(h1), id: "k1")]
@@ -3187,7 +3101,7 @@ do {
           && back?.numbersAccount == h2.account && back?.readingAccount == h2.account && noOwner.readingAccount == nil,
           "status record: an older one decodes without the reading's id; a new one keeps it; no id without the reading's owner")
     // the lists' helpers: the record names ids and addresses, no organisation
-    let v = AccountView(label: h1.email, numbersOwner: h2.email, lit: true, clash: nil, account: h1.account, differs: true, codeAccount: h2.account)
+    let v = AccountView(label: h1.email, numbersOwner: h2.email, lit: true, account: h1.account, differs: true, codeAccount: h2.account)
     check(v.isActive(StandbyAccount(email: "", seat: upper(h1), id: "a")) && v.isActive(StandbyAccount(email: "HEX-1@example.com", id: "b"))
           && v.isActive(StandbyAccount(email: h1.email!, seat: otherOrg, id: "c")) && !v.isActive(StandbyAccount(email: h1.email!, seat: otherID, id: "d")),
           "isActive: ids in any case; an address only by the address; the record names no organisation; another id never by the address")
@@ -3554,10 +3468,12 @@ MainActor.assumeIsolated {
     check(said.allSatisfy(clean) && split.line.contains("hidden address") && split.key == "Sign Claude Code in Terminal in to hidden address…",
           "hidden: the usage lines, keys and notes written from addresses say \"hidden address\" and hold no part of any: \(said)")
     func server(_ s: Seat) -> SignedInAccount { SignedInAccount(accountID: s.account, email: s.email, organizationID: s.organization, origin: .server) }
-    let wrong = SignInSaid(.wrongAccount(signedIn: server(seat(8, a1)), wanted: server(seat(9, a2))), configDir: "~/.claude-x", owner: "the account of “Other”")
-    check(wrong.map { clean($0.text(emailsShown: false)) && $0.text(emailsShown: false).hasPrefix("hidden address is the account of") } == true
-          && wrong?.text(emailsShown: true).hasPrefix(a1) == true,
-          "hidden: the sign-in window's refusal names \"hidden address\"; shown, the address")
+    // the shared note after a sign-in line: no address in any form, whatever the setting
+    let note = FolderRules.sharedNote([FolderRules.SeatOwner(profile: profile("other", "~/.claude-other", nil), standby: false)])
+    let wrong = SignInSaid(.wrongAccount(signedIn: server(seat(8, a1)), wanted: server(seat(9, a2))), configDir: "~/.claude-x", shared: note)
+    check(wrong.map { clean($0.text(emailsShown: false)) && $0.text(emailsShown: false).hasSuffix("\n" + (note ?? "-")) } == true
+          && note.map { !$0.contains("@") && !$0.contains("hidden address") } == true,
+          "hidden: the sign-in line holds no part of an address; the shared note after it names none in any form: \(note ?? "-")")
     AddressPrivacy.shared.apply(blur: false)
     check(split.key == "Sign Claude Code in Terminal in to \(a1)…", "shown: the same key names the address")
     AddressPrivacy.shared.apply(blur: true)
@@ -3686,7 +3602,7 @@ MainActor.assumeIsolated {
         check(words.allSatisfy(clean) && words.contains { $0.contains("hidden address") }, "M1: the Dock menu, the menu bar and the one line say \"hidden address\" and hold nothing of any address: \(words)")
         // N3: the menu bar's top row is a hosted SwiftUI view (MenuBarRow), which titles() can't read: its texts are read from what it
         // draws them from (the in-use line, the one line of state, the numbers' hint)
-        let barRow = [pmShow.named.inUseLine ?? "", MenuBarRow.lineWords(MenuBarItems.Profile(show: pmShow)) ?? "", pmShow.numbersHint ?? ""]
+        let barRow = [pmShow.view.inUseLine ?? "", MenuBarRow.lineWords(MenuBarItems.Profile(show: pmShow)) ?? "", pmShow.numbersHint ?? ""]
         check(menuBarMenu(pmShow).items.first?.view is NSHostingView<MenuBarRow> && barRow[0] == "hidden address" && barRow.allSatisfy(clean),
               "N3: the menu bar's top row (a hosted view): its in-use line says \"hidden address\", it and its other lines hold nothing of any address: \(barRow)")
         let panel = dockPanelOf(pm, pmShow)
@@ -3694,9 +3610,9 @@ MainActor.assumeIsolated {
         // addresses are hidden (AddressSettings.hides asks AddressText.needsHiding about this very text), so the check is that
         // the text is one it hides)
         let panelWords = [panel.activeNote ?? "", panel.splitKey ?? ""]
-        let panelLine = panel.accountLine?.text ?? ""
+        let panelLine = panel.accountLine.text
         check(panelWords.allSatisfy(clean) && (clean(panelLine) || AddressText.needsHiding(panelLine)),
-              "M1: the Dock panel's note and key hold nothing of any address, and its account line is one its view draws as the stand-in: \(panelWords) \(panel.accountLine?.text ?? "nil")")
+              "M1: the Dock panel's note and key hold nothing of any address, and its account line is one its view draws as the stand-in: \(panelWords) \(panel.accountLine.text)")
 
         // the dashboard card: its notice, line, terminal and sign-in words, and the Switch account menu
         let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
@@ -3711,7 +3627,7 @@ MainActor.assumeIsolated {
         // divider, "Sign in to another account…", in that order, each doing what it did
         var chosen: [String] = [], signIns = 0
         func perform(_ i: NSMenuItem?) { if let i, let a = i.action { NSApp.sendAction(a, to: i.target, from: i) } }
-        let dm = SwitchAccountMenu(label: a1, ownKey: nil, plan: "max", standby: [.init(key: "pm~k2", address: a2), .init(key: "pm~k3", address: a3)],
+        let dm = SwitchAccountMenu(label: a1, plan: "max", standby: [.init(key: "pm~k2", address: a2), .init(key: "pm~k3", address: a3)],
                                    pick: { chosen.append($0) }, newAccount: { signIns += 1 })
         let dmenu = dm.menu()
         let dRows = dmenu.items.compactMap { i in (i.view as? AddressMenuRow).map { (i, $0) } }
@@ -3726,13 +3642,6 @@ MainActor.assumeIsolated {
         check(dRows[1].1.drawnAddress == a3 && dRows[0].1.drawnAddress == AddressText.standIn, "D2: only a highlighted row shows its address")
         dRows[0].1.fire(); dRows[1].1.fire(); perform(dmenu.items[5])
         check(chosen == ["pm~k2", "pm~k3"] && signIns == 1, "D2: a row picks its Switch page key, Sign in to another account… signs in: \(chosen) \(signIns)")
-        // the clash: the ticked row is the way back (it acts), and it holds no address either
-        // (the menu object stays alive in `backMenu`: an item's target is weak)
-        let backMenu = SwitchAccountMenu(label: a1, ownKey: "pm~k1", plan: nil, standby: [], pick: { chosen.append($0) }, newAccount: {})
-        let back = backMenu.menu()
-        perform(back.items[0])
-        check(back.items.count == 3 && back.items[0].state == .on && back.items[0].action != nil && clean(back.items[0].title) && back.items[0].title.hasPrefix("hidden address")
-              && chosen.last == "pm~k1", "D2: a clash's ticked row says \"hidden address · …\" and moves Claude Code back: \(back.items[0].title)")
         AddressPrivacy.shared.apply(blur: false)
         let shownMenu = dm.menu()
         check(shownMenu.items[0].title == a1 + "  " + Account.planWords("max") && (shownMenu.items[2].view as? AddressMenuRow)?.title == a2 && (shownMenu.items[3].view as? AddressMenuRow)?.drawnAddress == a3,
@@ -3758,8 +3667,8 @@ MainActor.assumeIsolated {
         if case .failure(let why) = plan { planWhy = why.description }
         check(!planWhy.isEmpty && clean(planWhy) && !planWhy.contains("@"), "M3: the switch's \"not signed in here yet\" error names no account: \(planWhy)")
         let errorWords = [SwitchRunner.windowStaysClosed(AccountNames.short(a2)),
-                          SwitchPage.phaseTitle(.other(a2), name: "Pm", to: AccountNames.short(a3), moveBack: false),
-                          SwitchPage.boxWords(pe.standby[0], back: false, name: "Pm", moveCount: nil),
+                          SwitchPage.phaseTitle(.other(a2), name: "Pm", to: AccountNames.short(a3)),
+                          SwitchPage.boxWords(pe.standby[0], name: "Pm"),
                           AccountBook.switchWords(folder: "~/.claude-pe", email: AddressSettings.words(a2), isDefault: false),
                           SwitchPage.inUseName(pmShow, expected: a1)]
         check(errorWords.dropLast().allSatisfy(clean) && errorWords.dropLast().contains { $0.contains("hidden address") },

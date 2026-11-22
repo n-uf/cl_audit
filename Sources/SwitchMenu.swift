@@ -19,8 +19,6 @@ enum SwitchMenu {
         var canSwitch = true
         /// The one a full limit offers first (AccountBook.best, the one rule the card and the alert use too).
         var offered = false
-        /// The profile's own account in a clash (ProfileShow.ownStandbyID): the menu's ticked row, not a standby one.
-        var own = false
     }
 
     /// "ultra-1": under the profile's name in the menu bar icon's menu (no "in use": showing it says so).
@@ -28,21 +26,16 @@ enum SwitchMenu {
 
     /// Every standby account, in the order a full limit offers them (the card's and the Switch page's, SwitchOffer), each with
     /// when it was last in use.
-    /// `own`: the standby id of the profile's own account in a clash, flagged so the submenu ticks it once (still switchable)
-    /// and leaves it out of the standby rows.
-    static func lines(_ e: AccountEntry, now: Date = Date(), own: String? = nil) -> [Line] {
+    static func lines(_ e: AccountEntry, now: Date = Date()) -> [Line] {
         let offers = e.switchOffers(now: now)
         let best = AccountBook.best(offers.map(\.standby), now: now)
         return offers.map { o in
             let full = o.knownFull(now: now)          // orders and picks the offer only; never shown
             let words = o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? ""
             return Line(key: o.key, short: o.short, address: o.standby.label, words: words, room: !full, canSwitch: o.standby.seat != nil || !o.standby.email.isEmpty,
-                        offered: o.standby.id == best?.id, own: o.standby.id == own)
+                        offered: o.standby.id == best?.id)
         }
     }
-
-    /// The own account's ticked row: "ann · move Claude Code back here".
-    static func backTitle(_ short: String) -> String { "\(short) · \(SwitchOffer.moveBackWords)" }
 
     /// The one to offer while a limit is full: AccountBook.best's (an account remembered by its address only is never it).
     static func best(_ lines: [Line]) -> Line? { lines.first { $0.offered } }

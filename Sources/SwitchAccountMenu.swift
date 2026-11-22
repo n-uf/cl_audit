@@ -5,7 +5,7 @@
 // tell the accounts apart on screen.
 //
 // The items are what they were, in the same order, with the same actions:
-//   - the account in use, ticked, with its plan (or, in a clash, "<account> · move Claude Code back here", which does it)
+//   - the account in use, ticked, with its plan
 //   - Divider, every standby account (by address only), a pick opens the Switch page with that account picked
 //   - Divider, "Sign in to another account…"
 // The control is the same key (FaceKeyLabel); it pops the menu under itself when pressed (MenuPopButton).
@@ -19,16 +19,14 @@ final class SwitchAccountMenu: NSObject {
     struct Row: Equatable { var key: String; var address: String }
 
     let label: String?
-    let ownKey: String?
     let plan: String?
     let standby: [Row]
     let pick: (String) -> Void
     let newAccount: () -> Void
 
-    /// `label`: the account in use (nil: none known, no ticked row); `ownKey`: the Switch page's key for the profile's own
-    /// account in a clash (the ticked row then moves Claude Code back); `plan`: its plan, shown beside it (none in a clash).
-    init(label: String?, ownKey: String?, plan: String?, standby: [Row], pick: @escaping (String) -> Void, newAccount: @escaping () -> Void) {
-        self.label = label; self.ownKey = ownKey; self.plan = plan; self.standby = standby; self.pick = pick; self.newAccount = newAccount
+    /// `label`: the account in use (nil: none known, no ticked row); `plan`: its plan, shown beside it.
+    init(label: String?, plan: String?, standby: [Row], pick: @escaping (String) -> Void, newAccount: @escaping () -> Void) {
+        self.label = label; self.plan = plan; self.standby = standby; self.pick = pick; self.newAccount = newAccount
     }
 
     @objc private func picked(_ item: NSMenuItem) {
@@ -42,10 +40,8 @@ final class SwitchAccountMenu: NSObject {
         if let label {
             // (one row, the account in use: its words, never a row drawn by hand; "hidden address" while hidden)
             let words = AddressSettings.words(label)
-            let i = NSMenuItem(title: ownKey != nil ? SwitchMenu.backTitle(words) : AccountCard.tickedTitle(label: words, plan: plan),
-                               action: ownKey != nil ? #selector(picked(_:)) : nil, keyEquivalent: "")
+            let i = NSMenuItem(title: AccountCard.tickedTitle(label: words, plan: plan), action: nil, keyEquivalent: "")
             i.state = .on; i.isEnabled = true
-            if let ownKey { i.target = self; i.representedObject = ownKey }
             m.addItem(i)
         }
         if !standby.isEmpty {

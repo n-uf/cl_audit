@@ -424,7 +424,7 @@ struct MenuBarRow: View {
                 }
             }
             // the active account, its lamp (ProfileDisplay's) and the one line of state
-            if let inUse = profile.show.named.inUseLine {          // (a clash: the profile's own account, never the folder's)
+            if let inUse = profile.show.view.inUseLine {
                 HStack(spacing: 6) {
                     Circle().fill(Color(nsColor: lit ? .systemGreen : .tertiaryLabelColor)).frame(width: 7, height: 7)
                         .shadow(color: Color(nsColor: .systemGreen).opacity(lit ? 0.7 : 0), radius: 2.5)

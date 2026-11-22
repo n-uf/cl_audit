@@ -1616,7 +1616,7 @@ do {
     let sh = AccountNames.short
 
     // release A: the menus read the profile's record through AccountView, not the entry's seat
-    let cmView = AccountView(label: u1.email, numbersOwner: u1.email, lit: true, clash: nil, account: u1.account)
+    let cmView = AccountView(label: u1.email, numbersOwner: u1.email, lit: true, account: u1.account)
     let noView = AccountView.of(nil)
 
     // the card: the trays in the order a full limit offers them; the best is the first that can be switched to and has room
@@ -2960,11 +2960,11 @@ do {
               "stage G: Terminal not opening and a window still open say what they always said")
         let wrong = said(.wrongAccount(signedIn: b, wanted: a))!
         // shared seats: another profile's account is taken, never refused; the note goes after the line, amber, no address in it
-        let note = "This account is also in use in “Other”. Both profiles show the same numbers."
+        let note = "This account is also in use in “Other”.\nBoth profiles show the same numbers."
         let shared = said(.wrongAccount(signedIn: b, wanted: a), shared: note)!
         let sharedIn = said(.signedIn(b), shared: note)!
-        check(!wrong.danger && !shared.danger && shared.text(emailsShown: true).hasSuffix(" " + note) && shared.text(emailsShown: true).hasPrefix(wrong.text(emailsShown: true))
-              && sharedIn.kind == .signedIn && !sharedIn.danger && sharedIn.text == "Signed in. " + note,
+        check(!wrong.danger && !shared.danger && shared.text(emailsShown: true).hasSuffix("\n" + note) && shared.text(emailsShown: true).hasPrefix(wrong.text(emailsShown: true))
+              && sharedIn.kind == .signedIn && !sharedIn.danger && sharedIn.text == "Signed in.\n" + note,
               "stage G: another profile's account signed in: taken, amber, the shared note after the line: \(shared.text) | \(sharedIn.text)")
         // what happened after a wrong or unconfirmed account that isn't another profile's: the profile follows, the account before is on standby
         func follow(_ e: SignInWindow.End, previous: String?, follows: Bool = true) -> SignInSaid { SignInSaid(e, configDir: dir, previous: previous, follows: follows)! }

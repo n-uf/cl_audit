@@ -398,8 +398,7 @@ final class SwitchRunner: ObservableObject {
     var canUndo: Bool { receipt.map { $0.unfinished } ?? false }
 
     /// Sign in again on the account in use (its sign-in stopped working, or the folder is signed out): the same watch.
-    /// `email`: the address to sign in to (the caller's, ProfileShow.loginAddress: in a clash the profile's own account,
-    /// never the folder's); nil: the profile's seat, else the folder's.
+    /// `email`: the address to sign in to (the caller's, ProfileShow.loginAddress); nil: the profile's seat, else the folder's.
     func signInAgain(email given: String? = nil) {
         guard !isRunning, let e = entry, let email = given ?? e.seat?.email ?? Account.expectedEmail(configDir: e.configDir) else { return }
         targetSnapshot = nil; receipt = nil; moveNote = nil; leftNote = nil; windowNote = nil; planned = nil; failedStep = nil

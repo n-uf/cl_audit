@@ -109,17 +109,11 @@ enum DockTileMenu {
                          now: Date = Date()) -> [Row] {
         let d = show.display
         let listed = e.listed(by: show.view)                    // never the account in use on standby too
-        let lines = SwitchMenu.lines(listed, now: now, own: show.ownStandbyID)
+        let lines = SwitchMenu.lines(listed, now: now)
         var out: [Row] = []
-        // the account in use (none while signed out); in a clash the profile's own account, whose click moves Claude Code
-        // back to it ("ann@example.com · move back here", moveBackSuffix)
-        if d.sign != .signedOut, let inUse = show.inUseLabel {
-            if let own = lines.first(where: { $0.own }) {
-                out.append(.address(AddressRow(address: inUse, suffix: moveBackSuffix, ticked: true,
-                                               act: actions && own.canSwitch ? .switchTo : nil, target: own.key)))
-            } else {
-                out.append(.address(AddressRow(address: inUse, ticked: true)))
-            }
+        // the account in use (none while signed out)
+        if d.sign != .signedOut, let inUse = show.view.label {
+            out.append(.address(AddressRow(address: inUse, ticked: true)))
         }
         out += statusLines(show, header: header, agentDown: agentDown, now: now)
         guard actions else { return out }
@@ -128,7 +122,7 @@ enum DockTileMenu {
         if d.split != nil, show.splitWords?.switched != true,
            let code = listed.standby.first(where: { show.view.isCodeRow(id: $0.seat?.account, email: $0.seat?.email ?? $0.email) }) {
             let key = SwitchOffer(profile: e.id, standby: code).key
-            if let l = lines.first(where: { $0.key == key && !$0.own }) {
+            if let l = lines.first(where: { $0.key == key }) {
                 terminal = key
                 out.append(.address(AddressRow(address: l.address, suffix: " · Terminal", act: .switchTo, target: key, enabled: l.canSwitch)))
             }
@@ -141,7 +135,7 @@ enum DockTileMenu {
                 out.append(.action("Sign in…", .signIn, e.id))
             }
         }
-        for l in lines where !l.own && l.key != terminal {
+        for l in lines where l.key != terminal {
             out.append(.address(AddressRow(address: l.address, act: .switchTo, target: l.key, enabled: l.canSwitch)))
         }
         out.append(.action("Sign in to another account…", .addAccount, e.id))
@@ -204,7 +198,6 @@ enum DockTileMenu {
         case .unreadable: return .status("Can't read Terminal's sign-in", full: false)
         default: break
         }
-        if let clash = d.clash, d.usage == nil { return .status("Terminal is on \(clash.name)'s account", full: false) }
         if d.otherAccount { return .status("Terminal is on another account", full: false) }
         if let u = d.usage, u.fiveHour != nil || u.weekly != nil {
             return .status([u.noFiveHour ? nil : "5-hour \(Painter.pct(u.fiveHour))", "Week \(Painter.pct(u.weekly))"]
@@ -234,17 +227,13 @@ enum DockTileMenu {
 
     /// A row's words as plain text (a Dock menu's title): the address as it is, or while hidden the Dock's stand-in
     /// (dockStandIn), with `number` after it ("░░░░░░░@░░░░░ 2"), the account's number wherever it is named. Only the address
-    /// is cut to keep the row within 40 characters, never the words around it ("Sign Terminal in to …", " · Terminal",
-    /// " · move back here").
+    /// is cut to keep the row within 40 characters, never the words around it ("Sign Terminal in to …", " · Terminal").
     static func words(_ r: AddressRow, number: Int? = nil, blur: Bool? = nil) -> String {
         let shown = hidden(r, blur: blur) ? dockStandIn + (number.map { " \($0)" } ?? "")
                                           : AddressSettings.words(r.address, blur: blur)
         let room = rowCharacters - r.prefix.count - r.suffix.count
         return r.prefix + (shown.count > room ? fit(shown, max: max(room, 9)) : shown) + r.suffix
     }
-
-    /// The clash's ticked row: what choosing the profile's own account does, short enough to leave its address room.
-    static let moveBackSuffix = " · move back here"
 
     /// Each hidden address row's number, by its address: the accounts numbered in the order they are first shown, and every
     /// row that names one of them (Sign Terminal in to …) carrying that account's number, so one account reads the same
@@ -345,7 +334,7 @@ enum DockTileMenu {
 
     /// An address row's item: AddressMenuRow while its address is hidden in a menu this process draws, else a native item
     /// titled with its words. The account in use is ticked and enabled (so it doesn't read as broken); choosing it does
-    /// nothing unless it has an act (a clash's move back).
+    /// nothing unless it has an act.
     static func item(_ r: AddressRow, number: Int?, views: Bool, target: AnyObject, action: Selector) -> NSMenuItem {
         let what = r.act.map { object($0, r.target) }
         let i: NSMenuItem

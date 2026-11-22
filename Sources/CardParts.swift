@@ -47,11 +47,6 @@ struct UsageNotice: Equatable {
         if d.otherAccount {
             return UsageNotice(tone: .red, heading: "Terminal is signed in to another account", line: signIn(address), key: key)
         }
-        if let other = d.clash {
-            // (signed out, the folder's record still names the account it was last signed in to: never "signed in to" then)
-            let heading = d.sign == .signedOut ? "Terminal is signed out, last on \(other.name)'s account" : "Terminal is signed in to \(other.name)'s account"
-            return UsageNotice(tone: .red, heading: heading, line: signIn(address), key: key)
-        }
         switch d.sign {
         case .expired:
             return UsageNotice(tone: .red, heading: "Terminal's sign-in has expired", line: signIn(address), key: key, signedOut: true)

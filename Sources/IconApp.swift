@@ -54,9 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var loginEmail: String? { status?.loginEmail }
     /// The profile's account names as its record says them (AccountResolver): the Dock menu and panel show this.
     var view: AccountView { show?.view ?? AccountView.of(nil) }
-    /// The same, naming the account in use as every surface does (ProfileShow.named): the menu's title and tick.
-    var named: AccountView { show?.named ?? AccountView.of(nil) }
-    /// The plan beside the account in use (ProfileShow.plan: none in a clash).
+    /// The plan beside the account in use (ProfileShow.plan).
     var plan: String? { show?.plan }
     var refreshing: Bool {
         guard let t = refreshAsked else { return false }

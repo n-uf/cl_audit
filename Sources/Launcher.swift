@@ -202,7 +202,6 @@ struct AccountRow: Identifiable {
     var subtitle: String {
         let d = display
         if d.otherAccount { return "sign-in is a different account" }
-        if d.clash != nil { return line ?? "another profile's account" }
         switch d.sign {
         case .expired: return "sign-in expired"
         case .signedOut: return "no Claude Code sign-in"
@@ -990,7 +989,7 @@ struct AccountCard: View {
                     } else {
                         name
                     }
-                    if let label = row.show.inUseLabel ?? (row.show.inUseUnknown ? nil : row.status?.expectedEmail) {
+                    if let label = row.show.view.label ?? row.status?.expectedEmail {
                         // the account in use, one line on every card (no "· in use": the lamp says it); signed out or
                         // expired: lamp and address red, and the why in the limits' place (UsageNotice)
                         let out = notice?.signedOut == true
@@ -1075,7 +1074,6 @@ struct AccountCard: View {
     var terminalWords: String {
         if notice?.signedOut == true { return "Terminal (asks to sign in first)" }
         if let s = row.show.splitWords, !s.switched { return "Terminal (signed in as \(AddressSettings.words(s.code)))" }
-        if let other = row.display.clash { return "Terminal (on \(other.name)'s account)" }
         return "Terminal"
     }
     var signInHelp: String {
@@ -1085,7 +1083,7 @@ struct AccountCard: View {
         return "Sign Claude Code in Terminal in to \(AddressSettings.words(a))"
     }
 
-    /// The ticked account's row: its address and plan (ProfileShow.plan: none in a clash).
+    /// The ticked account's row: its address and plan (ProfileShow.plan).
     static func tickedTitle(label: String, plan: String?) -> String {
         label + (plan.map { "  " + Account.planWords($0) } ?? "")
     }
@@ -1093,7 +1091,6 @@ struct AccountCard: View {
     /// Switch account: the account in use ticked with its plan, the standby accounts by address only (they're never read,
     /// so nothing about their usage), then Sign in to another account…. An account opens the Switch page with it picked.
     private var switchMenu: some View {
-        let own = row.show.ownStandbyID
         let hasStandby = !switchAccountMenu.standby.isEmpty
         return MenuPopButton(make: { switchAccountMenu }) {
             FaceKeyLabel(tint: .orange, width: fullBox) {
@@ -1104,18 +1101,15 @@ struct AccountCard: View {
             }
         }
         .buttonStyle(.plain).fixedSize()
-        .help(!hasStandby && own == nil ? "Sign in to another account for \(row.entry.name)" : "Switch \(row.entry.name) to another account")
+        .help(!hasStandby ? "Sign in to another account for \(row.entry.name)" : "Switch \(row.entry.name) to another account")
     }
 
     /// The Switch account menu, an NSMenu (SwitchAccountMenu.swift: its account rows are AddressMenuRows). (Not private: the
     /// surfaces checks and the render.)
     var switchAccountMenu: SwitchAccountMenu {
-        // (a clash: the profile's own account is on its standby list too: the one ticked row, still the way to move Claude
-        // Code back, never a second one on standby)
-        let own = row.show.ownStandbyID
-        let standby = row.entry.listed(by: row.view).cardTrays().map(\.offer.standby).filter { $0.id != own }
+        let standby = row.entry.listed(by: row.view).cardTrays().map(\.offer.standby)
         let id = row.entry.id, actions = actions, row = row
-        return SwitchAccountMenu(label: row.show.named.label, ownKey: own.map { AccountEntry.switchKey(id, $0) }, plan: row.show.plan,
+        return SwitchAccountMenu(label: row.show.view.label, plan: row.show.plan,
                                  standby: standby.map { .init(key: AccountEntry.switchKey(id, $0.id), address: $0.label) },
                                  pick: { actions.switchAccount($0) }, newAccount: { actions.newAccount(row) })
     }

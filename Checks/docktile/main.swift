@@ -431,12 +431,13 @@ do {
           "an expired sign-in: one line says it (got \(expiredLines))")
     check(DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: false, agentDown: true, now: now), blur: false).contains(DockTileMenu.agentDownWords),
           "the Dock icon app's word that the agent isn't running: its own line")
-    let back = DockTileMenu.AddressRow(address: "ann@example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
-    let longBack = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
-    check(DockTileMenu.words(back, blur: true) == DockTileMenu.dockStandIn + " · move back here"
-          && DockTileMenu.words(back, number: 2, blur: true) == DockTileMenu.dockStandIn + " 2 · move back here" && DockTileMenu.words(back, blur: false) == "ann@example.com · move back here"
-          && DockTileMenu.words(longBack, blur: false).hasSuffix(" · move back here") && DockTileMenu.words(longBack, blur: false).count == DockTileMenu.rowCharacters,
-          "a clash's ticked row: only the address is cut, its words whole, within 40 (got \(DockTileMenu.words(longBack, blur: false)))")
+    // (a row with words after its address, " · Terminal": only the address is cut, its words whole, within 40)
+    let termRow = DockTileMenu.AddressRow(address: "ann@example.com", suffix: " · Terminal")
+    let longTerm = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example.com", suffix: " · Terminal")
+    check(DockTileMenu.words(termRow, blur: true) == DockTileMenu.dockStandIn + " · Terminal"
+          && DockTileMenu.words(termRow, number: 2, blur: true) == DockTileMenu.dockStandIn + " 2 · Terminal" && DockTileMenu.words(termRow, blur: false) == "ann@example.com · Terminal"
+          && DockTileMenu.words(longTerm, blur: false).hasSuffix(" · Terminal") && DockTileMenu.words(longTerm, blur: false).count == DockTileMenu.rowCharacters,
+          "a row with words after its address: only the address is cut, its words whole, within 40 (got \(DockTileMenu.words(longTerm, blur: false)))")
     let noAgent = DockTileMenu.rows(win, show, windowOpen: false, agentRuns: false, now: now)
     check(DockTileMenu.lines(noAgent, blur: false) == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "—", "cl_audit's agent isn't running"]
           && !noAgent.contains { if case .action = $0 { return true }; if case .address(let r) = $0 { return r.act != nil }; return false },

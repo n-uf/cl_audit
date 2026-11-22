@@ -1,7 +1,6 @@
 // SignInWindow: cl_audit's one use of ClaudeAuth's ClaudeSignIn (Auth/ClaudeSignIn.swift): Claude Code's own `claude auth login`
 // for a profile's ONE folder, opened in a Terminal window, followed until it ends one way or another, and its window closed
-// after it. New profile's Sign in and Settings' sign-in keys (the clash's "back to the profile's own account", the plain
-// sign-ins) go through it; the other sign-ins (first run, the default profile's offer, the switch, the menus) still use
+// after it. New profile's Sign in and Settings' sign-in keys go through it; the other sign-ins (first run, the default profile's offer, the switch, the menus) still use
 // ClaudeCLI.openLogin.
 //
 // What this file adds to ClaudeSignIn, and nothing else:
@@ -303,7 +302,7 @@ struct SignInSaid: Equatable {
     /// accounts by their short names only; another profile's account gets the shared note after them, with no address.
     func text(emailsShown shown: Bool) -> String {
         guard let shared else { return line(emailsShown: shown) }
-        return line(emailsShown: shown) + " " + shared
+        return line(emailsShown: shown) + "\n" + shared
     }
 
     private func line(emailsShown shown: Bool) -> String {

@@ -136,7 +136,7 @@ MainActor.assumeIsolated {
     // (3) the dashboard card's Switch account menu (an NSMenu, SwitchAccountMenu): hidden, every account row draws the identical
     // stand-in and a highlighted row shows its address; shown, the rows draw the addresses. Pictures pa-switch-menu-<case>.
     func switchMenu() -> NSMenu {
-        SwitchAccountMenu(label: usual, ownKey: nil, plan: "max",
+        SwitchAccountMenu(label: usual, plan: "max",
                           standby: [.init(key: "pa~k2", address: short), .init(key: "pa~k3", address: long)], pick: { _ in }, newAccount: {}).menu()
     }
     func addressRows(_ m: NSMenu) -> [AddressMenuRow] { m.items.compactMap { $0.view as? AddressMenuRow } }
@@ -1151,7 +1151,7 @@ MainActor.assumeIsolated {
         let info = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: u1.email, expected: nil, mismatch: false,
                                plan: "Ultra", fiveHour: nil, fiveHourResets: nil, weekly: updated == nil ? nil : 42, weeklyResets: now.addingTimeInterval(3 * 86400),
                                updated: updated, source: nil, problem: nil, renewNote: nil, needsLogin: false, ownColor: main.ownColor, noFiveHour: true)
-            .with(AccountView(label: u1.email, numbersOwner: u1.email, lit: true, clash: nil))
+            .with(AccountView(label: u1.email, numbersOwner: u1.email, lit: true))
         for f in [Face.std, .silver] { for (wn, w) in aWidths {
             snapshot(framed(DetailsView(info: info, actions: noop).frame(width: min(w, 340)), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 900)
         } }

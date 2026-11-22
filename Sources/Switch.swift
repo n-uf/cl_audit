@@ -16,12 +16,6 @@ struct SwitchOffer {
     let profile: String
     let standby: StandbyAccount
 
-    /// How every surface says that switching to the profile's own account moves Claude Code back to it.
-    static let moveBackWords = "move Claude Code back here"
-    /// The menus' full-limit item for the profile's own account in a clash: "Move Claude Code back to ann…".
-    static func moveBackTitle(_ short: String) -> String { moveBackPrefix + short + "…" }
-    static let moveBackPrefix = "Move Claude Code back to "
-
     /// "<profile>~<standby>": names the page, the alert's action and the menu items.
     var key: String { AccountEntry.switchKey(profile, standby.id) }
     var short: String { AccountNames.short(standby.label) }

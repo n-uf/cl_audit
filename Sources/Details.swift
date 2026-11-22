@@ -32,16 +32,11 @@ struct DetailsInfo {
     var noFiveHour = false              // the plan has no 5-hour limit (Ultra): no 5-hour row
     /// Why there are no numbers when the sign-in is the reason ("Sign-in expired", "Signed out"): the age line says it.
     var noNumbers: String? = nil
-    /// The same in a short form for a panel too narrow for it (a long profile's name in a clash).
-    var noNumbersShort: String? = nil
     /// Old numbers (ProfileDisplay's grey tier): the bars are drawn grey, as on the menu bar row.
     var stale = false
 
     /// The active account (AccountResolver, from the profile's record): green lamp and "in use"; nil: the sign-in line.
     var active: String? = nil
-    /// No account in use of the profile's own is known (a clash with no seat, the app not deciding): no account line, and
-    /// never the sign-in's address, which is the other profile's.
-    var activeUnknown = false
     var activeLit = true
     /// "Usage: Claude Code on b…" when the numbers are another account's, or why Claude Code's account is shown.
     var activeNote: String? = nil
@@ -51,10 +46,9 @@ struct DetailsInfo {
 
 extension DetailsInfo {
     /// The account line's address as the panel draws it: the account in use (with its lamp); else the sign-in's, or "No
-    /// Claude Code sign-in" (`lamp` false); nil: no account line (a clash with no account of its own).
-    var accountLine: (text: String, lamp: Bool)? {
+    /// Claude Code sign-in" (`lamp` false).
+    var accountLine: (text: String, lamp: Bool) {
         if let a = active { return (a, true) }
-        if activeUnknown { return nil }
         return (login ?? "No Claude Code sign-in", false)
     }
 
@@ -69,10 +63,8 @@ extension DetailsInfo {
             weeklyResets: u?.weeklyResets, updated: d.readAt, source: u?.source, problem: problem, renewNote: s.record?.renewNote,
             needsLogin: d.needsLogin, design: e.panelDesign, ownColor: e.ownColor, refreshing: refreshing,
             scoped: e.showFable ? u?.scoped ?? [] : [], credits: u?.credits, noFiveHour: s.record?.noFiveHour == true,
-            noNumbers: s.noNumbersWords, noNumbersShort: s.noNumbersShort, stale: d.tier == .stale)
-        // (in a clash the app didn't decide, the profile's own account, as on the card: never the folder's, the other profile's;
-        // none of its own known: no address at all)
-        info.active = s.inUseLabel; info.activeUnknown = s.inUseUnknown
+            noNumbers: s.noNumbersWords, stale: d.tier == .stale)
+        info.active = s.view.label
         info.activeLit = d.lamp; info.activeNote = s.lineWords(short: true)
         if case .logInCode = d.key { info.splitKey = s.keyWords(short: true) }
         return info
@@ -96,7 +88,6 @@ struct AgoButton: View {
     var refreshing = false
     /// No numbers because of the sign-in ("Sign-in expired"): said instead of "Reading usage…", which would never end.
     var noNumbers: String? = nil
-    var noNumbersShort: String? = nil
     let action: () -> Void
     @State private var hover = false
 
@@ -106,8 +97,6 @@ struct AgoButton: View {
             // never a bare "Not yet": before the first read, what is happening
             label(refreshing ? "Updating…" : ago.map { "Updated \($0)" } ?? noNumbers ?? "Reading usage…")
             label(refreshing ? "Updating…" : ago ?? noNumbers ?? "Reading…")
-            // (a long profile's name in a clash: the words don't fit; the short form does, rather than a blank line)
-            label(refreshing ? "Updating…" : ago ?? noNumbersShort ?? noNumbers ?? "Reading…")
             Color.clear.frame(width: 0, height: 0)
         }
     }
@@ -159,20 +148,18 @@ struct DetailsView: View {
                         ProfileLED(color: info.ownColor)
                         Text("Claude \(info.name)").font(.system(size: 15, weight: .semibold))
                     }
-                    // (accountLine: the account in use with its lamp; else the sign-in's line; none in a clash with no
-                    // account of the profile's own)
-                    if let line = info.accountLine {
-                        if line.lamp {
-                            HStack(spacing: 5) {
-                                Circle().fill(Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)).frame(width: 6, height: 6)
-                                    .shadow(color: Color(nsColor: .systemGreen).opacity(info.activeLit ? 0.7 : 0), radius: 2)
-                                // no label: the address with its lamp says it's in use
-                                AccountValue(text: line.text, size: 10).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        } else {
-                            // the sign-in's address (blurred while hidden), or "No Claude Code sign-in"
-                            AccountValue(text: line.text, size: 10).font(.caption).foregroundStyle(.secondary)
+                    // (accountLine: the account in use with its lamp; else the sign-in's line)
+                    let line = info.accountLine
+                    if line.lamp {
+                        HStack(spacing: 5) {
+                            Circle().fill(Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)).frame(width: 6, height: 6)
+                                .shadow(color: Color(nsColor: .systemGreen).opacity(info.activeLit ? 0.7 : 0), radius: 2)
+                            // no label: the address with its lamp says it's in use
+                            AccountValue(text: line.text, size: 10).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
+                    } else {
+                        // the sign-in's address (blurred while hidden), or "No Claude Code sign-in"
+                        AccountValue(text: line.text, size: 10).font(.caption).foregroundStyle(.secondary)
                     }
                     if let n = info.activeNote {
                         Text(n).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -221,7 +208,7 @@ struct DetailsView: View {
             }
             .controlSize(.small)
             // the age on a line of its own under the keys, so its long form ("Reading usage…", "Updated 1 min ago") fits
-            AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, noNumbers: info.noNumbers, noNumbersShort: info.noNumbersShort, action: actions.refresh)
+            AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, noNumbers: info.noNumbers, action: actions.refresh)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         // the content's own width, the same 16 pt inset on every side: a row that's short of room gives way inside

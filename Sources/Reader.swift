@@ -688,10 +688,6 @@ final class UsageReader {
         if var last = lastResolved { last.at = r.at; if last == r { r.at = lastResolved!.at } }
         lastResolved = r
         status.resolved = r
-        if r.clash != nil {
-            // Claude Code's folder on another profile's account in use: those numbers and that plan are that profile's
-            status.dropForClash(r.line)
-        }
         if let data = StatusCodec.encode(status), data != lastStatus || m.rewriteDue {
             send(.written)
             lastStatus = Store.writeStatus(id, status)

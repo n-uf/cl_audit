@@ -28,28 +28,10 @@ struct SwitchPage: View {
     @ObservedObject private var privacy = AddressPrivacy.shared
     /// A switch (or its retry) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
     @State private var consent: ConsentRequest?
-    /// A clash move-back as it was when the switch started, and whose account the folder was signed in to: once Claude Code is
-    /// back on the profile's own account the clash is gone, and the page still says what the move was. Used only for the
-    /// switch it was made for (`backNote`).
-    @State private var startedBack: ClashBack?
-    struct ClashBack: Equatable { var key: String; var owner: String? }
 
-    /// The remembered move-back, only while it is this pick's (the switch key) and a switch is under way or ended: after a
-    /// Cancel (ready again), another pick or another profile's page it says nothing.
-    static func backNote(_ started: ClashBack?, key: String, phase: SwitchRunner.Phase) -> ClashBack? {
-        guard let started, started.key == key, phase != .ready else { return nil }
-        return started
-    }
-    private var backNote: ClashBack? { Self.backNote(startedBack, key: AccountEntry.switchKey(entry.id, standby.id), phase: runner.phase) }
-    /// A clash move-back: the pick is the profile's own account in a clash (ProfileShow.ownStandbyID, as the menus decide it),
-    /// or the one remembered from the switch that is running or ended.
-    private var movesBack: Bool { backNote != nil || standby.id == show.ownStandbyID }
-
-    /// The page's title before anything starts, and the key's: a clash move-back says it moves Claude Code back.
-    static func readyTitle(name: String, to: String, moveBack: Bool) -> String {
-        moveBack ? "Move Claude Code back to \(to)" : "Switch Claude \(name) to \(to)"
-    }
-    static func goTitle(to: String, moveBack: Bool) -> String { moveBack ? "Move back to \(to)" : "Switch to \(to)" }
+    /// The page's title before anything starts, and the key's.
+    static func readyTitle(name: String, to: String) -> String { "Switch Claude \(name) to \(to)" }
+    static func goTitle(to: String) -> String { "Switch to \(to)" }
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
     /// A sign-in again on the account in use (no standby account picked).
@@ -68,8 +50,6 @@ struct SwitchPage: View {
     var view: AccountView { show.view }
     /// The in-use box's profile as the card has it (the lamp, the line, the numbers): the box draws this.
     var inUseRow: AccountRow { AccountRow(entry: entry, show: show) }
-    /// The account landed on is another profile's account in use: the profile didn't follow it.
-    private var clash: (seat: Seat?, owner: String)? { view.clash.map { (nil, $0) } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -95,18 +75,16 @@ struct SwitchPage: View {
     private var title: String {
         if appBehind { return "Switched Claude Code of \(name) to \(to)" }
         if again { return runner.phase == .reached ? "Signed Claude \(name) in" : "Sign Claude \(name) in" }
-        return Self.phaseTitle(runner.phase, name: name, to: to, moveBack: movesBack)
+        return Self.phaseTitle(runner.phase, name: name, to: to)
     }
 
     /// The title for a switch's phase (a sign-in again and a Claude app left behind have their own, above).
-    static func phaseTitle(_ phase: SwitchRunner.Phase, name: String, to: String, moveBack: Bool) -> String {
+    static func phaseTitle(_ phase: SwitchRunner.Phase, name: String, to: String) -> String {
         switch phase {
         case .closing, .moving, .waiting: return "Switching Claude \(name) to \(to)"
         case .reached: return "Switched Claude \(name) to \(to)"
         case .other(let e): return "Claude \(name) signed in as \(AccountNames.short(e))"
-        case .ready: return readyTitle(name: name, to: to, moveBack: moveBack)
-        // (stopped or put back: the usual title; only the ready one says a clash move-back)
-        case .timedOut, .failed, .undone: return readyTitle(name: name, to: to, moveBack: false)
+        case .ready, .timedOut, .failed, .undone: return readyTitle(name: name, to: to)
         }
     }
 
@@ -156,7 +134,6 @@ struct SwitchPage: View {
             if appBehind { return Top(text: "Claude Code on \(to)", dim: "· the Claude app still on \(appShort)", tone: .amber) }
             return Top(text: "Now on \(to)", dim: "· \(from) on standby", tone: .ok)
         case .other(let e):
-            if let c = clash { return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· \(c.owner)'s account", tone: .warn) }
             return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· not \(to)", tone: .amber)
         case .timedOut:
             if runner.canUndo { return Top(text: "No sign-in", dim: "· sessions on \(to)", tone: .amber) }
@@ -192,7 +169,7 @@ struct SwitchPage: View {
             Button(again ? "Sign in…" : "Sign in as \(to) again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             if runner.canUndo { undoKey }
-            if clash == nil, !runner.canUndo {
+            if !runner.canUndo {
                 Button("Keep \(AccountNames.short(e))") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             }
         case .timedOut, .failed:
@@ -276,14 +253,13 @@ struct SwitchPage: View {
         }
     }
 
-    /// The in-use box's name: the account in use as every surface names it (ProfileShow.inUseLabel); for an old record
-    /// with none worked out, the folder's own address, except in a clash with no own account known (that address is the
-    /// other profile's); else "its account".
+    /// The in-use box's name: the account in use as every surface names it (AccountView.label); for an old record with none
+    /// worked out, the folder's own address; else "its account".
     static func inUseName(_ s: ProfileShow, expected: String?) -> String {
-        s.inUseLabel ?? (s.inUseUnknown ? nil : expected) ?? "its account"
+        s.view.label ?? expected ?? "its account"
     }
 
-    /// The in-use box's plan (ProfileShow.plan: none in a clash).
+    /// The in-use box's plan (ProfileShow.plan).
     static func inUseDetail(plan: String?) -> String { plan.map(Account.planWords) ?? "" }
 
     private var inUseBox: some View {
@@ -332,14 +308,12 @@ struct SwitchPage: View {
     /// A standby account: its address, plan and when it was last in use. No limits: it isn't read.
     private func standbyBox(_ s: StandbyAccount, selected: Bool) -> some View {
         let pickable = runner.phase == .ready && !selected && s.seat != nil
-        // a clash: the profile's own account (the Claude app is on it) is in this list once, as the way back for Claude Code
-        let back = s.id == show.ownStandbyID
         func box(_ lit: String?) -> some View {
-            AccountBox(lamp: nil, badge: back ? "Move back" : "Standby", detail: s.plan.map(Account.planWords),
+            AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
                        unlit: !selected, selected: selected, litBadge: lit) {
                 BoxText(text: s.label, role: selected ? .title : .softTitle)
             } content: {
-                BoxText(text: Self.boxWords(s, back: back, name: name, moveCount: selected && plan?.moves == true ? sessionWords(plan) : nil), role: .note)
+                BoxText(text: Self.boxWords(s, name: name), role: .note)
             }
         }
         // the lit badge while it's going: "Switching to" when the address fits beside it in the box's own width, else the
@@ -359,14 +333,9 @@ struct SwitchPage: View {
         }
     }
 
-    /// A standby box's line: when it was last in use; the profile's own account in a clash (the way back): what choosing it
-    /// does ("Move Claude Code back here (41 Code-tab sessions)"), with the count once it is the one picked.
-    static func boxWords(_ s: StandbyAccount, back: Bool, name: String, moveCount: String?, now: Date = Date()) -> String {
-        if back {
-            let words = SwitchOffer.moveBackWords
-            return words.prefix(1).uppercased() + words.dropFirst() + (moveCount.map { " (\($0))" } ?? "") + "."
-        }
-        return (s.lastInUse.map { "Last used " + AccountBook.ago($0, now: now) } ?? "Not used on \(name) yet") + "."
+    /// A standby box's line: when it was last used.
+    static func boxWords(_ s: StandbyAccount, name: String, now: Date = Date()) -> String {
+        (s.lastInUse.map { "Last used " + AccountBook.ago($0, now: now) } ?? "Not used on \(name) yet") + "."
     }
 
     // MARK: what changes, and what doesn't
@@ -543,22 +512,14 @@ struct SwitchPage: View {
                 }
             }
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
-            SRowLine(text: Self.staysLine(from: from, name: name, moveBack: movesBack,
-                                          owner: backNote == nil ? view.clash : backNote?.owner))
+            SRowLine(text: Self.staysLine(from: from, name: name))
             if let n = Self.noteLine(runner.moveText, Self.leftInPlan(left: runner.leftText, moved: Self.movedForPlanLine(receipt: runner.receipt, phase: runner.phase), plan: plan)) { SRowLine(text: n) }
             if let w = runner.windowText { SRowLine(text: w) }               // (a Cancel's late-close watch, said here too)
         }
     }
 
-    /// As the switch starts: a clash move-back is remembered (`startedBack`).
-    private func noteBack() {
-        startedBack = standby.id == show.ownStandbyID ? ClashBack(key: AccountEntry.switchKey(entry.id, standby.id), owner: view.clash) : nil
-    }
-
-    /// What happens to the account Claude Code leaves. A normal switch: it stays on the profile as a standby account. A clash
-    /// move-back (the account is another profile's, `owner`): it stays with that profile, never the profile's standby.
-    static func staysLine(from: String, name: String, moveBack: Bool, owner: String?) -> String {
-        if moveBack { return "\(from) stays with \(owner ?? "the profile it belongs to"): nothing read here." }
+    /// What happens to the account Claude Code leaves: it stays on the profile as a standby account.
+    static func staysLine(from: String, name: String) -> String {
         return "\(from) stays on \(name) as a standby account: nothing read, switch back any time."
     }
 
@@ -661,12 +622,14 @@ struct SwitchPage: View {
         guard let note = FolderRules.sharedNote(owners) else { return nil }
         let windows = owners.filter { !$0.standby && $0.profile.claudeWindow }
         guard entry.claudeWindow, !windows.isEmpty else { return note }
-        return note + " Claude windows on one account share one sidebar, so these sessions also show in \(windows.count == 1 ? "the Claude window" : "the Claude windows") of \(FolderRules.names(windows))."
+        let them = FolderRules.names(windows)
+        return note + "\n" + (windows.count == 1
+            ? "The Claude window of \(them) is on this account too." + "\n" + "It shows the same sidebar, so these sessions show there as well."
+            : "The Claude windows of \(them) are on this account too." + "\n" + "They show the same sidebar, so these sessions show there as well.")
     }
 
     private var isBad: Bool {
-        if case .failed = runner.phase { return true }
-        return clash != nil && runner.phase != .ready
+        if case .failed = runner.phase { return true } else { return false }
     }
 
     /// What the folder says now: ✓ on the account wanted, amber on another (by its ids).
@@ -711,7 +674,7 @@ struct SwitchPage: View {
             Spacer(minLength: 6)
             switch runner.phase {
             case .ready:
-                Button(Self.goTitle(to: to, moveBack: movesBack)) { consent = ConsentRequest(flow: "Account switching") { noteBack(); runner.start(standby) } }
+                Button(Self.goTitle(to: to)) { consent = ConsentRequest(flow: "Account switching") { runner.start(standby) } }
                     .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
                     .disabled(standby.seat == nil && standby.email.isEmpty)
             case .waiting:

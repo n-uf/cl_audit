@@ -293,9 +293,10 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   cross-checked with its `config.json` `lastKnownAccountUuid`; only those lines are looked at and nothing else from the
   log is kept. That account is the profile's active one, and every screen, the Switch page included, shows the one
   answer the agent records for the profile: see [Which account is in use](#which-account-is-in-use). One account
-  belongs to one profile: an account
-  another profile works on is refused (the card says whose, and the profile's numbers wait until its folder is on one of
-  its own); an account on another profile's standby list moves to this one, said on both profiles' Accounts card.
+  can be several profiles': an account another profile works on is taken too, and both profiles show its numbers (one
+  amber line says which other profiles have it). The agent reads such an account once per read interval, and its limit
+  alerts come once for the account. An account on another profile's standby list moves to this one, said on both
+  profiles' Accounts card.
 - **A switch waiting for you.** While Claude Code's sign-in waits in the browser, the Switch page is easy to lose behind
   it. Then, only while the page isn't in front, one alert says so: "Claude Main: the switch is waiting for you · Finish
   Claude Code's sign-in in Terminal and the browser. cl_audit checks the account when it's done." with **Show switch**
@@ -459,17 +460,14 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   Switch page (click again to deselect). The order holds still while one is selected.
   - The **account in use** box shows the profile's **active account** (see
     [Which account is in use](#which-account-is-in-use)): its lamp is green while it is in use, also when only Claude
-    Code's account can be shown (the Claude app signed out or unreadable: a muted line says so), off when Claude Code's
-    folder is on another profile's account, and an account in use is never listed on
-    standby at the same time. Its address is a pop-up: it ticks the account Claude Code in the folder is signed in to
-    (red with a warning sign inside when it is another profile's account; a clock when the sign-in ran out; a
-    long address is cut at its end), then **Log in…** (Claude Code's sign-in in Terminal with its address
+    Code's account can be shown (the Claude app signed out or unreadable: a muted line says so), and an account in use
+    is never listed on standby at the same time. Its address is a pop-up: it ticks the account Claude Code in the
+    folder is signed in to (a clock when the sign-in ran out; a long address is cut at its end), then **Log in…** (Claude Code's sign-in in Terminal with its address
     filled in, watched like a switch: "Logging in" until Claude Code's login ends well; the same key under the box when
     the sign-in ran out or the folder is signed out) and **Renew sign-in by
     itself** (opt-in, see the (i)). Whatever account signs in to the folder, from cl_audit or Terminal, is the one in
-    use, by itself: the one before joins standby. If another profile works on that account, the line under Accounts
-    names it, with **Open** it instead: one profile per account, and the profile's numbers wait until its folder is on
-    one of its own. An account that came from another profile's standby list (or left for another profile) says so in
+    use, by itself: the one before joins standby. If another profile has that account too, one amber line under
+    Accounts names it, and both profiles show the same numbers. An account that came from another profile's standby list (or left for another profile) says so in
     one line with **OK**. When the profile's Claude window is signed in to another account than its Claude Code (read
     from the app's log and `config.json`), the box shows the app's account and says whose the numbers are ("Usage: Claude
     Code on b…@example.com"). A switch moves the window's Code-tab sessions and scheduled tasks inside the profile's
@@ -651,8 +649,8 @@ at the bottom.
 
 - **Account first:** the Claude Code card's **Account** pop-up lists the accounts signed
   in in Claude Code folders on this Mac that no profile uses, each with its folder (picking one connects that
-  folder as it is: its sign-in, settings and history stay), other profiles' accounts dimmed, and **Sign in to
-  another account…**. That opens the one-line address row: **Sign in** makes a new folder, `~/.claude-<name>`,
+  folder as it is: its sign-in, settings and history stay), other profiles' accounts (picking one signs in to it
+  in the new profile's own folder, with its address filled in), and **Sign in to another account…**. That opens the one-line address row: **Sign in** makes a new folder, `~/.claude-<name>`,
   and Terminal runs `claude auth login --claudeai --email <address>` for it. The address is only filled in:
   the browser's claude.ai account decides which account it is (switch it there first if it shows another
   one), and cl_audit checks the result by the folder's account and organisation ids. A folder holds one
@@ -678,8 +676,8 @@ at the bottom.
   address filled in when you typed one), then the Claude window, its own or the usual Claude app, signed in to
   the same claude.ai account (checked by the account id it saved; no email or token is read; the address is
   shown as a reminder only). Its Code sidebar starts empty: Code sessions stay in the data folder they were made
-  in. "Finish now" leaves sign-in for later. An account another profile already has is refused: one profile
-  per account.
+  in. "Finish now" leaves sign-in for later. An account another profile already has is taken too, with one
+  amber line that names that profile.
 - New profiles start with an existing profile's click and panel settings. **Cancel** undoes only what
   the page created: an existing folder is never deleted or signed out.
 
