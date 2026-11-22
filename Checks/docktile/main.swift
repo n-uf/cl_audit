@@ -371,9 +371,9 @@ do {
     let rows = DockTileMenu.rows(win, show, windowOpen: false, now: now)
     let shown = DockTileMenu.lines(rows, blur: false)
     check(shown == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "bob@example.com", "Sign in to another account…", "—",
-                    "Claude window ▸", "  Open", "Quick chat", "Refresh now", "—", "Dashboard", "Profile settings…"],
+                    "Claude window ▸", "  Open", ClQuick.itemTitle, "Refresh now", "—", "Dashboard", "Profile settings…"],
           "the menu, addresses shown: the profile, the account in use ticked, its status line, the standby account, Sign in to "
-          + "another account…, Claude window ▸ Open, Quick chat, Refresh now, Dashboard, Profile settings… (got \(shown))")
+          + "another account…, Claude window ▸ Open, Quick chat (cl_quick, or Get cl_quick…), Refresh now, Dashboard, Profile settings… (got \(shown))")
     let hiddenLines = DockTileMenu.lines(rows, blur: true)
     let s = DockTileMenu.dockStandIn
     check(hiddenLines[1] == "✓ \(s) 1" && hiddenLines[3] == "\(s) 2"

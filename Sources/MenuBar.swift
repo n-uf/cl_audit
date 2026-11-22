@@ -295,9 +295,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
             items[id] = nil
         }
         guard !list.isEmpty else {
-            // no icon left: no windows either, unless the quick chat holds the accessory role (its panel is up, or its
-            // shortcut is registered)
-            if accessory, !QuickChat.shared.holdsAccessory { NSApp.setActivationPolicy(.prohibited) }
+            // no icon left: no windows either
+            if accessory { NSApp.setActivationPolicy(.prohibited) }
             accessory = false
             return
         }
@@ -378,7 +377,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         case .switchTo: Installer.openSwitch(target)
         case .signIn: ClaudeCLI.logIn(profile: e)
         case .addAccount: ClaudeCLI.logIn(Account(e), email: nil)  // Settings ▸ Accounts' Sign in with another account…
-        case .quickChat: QuickChat.shared.open(profile: e.id)
+        case .quickChat: ClQuick.open(e)                               // cl_quick, or its site (ClQuick)
         case .openWindow: Launcher.openClaude(Account(e))
         case .quitWindow: _ = ClaudeWindow.quit(Account(e))
         case .quitKeep: break                                       // (the Dock icon app's own)

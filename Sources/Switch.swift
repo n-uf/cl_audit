@@ -1,5 +1,5 @@
 // Switch: a profile working on another of its accounts (Accounts.swift), offered where a full limit shows (the dashboard
-// card's at-limit box, the alert, the Dock and menu bar menus, the quick chat) and run on the Switch page
+// card's at-limit box, the alert, the Dock and menu bar menus) and run on the Switch page
 // (SwitchPage.swift, SwitchRunner.swift).
 //
 // Here: the standby accounts a profile can switch to, an account's short name, and what the Claude window's sidebar
@@ -85,7 +85,7 @@ extension AccountEntry {
         AccountBook.best(standby, now: now).map { SwitchOffer(profile: id, standby: $0) }
     }
 
-    /// THE offer while a limit is full, for every place that makes one (the full-limit alert, quick chat; the menus pick
+    /// THE offer while a limit is full, for every place that makes one (the full-limit alert; the menus pick
     /// the same through SwitchMenu.best): AccountBook.best over the standby list as the account answer lists it, so never
     /// the account in use, matched by its id or its address (AccountView.isActive). An account remembered by its address
     /// only is never it; no numbers are read for it. `view`: the account answer when the caller has a newer one than the

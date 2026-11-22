@@ -1364,9 +1364,9 @@ do {
     let t = titles(full)
     check(full.items.first?.view != nil && t[1].hasPrefix("Updated "), "menu bar: the top row (name, account in use, limits), then Updated (got \(t.prefix(3)))")
     let after = Array(t.dropFirst(3))
-    check(after == ["Switch to \(sh(u3.email!))…  week 12%", "Switch account", "---", "Quick chat", "Open Claude window", "Refresh now", "---", "Dashboard", "Profile settings…", "---",
+    check(after == ["Switch to \(sh(u3.email!))…  week 12%", "Switch account", "---", ClQuick.itemTitle, "Open Claude window", "Refresh now", "---", "Dashboard", "Profile settings…", "---",
                     "Hide from the menu bar"],
-          "menu bar, week full: Switch to the best, then Switch account ›, then the usual items, Quick chat among them (got \(after))")
+          "menu bar, week full: Switch to the best, then Switch account ›, then the usual items, the cl_quick item among them (got \(after))")
     let sub = full.items.first { $0.title == "Switch account" }?.submenu
     check(sub.map(titles) == ["\(sh(u1.email!))  in use · week 100%", "\(sh(u3.email!))…  week 12%", "\(sh(u2.email!))…  week 97%", "\(sh(uo.email!))…  no numbers"],
           "Switch account ›: the account in use, then every standby account, most room first, each with its week (got \(String(describing: sub.map(titles))))")
@@ -1377,7 +1377,7 @@ do {
     check(!t.contains { $0.hasPrefix("Switch to \(sh(u2.email!))") }, "the old per-account Switch to … items are gone")
     let roomy = barMenu(week: 94, entry: cm)
     let r = titles(roomy).dropFirst(3)
-    check(Array(r) == ["Switch account", "---", "Quick chat", "Open Claude window", "Refresh now", "---", "Dashboard", "Profile settings…", "---", "Hide from the menu bar"],
+    check(Array(r) == ["Switch account", "---", ClQuick.itemTitle, "Open Claude window", "Refresh now", "---", "Dashboard", "Profile settings…", "---", "Hide from the menu bar"],
           "menu bar, room left: Switch account › only")
     check(roomy.items.first { $0.title == "Switch account" }?.submenu?.items.first?.title == "\(sh(u1.email!))  in use · week 94%", "room left: the account in use shows its week")
     var single = cm; single.standby = []
@@ -3372,9 +3372,9 @@ do {
         }
         check(inSettingsApp("SignInWindow.sweepAtStart()", in: "applicationDidFinishLaunching") && inSettingsApp("SignInWindow.stopForQuit()", in: "applicationWillTerminate"),
               "stage G: Terminal's kept profiles are swept at the settings app's start and quit (SignInWindow.sweepAtStart, stopForQuit), in its own branch")
-        let others = ["Agent.swift", "MenuBar.swift", "Launcher.swift", "QuickChat.swift", "SwitchRunner.swift", "FirstRun.swift", "DefaultProfileRunner.swift"]
+        let others = ["Agent.swift", "MenuBar.swift", "Launcher.swift", "SwitchRunner.swift", "FirstRun.swift", "DefaultProfileRunner.swift"]
         check(others.allSatisfy { f in !lines(f).contains { $0.contains("SignInWindow") } },
-              "stage G: the agent and the sign-ins left on ClaudeCLI.openLogin (menus, launcher, quick chat, the switch, first run, the default profile) don't use the sign-in window")
+              "stage G: the agent and the sign-ins left on ClaudeCLI.openLogin (menus, launcher, the switch, first run, the default profile) don't use the sign-in window")
         check(lines("Uninstall.swift").contains { $0.contains("SignInWindow.sweepNow()") }, "stage G: Uninstall sweeps Terminal's kept profiles before it removes the work folder")
         // removing a profile ends its sign-in window first (removeAccount applies installs, so it isn't run here: its text is read)
         let settings = lines("Settings.swift")

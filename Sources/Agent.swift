@@ -30,7 +30,6 @@ struct AgentMark: Codable, Equatable {
     var actions: [String: AgentAction]? = nil   // what it's doing for a profile now (Opening and closing)
     var stamp: String? = nil          // its program's fingerprint (an update with the same build number differs here)
     var menuBar: [String]? = nil      // the profiles whose menu bar icon is up (In the menu bar's switch waits for it)
-    var quickChat: String? = nil      // the quick chat's shortcut: "on", or why it isn't (nil: turned off)
 }
 
 enum Agent {
@@ -199,8 +198,6 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     private var discoverTimer: Timer?
     private var signInWatch: SignInFiles?
     private var menuBar: MenuBarItems?                  // the profiles' menu bar icons (MenuBar.swift)
-    /// Some profile has its icon in the menu bar (the quick chat leaves the accessory role alone then).
-    var hasMenuBarIcons: Bool { !(menuBar?.shown.isEmpty ?? true) }
     private lazy var claudeUpdates = ClaudeUpdateWatch(defaults: defaults)   // reopens windows an update closed
     private var observers: [NSObjectProtocol] = []
     private var askedForAlerts = false
@@ -247,11 +244,14 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }, refresh: { [weak self] id in self?.refresh(id) })
-        // the quick chat (QuickChat.swift): its panel and its `claude`, on the profiles as they are now
-        QuickChat.shared.start(entries: { [weak self] in
-            guard let self else { return [] }
-            return self.order.compactMap { self.readers[$0]?.entry }
-        }, usage: { [weak self] id in (self?.readers[id]?.entry).flatMap { Usage.of(Store.status(for: $0)) } })
+        // what cl_audit's own quick chat left behind: once, the empty folders go to the Trash (OldQuickChats)
+        let entries = Store.load(), defaults = self.defaults
+        DispatchQueue.global(qos: .utility).async { OldQuickChats.tidyOnce(entries, defaults: defaults) }
+        // Quick chat from a Dock icon's menu (its app or plug-in asks, object: the profile id): cl_quick on that profile's
+        // folder (ClQuick)
+        observers.append(DistributedNotificationCenter.default().addObserver(forName: ClQuick.openNote, object: nil, queue: .main) { [weak self] note in
+            ClQuick.open((note.object as? String).flatMap { self?.readers[$0]?.entry })
+        })
         // the Mac's accent colour changed: the icons in Accent are drawn again
         observers.append(NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil,
                                                                 queue: .main) { [weak self] _ in self?.menuBar?.update() })
@@ -367,7 +367,6 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             Uninstall.offerTrashCleanup(defaults: defaults, where: p.components(separatedBy: "/Contents/").first ?? p)
         }
         for id in order { readers[id]?.tick() }
-        if QuickChat.shared.isOpen { QuickChat.shared.refresh() }
         claudeUpdates.tick(order.compactMap { readers[$0]?.entry })
         rules?.tick()
         menuBar?.update()
@@ -402,8 +401,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                                   pausedUntil: pausedUntil,
                                   actions: rules?.actions,
                                   stamp: myStamp,
-                                  menuBar: menuBar?.shown,
-                                  quickChat: QuickChat.shared.shortcutState))
+                                  menuBar: menuBar?.shown))
     }
 
     // MARK: crashing again and again
@@ -428,6 +426,5 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ note: Notification) {
         agentLog.log("agent \(self.myBuild, privacy: .public) quitting, pid \(getpid())")
-        QuickChat.shared.shutdown()
     }
 }

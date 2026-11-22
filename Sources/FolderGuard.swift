@@ -1,8 +1,7 @@
 // FolderGuard: never a `claude` (or the Claude app with CLAUDE_CONFIG_DIR) for a Claude Code folder that isn't there.
 // Claude Code would make the folder again, signed in, and a folder the person deleted would come back (2026-11-10: a deleted
 // kept folder's sign-in was renewed after the folder was gone). Every launcher asks `mayLaunch` right before it starts
-// anything: Renew sign-in, logout, quick chat, Terminal, the Claude window, a sign-in. Self-contained (the quick chat's own
-// checks compile it with the engine alone).
+// anything: Renew sign-in, logout, Terminal, the Claude window, a sign-in. Self-contained.
 
 import Foundation
 import os

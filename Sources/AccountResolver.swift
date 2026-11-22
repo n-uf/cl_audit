@@ -1,8 +1,8 @@
 // AccountResolver: the one place that decides, for a profile, which account is active, whose numbers are shown and the one
 // line of state (the operator's rule, 2026-11-10: every surface does the same job, so one answer). It runs in the agent's
 // reader for each profile (UsageReader.save) and is written once into status/<profile>.json with its time; every surface
-// (the menu bar, the Dock icon and its menu, the Dock panel, the dashboard card, Settings ▸ Accounts, the Switch page and
-// quick chat's profile line) reads only that record, through AccountView, and never decides for itself.
+// (the menu bar, the Dock icon and its menu, the Dock panel, the dashboard card, Settings ▸ Accounts and the Switch page)
+// reads only that record, through AccountView, and never decides for itself.
 //
 // The rule:
 // - the active account is the Claude app's signed-in account (AppSignIn: its config.json names it, its log after its
@@ -73,7 +73,7 @@ enum AccountResolver {
                                 numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
                                 codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
                                 clashID: owner?.id)
-        // the folder's organisation in three states (quick chat's key, QuickChatTarget.sameAccount): its id; "" when the
+        // the folder's organisation in three states, so a reader of the record knows the seat in full: its id; "" when the
         // record names the seat with none (no organizationUuid, null or empty: ClaudeFiles.Record keeps each as nil or "");
         // nil only with no seat (and in a record from before this field): not known
         r.codeOrganization = code.map { AccountID.normal($0.organization ?? "") }
@@ -191,8 +191,8 @@ struct SplitUsage: Equatable {
 
     /// "cl_audit can't read P@…'s usage: Claude Code in Terminal is signed in to M@…" (Claude Code inside the Claude app runs
     /// on the app's own sign-in, so the app's account is the one in use; only Terminal's login, the one cl_audit reads with,
-    /// is on M); a switch waiting for the app, the card's words on every surface (Settings, menu bar, widget, Dock panel,
-    /// quick chat): "Switching to M@…: one step left. Sign the Claude app in to M@… to finish."
+    /// is on M); a switch waiting for the app, the card's words on every surface (Settings, menu bar, widget, Dock panel):
+    /// "Switching to M@…: one step left. Sign the Claude app in to M@… to finish."
     var line: String { line(blur: nil) }
     /// `line` for a given "Show emails" setting (nil: the app's own): what a check hands in.
     func line(blur: Bool?) -> String {

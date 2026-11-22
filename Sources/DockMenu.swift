@@ -24,7 +24,7 @@
 // row is at most 40 characters (a longer one is cut in the middle). Every item has its own tag, the submenu's too: the
 // Dock hands a click on a Dock tile's menu back by the item's tag (_sendDockMenuCommand:withTag:).
 //
-// The plug-in starts nothing itself: Quick chat and Refresh now post the notices the Dock icon app posts; the rest ask the
+// The plug-in starts nothing itself: Quick chat (cl_quick, opened by the agent: ClQuick) and Refresh now post their notices; the rest ask the
 // agent (DockTile.menuNote), which does them. It reads no sign-in and no standby account's record: the standby rows are
 // the profiles file's list (AccountEntry), the status line the profile's own record.
 
@@ -94,7 +94,7 @@ enum DockTileMenu {
                 : [.action("Open", .openWindow, e.id)]
             rows.append(.submenu("Claude window", inside))
         }
-        rows.append(.action("Quick chat", .quickChat, e.id))
+        rows.append(.action(ClQuick.itemTitle, .quickChat, e.id))      // cl_quick, or Get cl_quick… (ClQuick)
         rows.append(.action("Refresh now", .refresh, e.id))
         rows.append(.separator)
         rows.append(.action("Dashboard", .dashboard, e.id))

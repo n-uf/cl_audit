@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [kit|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [kit|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|scan|all] [--volume] [--no-build]
 #
 #   kit       the shared modules' own suites (ProfileCore, Runs, ClaudeAuth, ClaudeSignIn, ClaudeAuth without the Keychain, and
 #             AddressPrivacy: how a hidden address is drawn, spoken and put in a sentence): the vendored cl_kit tag's
@@ -30,9 +30,8 @@
 #             (spliced byte for byte), Rewind's backups and paths; the key scan, caps, Undo, a session picked later, hostile side.json and
 #             images; a second fresh home (Checks/.work/sidefiles/b/home), projects in Checks/.work/sidefiles/code
 #   render  pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
-#   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       kit, signin, backup, surfaces, docktile, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
+#   all       kit, signin, backup, surfaces, docktile, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -45,7 +44,7 @@
 # Safety: each suite runs with HOME and CFFIXED_USER_HOME at Checks/.work/<suite>/home, a throwaway folder it empties and
 # fills with sample accounts and sessions. Nothing here opens the app, the Dock or Terminal, and nothing reads the real
 # data. A suite (and this script) refuses to run when its home is anywhere else. Outside Checks/.work it only touches the
-# preference files named in clean_prefs below (it removes them) and, for quick-chat, the build/checks folder of the repo.
+# preference files named in clean_prefs below (it removes them).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -57,15 +56,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    kit|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(kit signin backup surfaces docktile accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
+    kit|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|scan) suites+=("$a") ;;
+    all) suites+=(kit signin backup surfaces docktile accounts firstrun retention setup window move resume sidefiles render scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
     -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(kit signin backup surfaces docktile accounts firstrun retention setup window move render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(kit signin backup surfaces docktile accounts firstrun retention setup window move render scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -315,10 +314,6 @@ run_render() {
   return $status
 }
 
-run_quick-chat() {
-  # its own script compiles with swiftc: held under the build lock for the compile and the (short) run
-  /usr/bin/lockf -k "$LOCK" bash "$HERE/quick-chat/run.sh"
-}
 run_scan() {
   local dir="$WORK/scan"; mkdir -p "$dir"
   # the keys are the app's own SecretScan's (Sources/SecretScan.swift): a tool that doesn't build fails the scan, never skips it
@@ -328,9 +323,8 @@ run_scan() {
   local st=0
   (cd "$HERE" && find . -path ./.work -prune -o -type f -print0 | xargs -0 "$dir/cl_audit-checks-scan") || st=1
   clean_prefs "$dir/cl_audit-checks-scan"
-  # real addresses, ids, personal paths and names too (quick-chat/ is the quick chat's own, with its sample home-folder paths);
-  # the keys of these same files were the pass above's
-  python3 -I -B "$HERE/tools/leakscan.py" "$HERE" --skip quick-chat --no-keys || st=1
+  # real addresses, ids, personal paths and names too; the keys of these same files were the pass above's
+  python3 -I -B "$HERE/tools/leakscan.py" "$HERE" --no-keys || st=1
   # leakscan without the tool refuses to run (exit 2), and with it finds a key the engine knows (made here, never committed)
   local probe="$dir/probe"; rm -rf "$probe"; mkdir -p "$probe"
   printf 'token: %s\n' "ghp_$(printf 'a%.0s' {1..36})" > "$probe/k.txt"

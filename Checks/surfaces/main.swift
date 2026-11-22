@@ -1,6 +1,6 @@
 // Surfaces checks for cl_audit: one answer about each profile's account (Sources/AccountResolver.swift), written once into its
 // status record, and every screen reading it alike: the menu bar, the Dock icon's menu and panel, the dashboard card, Settings ▸
-// Accounts, the Switch page and quick chat's profile line. Also the Claude app's account (Sources/AppSignIn.swift): its
+// Accounts and the Switch page. Also the Claude app's account (Sources/AppSignIn.swift): its
 // config.json names the account, its log gives the organisation and whether it signed out (an account switched in place and
 // back included; the log's own account line without config.json); old numbers never shown (a stale status line, a passed
 // reset, an expired sign-in); a deleted folder never made again (FolderGuard), and no screen reading the sign-in files itself.
@@ -341,9 +341,6 @@ do {
         let dockLines = DockTileMenu.lines(DockTileMenu.rows(main, mainShow, windowOpen: false), blur: false)
         check((named.map { n in dockLines.contains { $0.hasPrefix("✓ " + n) } } ?? !dockLines.contains { $0.hasPrefix("✓ ") })
               && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree (\(dockLines))")
-        let qcMain = QuickChatTarget(main)
-        check(qcMain.email == want.numbersOwner && qcMain.shownEmail == (want.clash != nil ? named : want.numbersOwner),
-              "\(name): quick chat's process on the folder's account, even when the app decided the one in use; its header names it, except in a clash (the profile's own, as the menus): \(qcMain.shownEmail ?? "none")")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
         check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
               "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
@@ -359,8 +356,8 @@ do {
         let trayKeys = listed.cardTrays().map(\.id)
         let k2 = AccountEntry.switchKey("main", "k2")
         if app.account == u2.account {
-            check(!activeOnStandby && !menuKeys.contains(k2) && !trayKeys.contains(k2) && QuickChatSwitchOffer.best(main)?.key != k2,
-                  "\(name): u2 (in use) is on no standby list: Settings, card trays, Dock and menu bar menus, Switch account ›, quick chat")
+            check(!activeOnStandby && !menuKeys.contains(k2) && !trayKeys.contains(k2),
+                  "\(name): u2 (in use) is on no standby list: Settings, card trays, Dock and menu bar menus, Switch account ›")
         } else {
             check(listed.standby.map(\.id) == main.standby.map(\.id) && menuKeys.contains(k2), "\(name): the standby list is as it was")
         }
@@ -728,9 +725,6 @@ do {
         let panel = dockPanelOf(p, show)         // (through the Dock app's own detailsInfo, as the Dock icon builds it)
         check(panel.weekly == nil && panel.fiveHour == nil && panel.needsLogin && !panel.activeLit, "\(what): the Dock panel has no numbers, Sign in…, the lamp off")
         check(panel.noNumbers == "Sign-in expired", "\(what): the Dock panel's age line says Sign-in expired, never Reading usage…")
-        let target = QuickChatTarget(p), level = QuickChatLevel(Usage.of(rec), now: now)
-        check(target.loginWords == "sign-in expired" && level.week == nil && level.fiveHour == nil && level.full(now) == nil,
-              "\(what): quick chat's line says sign-in expired, no level")
     }
     noNumbersAnywhere("the saved record")
 
@@ -775,8 +769,6 @@ do {
     check(u.current(now: now).fiveHour == nil && u.current(now: now).weekly == 53, "a Usage past a reset drops that limit")
     u.fiveHourResets = now.addingTimeInterval(60)
     check(u.current(now: now).fiveHour == 100, "…and keeps one whose reset is ahead")
-    var ql = QuickChatLevel(nil); ql.week = 99; ql.weekResets = now.addingTimeInterval(-1)
-    check(ql.shown(now).percent == nil && ql.current(now).week == nil, "quick chat: a kept week past its reset is neither shown nor merged")
     // numbers read a minute ago, then the sign-in lost: none, expired or signed out alike, when they were read kept
     var e = a; e.state = "expired"; e.fiveHourResets = now.addingTimeInterval(600); e.updatedAt = now.addingTimeInterval(-60)
     check(e.current(now: now).fiveHour == nil && e.current(now: now).weekly == nil && e.current(now: now).updatedAt == e.updatedAt,
@@ -808,8 +800,6 @@ do {
         check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
         check(rec?.needsLogin == true && rec?.fiveHour == nil && show.noNumbersWords == "Signed out",
               "\(what): the Dock panel (from the same record): no numbers, Sign in…, its age line says Signed out")
-        let q = QuickChatTarget(p), ql2 = QuickChatLevel(Usage.of(rec), now: now)
-        check(q.loginWords == "no Claude Code sign-in" && ql2.week == nil && ql2.fiveHour == nil, "\(what): quick chat's line says so, no level")
     }
     noneSignedOut("a signed-out record", keepsWhen: true)
     UsageReader.testPoster = { _, _, _, _, _ in 0 }        // no alert leaves the check
@@ -827,8 +817,8 @@ do {
     let back = Store.status(for: p)
     check(outReader.state == .ok && back?.state == "ok" && back?.weekly == 64 && back?.fiveHour == 7,
           "a good read: the numbers come back")
-    check(Usage.of(back)?.weekly == 64 && cardRow(p).weekly == 64 && !cardRow(p).needsLogin
-          && QuickChatTarget(p).loginWords == nil, "…on the menu bar, the card and quick chat alike, without Sign in…")
+    check(Usage.of(back)?.weekly == 64 && cardRow(p).weekly == 64 && !cardRow(p).needsLogin,
+          "…on the menu bar and the card alike, without Sign in…")
     check(preview(p, status: back, sample: false).tiffRepresentation != preview(p, status: Store.status(for: p).map { var s = $0; s.dropNumbers(); return s }, sample: false).tiffRepresentation,
           "…and in the Dock icon's preview: the record's own numbers (7 % and 64 %), not a blank tile")
     let goodPanel = samplePanel(p, status: back), samplePanelNow = samplePanel(p, status: nil, sample: true)
@@ -857,7 +847,7 @@ do {
     let widgetSrc = src.deletingLastPathComponent().appendingPathComponent("Widget")
     // (the Dock's own file too: its tiles are drawn from the record, like the icon app's)
     let surfaceFiles = ["MenuBar.swift", "IconApp.swift", "Details.swift", "SwitchMenu.swift", "SwitchView.swift", "SwitchPage.swift",
-                        "QuickChat.swift", "QuickChatViews.swift", "QuickChatCard.swift", "QuickChatLevel.swift", "Dock.swift"]
+                        "Dock.swift"]
     // the sign-in files, and the folder's address read from .claude.json (`Account.expectedEmail(configDir:)` and the `expectedEmail()`
     // that calls it): a screen takes the expected address from the status record (`status.expectedEmail`)
     let fileReads = [".claude.json", "config.json", "main.log", "Logs/Claude", "claudeJSON(", "signedInSeat(", "lastKnownAccountUuid",
@@ -907,8 +897,7 @@ do {
         ("Config.swift", "static func startLogin(", ".startSignIn(", "login"),
         ("SignInWindow.swift", "static func start(", "run.start(", "the sign-in window"),            // (ClaudeSignIn: the guard once, then its own)
         ("Launcher.swift", "static func openClaude(", "openApplication(", "the Claude window"),
-        ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal"),
-        ("QuickChatEngine.swift", "func start(environment", "r.start(", "quick chat")]          // (its claude: Runs' RunningProgram)
+        ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal")]
     for (f, a, launch, what) in launchers {
         let b = body(f, from: a, until: launch)
         check(!b.isEmpty && b.contains("FolderGuard.mayLaunch("), "\(what): FolderGuard is asked before it launches")
@@ -929,7 +918,7 @@ do {
             launchSites.append("\(f):\(i + 1)")
         }
     }
-    check(launchSites.allSatisfy { s in ["Config.swift", "Launcher.swift", "QuickChatEngine.swift"].contains { s.hasPrefix($0) } },
+    check(launchSites.allSatisfy { s in ["Config.swift", "Launcher.swift"].contains { s.hasPrefix($0) } },
           "every place that hands a folder to claude is one of the guarded launchers: \(launchSites)")
     // the plan beside the account in use is the value's (ProfileShow.plan: none in a clash) on the card's Switch menu and the Switch page's
     // in-use box: the helpers are checked on their own (tickedTitle, inUseDetail); this holds the wiring, which a headless run can't draw
@@ -1547,8 +1536,8 @@ do {
     check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
           && AtLimit.tileCountdown(fiveHour: row.fiveHour, fiveHourResets: head?.fiveHourResets, weekly: row.weekly, weeklyResets: head?.weeklyResets) == nil,
           "the card and its tile: no limits, no full panel, no countdown, no red Sign in")
-    check(Usage.of(head) == nil && QuickChatLevel(Usage.of(head), now: now).week == nil,
-          "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
+    check(Usage.of(head) == nil,
+          "the menu bar strip and the Dock icon: no numbers for pat (neutral)")
     check(previewShowsNone(e, head) && panelShowsNone(e, head),
           "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
     check(row.show.splitWords?.key == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!))…" && split?.loginEmail == pat.email,
@@ -1597,7 +1586,7 @@ do {
     check(started && launches == ["login \(Account(e).configDir)"] && scripts.first?.contains(pat.email!) == true && scripts.first?.contains(mo.email!) == false,
           "the key's login: launched once on the folder, pat's address in it: \(launches)")
     ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
-    // the menus' and quick chat's Sign in, wired for real (ClaudeCLI.logIn(profile:): its claude found, the guard asked, the
+    // the menus' Sign in, wired for real (ClaudeCLI.logIn(profile:): its claude found, the guard asked, the
     // script made; nothing runs): pat's address, never mo's; with the app's account known by its id only, no address at all
     let keepLocator = ClaudeLocator.current
     ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { ["/usr/bin/false"] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
@@ -2125,7 +2114,7 @@ MainActor.assumeIsolated {
     try? Store.save([])
 }
 
-// ============ 10. quick chat and the alerts through the one Headline (ProfileCore step 3d) ============
+// ============ 10. the alerts through the one Headline (ProfileCore step 3d) ============
 do {
     let pat = Seat(account: uuid(41), organization: uuid(81), email: "pat@example.com")
     let mo = Seat(account: uuid(42), organization: uuid(82), email: "mo@example.com")
@@ -2159,11 +2148,11 @@ do {
     let fullPost = posts.first { $0.title.contains("full") }
     check(fullPost?.key == AccountEntry.switchKey("qa", "kpat"),
           "the full alert offers pat, never mo (in use): \(fullPost.map { "\($0.title) → \($0.key ?? "none")" } ?? "no full alert")")
-    // quick chat and the alert make the one offer (the record is saved by now)
-    check(QuickChatSwitchOffer.best(e)?.key == AccountEntry.switchKey("qa", "kpat") && e.fullOffer()?.key == fullPost?.key,
-          "quick chat's offer is the alert's: \(QuickChatSwitchOffer.best(e)?.key ?? "none")")
+    // the profile's own full-limit offer is the alert's (the record is saved by now)
+    check(e.fullOffer()?.key == AccountEntry.switchKey("qa", "kpat") && e.fullOffer()?.key == fullPost?.key,
+          "the profile's offer is the alert's: \(e.fullOffer()?.key ?? "none")")
     var onlyMo = e; onlyMo.standby = [e.standby[0]]
-    check(onlyMo.fullOffer() == nil && QuickChatSwitchOffer.best(onlyMo) == nil, "only the account in use on standby: no offer anywhere")
+    check(onlyMo.fullOffer() == nil, "only the account in use on standby: no offer anywhere")
     var byAddress = e; byAddress.standby = [StandbyAccount(email: "lee@example.com", id: "klee")]
     check(byAddress.fullOffer() == nil, "an account remembered by its address only is never offered")
     r.stop()
@@ -2185,83 +2174,6 @@ do {
     r2.stop()
     UsageReader.testPoster = nil
 
-    // quick chat's live numbers count only while the Headline says the record's are the profile's
-    func rec(_ resolved: ResolvedAccount?, unconfirmed: Bool = false) -> IconStatus {
-        var s = IconStatus(state: "ok"); s.loginEmail = mo.email; s.numbersOwner = mo.email; s.weekly = 30
-        s.weeklyResets = now.addingTimeInterval(2 * 86400); s.noFiveHour = true; s.updatedAt = now; s.resolved = resolved
-        s.ownerUnconfirmed = unconfirmed ? true : nil
-        return s
-    }
-    let own = AccountResolver.resolve(e, among: [e], app: .unknown, code: mo, loginEmail: mo.email, names: [:], now: now)
-    _ = Store.writeStatus("qa", rec(own))
-    check(QuickChatTarget(e, now: now).liveCounts, "the profile's own numbers: Claude Code's live ones after an answer count")
-    _ = Store.writeStatus("qa", rec(own, unconfirmed: true))
-    check(!QuickChatTarget(e, now: now).liveCounts, "numbers whose account isn't confirmed: the live ones don't count (never full from them)")
-    var moved = own; moved.readStale = true
-    _ = Store.writeStatus("qa", rec(moved))
-    check(!QuickChatTarget(e, now: now).liveCounts, "a reading the sign-in moved on from: the live ones don't count")
-    var inSplit = own; inSplit.fromApp = true; inSplit.account = pat.account.lowercased(); inSplit.email = pat.email; inSplit.differs = true
-    _ = Store.writeStatus("qa", rec(inSplit))
-    check(Headline.split(Store.status("qa")!.owner) != nil && !QuickChatTarget(e, now: now).liveCounts,
-          "the split: Claude Code's live limits aren't the profile's")
-    check(QuickChatTarget(e, now: now).split, "...and the target knows it is the split")
-    var clashed = own; clashed.clash = "Home"
-    _ = Store.writeStatus("qa", rec(clashed))
-    check(!QuickChatTarget(e, now: now).liveCounts && !QuickChatTarget(e, now: now).split,
-          "a clash (the folder on another profile's account in use): the live ones are that profile's, not this one's")
-    var signedOut = rec(own); signedOut.state = "noLogin"
-    _ = Store.writeStatus("qa", signedOut)
-    check(!QuickChatTarget(e, now: now).liveCounts, "signed out: the live ones don't count")
-    try? fm.removeItem(at: Store.statusFolder.appendingPathComponent("qa.json"))
-    check(!QuickChatTarget(e, now: now).liveCounts, "no record yet: the live ones don't count")
-
-    // the merge itself: the record's level alone unless the live numbers count, for the same account
-    var record = QuickChatLevel(nil); record.noFiveHour = true                  // the record shows no numbers
-    var live = QuickChatLevel(nil); live.week = 100; live.weekResets = now.addingTimeInterval(86400); live.refusedUntil = now.addingTimeInterval(600)
-    let notCounted = QuickChatLevel.kept(record: record, shown: live, sameAccount: true, counts: false, refusals: false, now: now)
-    check(notCounted?.week == nil && notCounted?.refusedUntil == nil && notCounted?.full(now) == nil,
-          "the split: live numbers never bring back numbers the record doesn't show (the old merge did), nor a refusal")
-    let refusalOnly = QuickChatLevel.kept(record: record, shown: live, sameAccount: true, counts: false, refusals: true, now: now)
-    check(refusalOnly?.week == nil && refusalOnly?.refusedUntil != nil && refusalOnly?.full(now) != nil,
-          "numbers that don't count yet (no record, not confirmed): no live percent, but Claude Code's refusal still holds the bar")
-    check(QuickChatLevel.kept(record: record, shown: live, sameAccount: false, counts: true, refusals: true, now: now)?.week == nil,
-          "another account since: the record's level alone")
-    let counted = QuickChatLevel.kept(record: record, shown: live, sameAccount: true, counts: true, refusals: true, now: now)
-    check(counted?.week == 100 && counted?.refusedUntil != nil && counted?.full(now) != nil, "counted, same account: Claude Code's fuller week stays")
-    var lower = QuickChatLevel(nil); lower.week = 20; lower.weekResets = now.addingTimeInterval(86400)
-    var higher = lower; higher.week = 60
-    check(QuickChatLevel.kept(record: higher, shown: lower, sameAccount: true, counts: true, refusals: true, now: now)?.week == 60,
-          "the record's fuller reading wins")
-    var beforeReset = live; beforeReset.weekResets = now.addingTimeInterval(-60)
-    check(QuickChatLevel.kept(record: record, shown: beforeReset, sameAccount: true, counts: true, refusals: true, now: now)?.week == nil,
-          "a live percent from before its reset is never kept")
-
-    // Claude Code's own limit event when its numbers don't count: the refusal and its real reset, never the percent
-    var event = QuickChatLevel(nil); event.noFiveHour = false
-    let soon = now.addingTimeInterval(8 * 60)
-    event.apply(type: "five_hour", used: 1, status: "rejected", resets: soon, counts: false)
-    check(event.fiveHour == nil && event.refusedUntil == soon && event.full(now)?.resets == soon,
-          "a refusal while the numbers don't count: held until its own reset (8 minutes), no percent")
-    event.apply(type: "five_hour", used: 0.2, status: "allowed", resets: soon, counts: false)
-    check(event.refusedUntil == nil && event.fiveHour == nil, "allowed again: the hold goes")
-    event.apply(type: "five_hour", used: 0.42, status: "allowed", resets: soon, counts: true)
-    check(event.fiveHour == 42 && event.fiveHourResets == soon, "numbers that count: the percent and its reset, as before")
-
-    // the model: a refusal holds the bar whatever the record says; the offer comes only from numbers that count
-    let model = QuickChatModel()
-    var t = QuickChatTarget(e, now: now); t.liveCounts = false; t.split = false
-    model.target = t
-    var refused = QuickChatLevel(nil); refused.refusedUntil = now.addingTimeInterval(600)
-    model.level = refused
-    let offered = QuickChatSwitchOffer(key: "qa~kpat", address: "pat@example.com", words: "")
-    model.update(target: t, level: QuickChatLevel(nil), offer: { offered })
-    check(model.blocked && model.offer == nil, "a refusal before the numbers count: the bar holds, but no offer (it could name the account in use)")
-    var counting = t; counting.liveCounts = true
-    model.update(target: counting, level: QuickChatLevel(nil), offer: { offered })
-    check(model.blocked && model.offer == offered, "numbers that count: the bar holds and offers the switch")
-    var inTheSplit = t; inTheSplit.split = true
-    model.update(target: inTheSplit, level: QuickChatLevel(nil), offer: { offered })
-    check(!model.blocked && model.offer == nil, "the split: Claude Code's refusal is its account's, never the profile's limit")
 }
 
 // ============ 11. ClaudeFiles: the one reader of .claude.json's account, the one lister of the window's sessions ============
@@ -2508,26 +2420,8 @@ do {
     let clashPanel = dockPanelOf(e, clashNone.row.show)         // (through the Dock app's own detailsInfo)
     check(clashNone.row.show.display.usage == nil && clashPanel.noNumbers == "No usage: Terminal is on Other's account",
           "a clash with no numbers: the Dock panel's age line says no usage here and whose account, never Reading usage…: \(clashPanel.noNumbers ?? "-")")
-    // quick chat in a clash: its header names the profile's own account (u1), never the folder's (u3); its `claude` process,
-    // the kept level's account and the switch wait follow the folder's u3 (by its id and organisation), so moving back, which
-    // changes it, replaces the process
-    func qkey(_ t: QuickChatTarget) -> QuickChatProcessKey { t.processKey(claude: "/c", model: "m", effort: nil) }
-    let clashChat = QuickChatTarget(e, now: now)
-    check(clashChat.clash && clashChat.email == u3.email && clashChat.shownEmail == u1.email
-          && clashChat.account?.account == u3.account.lowercased() && clashChat.account?.organization == u3.organization?.lowercased(),
-          "a clash: quick chat's header names the profile's own u1, its process the folder's u3 (id and organisation): \(clashChat.shownEmail ?? "-") / \(clashChat.email ?? "-")")
-    var seatless = e; seatless.seat = nil
-    let noSeatChat = QuickChatTarget(seatless, now: now)
-    check(noSeatChat.clash && noSeatChat.shownEmail == nil && noSeatChat.email == u3.email,
-          "a clash with no own account known: the header names no address, never the folder's u3: \(noSeatChat.shownEmail ?? "none")")
-    _ = Store.writeStatus(e.id, rec())
-    let backChat = QuickChatTarget(e, now: now)
-    check(backChat.email == u1.email && backChat.shownEmail == u1.email && !backChat.clash && !qkey(backChat).keeps(qkey(clashChat)),
-          "moved back to the profile's own account: quick chat's process key changes, so the open process is replaced")
-    // the same when the Claude app decided the account in use: the app on the profile's own u1, the folder on Other's u3.
-    // The header names u1, the process runs on the folder's u3 (its key, the kept level's account, the switch wait); moving
-    // the folder back to u1 changes the key. The split (the app on u2, the folder on u1), unchanged: the header and the
-    // process on u1; Claude Code signing in to u2 changes the key
+    // the record keeps the folder account's organisation beside its id; when the Claude app decided the account in use (the app
+    // on the profile's own u1, the folder on Other's u3) the record names the clash and says the app decided
     var win = e; win.claudeWindow = true
     func appRec(_ app: AppSignIn.Login, code: Seat) -> IconStatus {
         var s = rec(week: nil, five: nil, login: code.email, code: code)
@@ -2535,106 +2429,17 @@ do {
         return s
     }
     _ = Store.writeStatus(e.id, appRec(appU1, code: u3))
-    let qcAppClash = QuickChatTarget(win, now: now)
-    check(Store.status(e.id)?.resolved?.fromApp == true && Store.status(e.id)?.resolved?.clash == "Other"
-          && qcAppClash.clash && qcAppClash.email == u3.email && qcAppClash.shownEmail == u1.email,
-          "an app-decided clash: quick chat's header on the app's u1 (the profile's own), its process on the folder's u3: \(qcAppClash.shownEmail ?? "-") / \(qcAppClash.email ?? "-")")
-    _ = Store.writeStatus(e.id, appRec(appU1, code: u1))
-    let appBackChat = QuickChatTarget(win, now: now)
-    check(appBackChat.email == u1.email && appBackChat.shownEmail == u1.email && !appBackChat.clash
-          && !qkey(appBackChat).keeps(qkey(qcAppClash)) && !QuickChatTarget.sameAccount(appBackChat.account, qcAppClash.account),
-          "an app-decided clash moved back to u1: the process key changes (the old process on u3 isn't kept, nor its refusals) and the switch wait sees the move")
-    _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
-    let splitChat = QuickChatTarget(win, now: now)
-    check(splitChat.split && !splitChat.clash && splitChat.email == u1.email && splitChat.shownEmail == u1.email,
-          "the split, unchanged: quick chat's header and process on Claude Code's own u1, never the app's u2: \(splitChat.shownEmail ?? "-")")
-    _ = Store.writeStatus(e.id, appRec(appU2, code: u2))
-    let splitDone = QuickChatTarget(win, now: now)
-    check(!splitDone.split && splitDone.email == u2.email && !qkey(splitDone).keeps(qkey(splitChat)),
-          "the split ended, Claude Code signed in to the app's u2: the process key changes")
-
-    // the key by the folder's seat: its address in capitals, readings alternating between the status line (no address of
-    // its own) and the endpoint, and a record with no seat (its address only) are one account; one login's Team seat (u1's
-    // id in another organisation) is another
+    check(Store.status(e.id)?.resolved?.fromApp == true && Store.status(e.id)?.resolved?.clash == "Other",
+          "an app-decided clash: the record names Other's account and says the app decided")
     _ = Store.writeStatus(e.id, rec())
-    let base = QuickChatTarget(e, now: now)
-    check(Store.status(e.id)?.resolved?.codeOrganization == u1.organization?.lowercased() && base.account?.organization == u1.organization?.lowercased(),
-          "the record keeps the folder account's organisation beside its id, and quick chat's key takes it")
-    let caps = Seat(account: u1.account.uppercased(), organization: u1.organization?.uppercased(), email: u1.email!.uppercased())
-    _ = Store.writeStatus(e.id, rec(login: caps.email, code: caps))
-    let loud = QuickChatTarget(e, now: now)
-    check(loud.email == caps.email && qkey(loud).keeps(qkey(base)) && qkey(base).keeps(qkey(loud)),
-          "the folder's address, id and organisation in capitals: the same seat, the process kept")
-    _ = Store.writeStatus(e.id, rec(login: nil, code: u1))
-    let viaLine = QuickChatTarget(e, now: now)
-    _ = Store.writeStatus(e.id, rec(login: u1.email!.uppercased(), code: u1))
-    let viaEndpoint = QuickChatTarget(e, now: now)
-    check(viaLine.email != viaEndpoint.email && qkey(viaLine).keeps(qkey(viaEndpoint)) && qkey(viaEndpoint).keeps(qkey(viaLine)),
-          "the status line, then the endpoint (its address in another case), then the status line: the process kept: \(viaLine.email ?? "-") / \(viaEndpoint.email ?? "-")")
-    _ = Store.writeStatus(e.id, rec(login: u1.email!.uppercased(), code: nil))
-    let noSeatRec = QuickChatTarget(e, now: now)
-    check(noSeatRec.account?.account == nil && noSeatRec.account?.organization == nil && qkey(noSeatRec).keeps(qkey(base)),
-          "a record with no seat (its address only): matched by the address, any case: the process kept")
-    // a record from before codeOrganization (the gap before the agent's first write after an update): the organisation
-    // isn't known there, so it is left out of the comparison: the same key, no restart, and no "switched to" the same account
-    var noOrg = rec(); noOrg.resolved?.codeOrganization = nil
-    _ = Store.writeStatus(e.id, noOrg)
-    let oldRec = QuickChatTarget(e, now: now)
-    // (H2: a process started on such a record isn't kept once the organisation is known again: it is asked again, fail closed;
-    // one started on the known seat is kept through the record that doesn't know it)
-    check(oldRec.account?.organization == nil && qkey(oldRec).keeps(qkey(base)) && !qkey(base).keeps(qkey(oldRec))
-          && QuickChatTarget.sameAccount(oldRec.account, base.account),
-          "a record with no organisation for the folder's account: the same seat as with it; a process started on it isn't kept for the known seat, one started on the known seat is")
-    let team = Seat(account: u1.account, organization: uuid(301), email: u1.email)
-    _ = Store.writeStatus(e.id, rec(code: team))
-    let teamChat = QuickChatTarget(e, now: now)
-    check(teamChat.email == base.email && !qkey(teamChat).keeps(qkey(base)) && !QuickChatTarget.sameAccount(teamChat.account, base.account),
-          "one login's personal and Team seats: two keys, the process replaced")
+    check(Store.status(e.id)?.resolved?.codeOrganization == u1.organization?.lowercased(),
+          "the record keeps the folder account's organisation beside its id")
     // the organisation in three states: an id, none ("": the folder's record names the seat with no organisation) and not
-    // known (nil: a record from before codeOrganization). A seat with none and the same login's Team seat are two keys both
-    // ways; none and none one (an empty organisation as none, any case); an id and another id two; not known with either one
+    // known (nil: a record from before codeOrganization)
     let bare = Seat(account: u1.account, organization: nil, email: u1.email)
     _ = Store.writeStatus(e.id, rec(code: bare))
-    let bareChat = QuickChatTarget(e, now: now)
-    check(Store.status(e.id)?.resolved?.codeOrganization == "" && bareChat.account?.organization == "" && bareChat.account?.account == u1.account.lowercased(),
-          "a seat its record names with no organisation: the record keeps \"\" (none, known), quick chat's key takes it: \(Store.status(e.id)?.resolved?.codeOrganization ?? "nil")")
-    check(!qkey(bareChat).keeps(qkey(teamChat)) && !qkey(teamChat).keeps(qkey(bareChat))
-          && !QuickChatTarget.sameAccount(bareChat.account, teamChat.account) && !QuickChatTarget.sameAccount(teamChat.account, bareChat.account),
-          "one login's seat with no organisation and its Team seat: two keys both ways, the process replaced")
-    let emptyOrg = Seat(account: u1.account.uppercased(), organization: "", email: u1.email!.uppercased())
-    _ = Store.writeStatus(e.id, rec(login: emptyOrg.email, code: emptyOrg))
-    let emptyChat = QuickChatTarget(e, now: now)
-    check(emptyChat.account?.organization == "" && qkey(emptyChat).keeps(qkey(bareChat)) && qkey(bareChat).keeps(qkey(emptyChat))
-          && QuickChatTarget.sameAccount(emptyChat.account, bareChat.account),
-          "no organisation and an empty one (the id and address in capitals): one seat, the process kept")
-    check(qkey(oldRec).keeps(qkey(bareChat)) && !qkey(bareChat).keeps(qkey(oldRec)) && qkey(oldRec).keeps(qkey(teamChat)) && !qkey(teamChat).keeps(qkey(oldRec))
-          && QuickChatTarget.sameAccount(oldRec.account, bareChat.account) && QuickChatTarget.sameAccount(teamChat.account, oldRec.account),
-          "a record from before codeOrganization with a seat of none or a Team seat: one seat; a process started on the unknown one isn't kept for none (\"\") nor the Team id (H2, fail closed), the other way it is")
-    check(!qkey(teamChat).keeps(qkey(base)) && !qkey(base).keeps(qkey(teamChat)), "two organisation ids: two keys both ways")
-    // the whole table of the organisation's three states (an id, "" none, nil not known) for one login (u1's id and address), both
-    // ways: only an id against another id, or an id against none, is two seats; not known is left out whichever side it is on (so it
-    // matches none, an id and itself), and none matches none. Another login (another id, another address) is never the same, and a
-    // missing account matches only a missing one
-    do {
-        func ident(_ org: String?, id: String? = u1.account, address: String? = u1.email) -> AccountIdentity {
-            AccountIdentity(account: id, email: address, organization: org, source: .guessed)
-        }
-        let orgA = uuid(301).lowercased(), orgB = uuid(302).lowercased()
-        let states: [(String, String?)] = [("an id", orgA), ("another id", orgB), ("none", ""), ("not known", nil)]
-        // (the rows' own diagonal and the not-known row and column are same; an id against another id, and an id against none, are not)
-        var wrong: [String] = []
-        for (an, a) in states { for (bn, b) in states {
-            let want = !(a != nil && b != nil && (a ?? "") != (b ?? ""))
-            if QuickChatTarget.sameAccount(ident(a), ident(b)) != want { wrong.append("\(an) / \(bn): want \(want)") }
-        } }
-        check(wrong.isEmpty, "the organisation's states against each other, one login, both ways: \(wrong)")
-        var strangers: [String] = []
-        for (an, a) in states { for (bn, b) in states
-            where QuickChatTarget.sameAccount(ident(a), ident(b, id: uuid(9).lowercased(), address: "zed@example.com")) { strangers.append("\(an) / \(bn)") } }
-        check(strangers.isEmpty, "another login (another id and address) is never the same, whatever the organisation: \(strangers)")
-        check(QuickChatTarget.sameAccount(nil, nil) && !QuickChatTarget.sameAccount(nil, ident("")) && !QuickChatTarget.sameAccount(ident(nil), nil)
-              && !QuickChatTarget.sameAccount(nil, ident(nil)), "no account is the same only as none on the other side")
-    }
+    check(Store.status(e.id)?.resolved?.codeOrganization == "",
+          "a seat its record names with no organisation: the record keeps \"\" (none, known): \(Store.status(e.id)?.resolved?.codeOrganization ?? "nil")")
     // the status record's bytes keep none ("") apart from not known (nil: the key left out)
     let noneRec = rec(code: bare)
     let noneBytes = StatusCodec.encode(noneRec)
@@ -2660,448 +2465,7 @@ do {
     check(fromAbsent == "" && fromNull == "" && fromEmpty == "" && fromID == uuid(301).lowercased() && fromNone == nil,
           "the resolver over .claude.json: absent, null and \"\" are none, an id is the id, no record not known: \([fromAbsent, fromNull, fromEmpty, fromID, fromNone].map { $0.map { "\"\($0)\"" } ?? "nil" })")
 
-    // the model, as the agent drives it (update) and as Claude Code's events reach it (handle). In a clash, Other's limit
-    // event and refusal never mark the header's account full or hold typing, and the bubble names no account as full;
-    // outside a clash they do (and the bubble says this account's week); in the split, the bubble as in a clash
-    let soon = now.addingTimeInterval(3600)
-    var filled = 0
-    func chat(_ t: QuickChatTarget, level: QuickChatLevel?) -> QuickChatModel {
-        let m = QuickChatModel(); m.resolveClaude = { _ in }; m.limitFilled = { filled += 1 }
-        m.update(target: t, level: level, offer: { nil })
-        // (as `ask` records it: what the turn is asked on)
-        m.turns = [QuickChatTurn(question: "q", asked: QuickChatAsked(account: t.account, other: m.otherLimit))]
-        return m
-    }
-    func refuse(_ m: QuickChatModel) {
-        m.handle(.message(text: "You've hit your limit", model: "claude-haiku-5-5", error: "rate_limit"))
-        m.handle(.done(isError: true, text: "You've hit your limit", ms: 5, session: "s"))
-    }
-    // the last turn's bubble, as QCTurnView draws it (its problem as the turn keeps it)
-    func bubbleView(_ m: QuickChatModel) -> QCProblemView {
-        QCProblemView(problem: m.turns.last?.problem ?? .noProfile, model: m, answered: true)
-    }
-    func bubble(_ m: QuickChatModel) -> String { bubbleView(m).title }
-    /// A turn's stored bubble (an older one: not the last), as QCTurnView draws it: its title and next words.
-    func stored(_ m: QuickChatModel, _ i: Int = 0) -> String {
-        let v = QCProblemView(problem: m.turns[i].problem ?? .noProfile, model: m, answered: false, last: i == m.turns.count - 1)
-        return v.title + "|" + v.more
-    }
-    /// The bar's own live bubble under the chat, as QCWindow draws it.
-    func liveBelow(_ m: QuickChatModel) -> QCProblemView {
-        QCProblemView(problem: .limitFull(m.fullNow), model: m, answered: false, live: true, keyOnly: m.limitRepeated)
-    }
-    /// Whose the last turn's full limit is (nil: the account in use's, or none).
-    func whose(_ m: QuickChatModel) -> QuickChatOtherLimit? {
-        if case .limitFull(let f)? = m.turns.last?.problem { return f.other }
-        return nil
-    }
-    let cardOffer = QuickChatSwitchOffer(key: "card~k2", address: "ultra-2@example.com", words: "")
-    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
-    let inClash = chat(QuickChatTarget(e, now: now), level: QuickChatLevel(nil))
-    inClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
-    check(inClash.inClash && inClash.level?.full() == nil && !inClash.blocked, "a clash: Other's limit event marks nothing full, typing stays free")
-    refuse(inClash)
-    inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(nil), offer: { nil })
-    let clashBubble = bubble(inClash), clashMore = bubbleView(inClash).more
-    check(whose(inClash) == .clash(name: "Other", own: true) && inClash.level?.full() == nil && !inClash.blocked
-          && inClash.offer == nil && filled == 0
-          && clashBubble == QCProblemView.otherLimitTitle && !clashBubble.contains("This account") && !clashBubble.contains("@"),
-          "a clash: Other's refusal is said, but nothing full, no hold, no offer, no look for one; the bubble names no account as full: \(clashBubble)")
-    check(clashMore.contains("Other's account") && clashMore.contains("Move it back to Card's own account on the Switch page")
-          && !clashMore.contains("@"),
-          "a clash: the bubble's next words name whose account (Other's, no address) and the way out: \(clashMore)")
-    // with no account of its own known: no "move it back", Other's account named and the Switch page pointed to
-    let seatlessChat = chat(QuickChatTarget(seatless, now: now), level: QuickChatLevel(nil))
-    refuse(seatlessChat)
-    let seatlessMore = bubbleView(seatlessChat).more
-    check(whose(seatlessChat) == .clash(name: "Other", own: false) && seatlessMore.contains("Other's account")
-          && seatlessMore.contains("Switch page") && !seatlessMore.contains("Move it back") && !seatlessMore.contains("@"),
-          "a clash with no own account known: no move back, Other's account and the Switch page: \(seatlessMore)")
-    // the folder moves back to u1 afterwards: the old bubble keeps its words (it never calls u1 full)
-    _ = Store.writeStatus(e.id, rec())
-    inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
-    check(!inClash.inClash && bubble(inClash) == clashBubble && bubbleView(inClash).more == clashMore,
-          "moved back to u1 after a clash's refusal: the old bubble's words are unchanged: \(bubble(inClash))")
-    // …and u1's own week is full: the chat draws the bar's bubble below (this account's week, with the switch), since the
-    // last turn's bubble is the clash's, which says nothing of u1
-    _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 3 * 3600))
-    inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { cardOffer })
-    let below = liveBelow(inClash)
-    check(inClash.blocked && inClash.limitBubbleBelow && !inClash.limitRepeated && below.title.hasPrefix("This account's week is full")
-          && inClash.offer == cardOffer && below.more.contains("ultra-2") && bubble(inClash) == clashBubble,
-          "a clash's refusal, then back on u1 with its week full: the bar's bubble shows below, with the switch: \(below.title) \(below.more)")
-    _ = Store.writeStatus(e.id, rec())
-    let ownLevel = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
-    let outside = chat(QuickChatTarget(e, now: now), level: ownLevel)
-    check(outside.liveCounts && !outside.inClash && !outside.blocked, "outside a clash, the profile's own numbers: free to type")
-    outside.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
-    check(outside.level?.full()?.kind == .week && outside.blocked, "outside a clash: Claude Code's limit event marks the week full and holds typing")
-    let refusedOnly = chat(QuickChatTarget(e, now: now), level: ownLevel)
-    refuse(refusedOnly)
-    let ownBubble = bubble(refusedOnly)
-    check(refusedOnly.level?.full() != nil && refusedOnly.blocked && filled == 1 && ownBubble.hasPrefix("This account's ")
-          && !refusedOnly.limitBubbleBelow,
-          "outside a clash: a refusal holds typing, the controller looks for an offer, the bubble says this account's limit: \(ownBubble)")
-    // the turn's bubble is fixed as the turn ends: the limit and until when, no offer, no key. The offer comes later, in
-    // the live bubble below, which says only the offer and its key while the turn's bubble names the same hold. Then
-    // Switch account… with a question typed, the folder on u2: the question goes, the old bubble unchanged, nothing below
-    let heldWords = stored(refusedOnly)
-    refusedOnly.update(target: QuickChatTarget(e, now: now), level: ownLevel, offer: { cardOffer })
-    let keyLine = liveBelow(refusedOnly)
-    check(refusedOnly.offer == cardOffer && heldWords.contains("back") && heldWords.hasSuffix("|") && stored(refusedOnly) == heldWords
-          && refusedOnly.limitBubbleBelow && refusedOnly.limitRepeated && keyLine.title.isEmpty && keyLine.more.contains("ultra-2"),
-          "a refusal: its bubble says until when, with no offer; the offer and its key come below, alone: \(heldWords) / \(keyLine.more)")
-    refusedOnly.field = "next"
-    refusedOnly.switchAccount()
-    _ = Store.writeStatus(e.id, rec(week: 10, login: u2.email, code: u2))
-    refusedOnly.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
-    check(refusedOnly.turns.count == 2 && !refusedOnly.blocked && !refusedOnly.limitBubbleBelow && stored(refusedOnly) == heldWords,
-          "a refusal, a switch, the question sent on u2: the old bubble's words are unchanged, nothing below: \(stored(refusedOnly))")
-    _ = Store.writeStatus(e.id, rec())
-    _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
-    let inSplit = chat(QuickChatTarget(win, now: now), level: QuickChatLevel(nil))
-    refuse(inSplit)
-    check(inSplit.inSplit && !inSplit.blocked && filled == 1 && bubble(inSplit) == QCProblemView.otherLimitTitle
-          && whose(inSplit) == .split,
-          "the split: the refusal holds nothing, and the bubble names no account as full: \(bubble(inSplit))")
-
-    // a turn's bubble is never rewritten, whatever holds the bar later; the live bubble below says what holds it now:
-    // A. the 5-hour limit refused a turn; it resets, then the week fills
-    _ = Store.writeStatus(e.id, rec())
-    let otherOffer = QuickChatSwitchOffer(key: "card~k3", address: "spare@example.com", words: "")
-    var fiveFull = QuickChatLevel(nil)
-    fiveFull.fiveHour = 100; fiveFull.fiveHourResets = now.addingTimeInterval(3600); fiveFull.week = 60; fiveFull.weekResets = now.addingTimeInterval(2 * 86400)
-    let caseA = chat(QuickChatTarget(e, now: now), level: fiveFull)
-    refuse(caseA)
-    let aWords = stored(caseA)
-    var weekFull = QuickChatLevel(nil)
-    weekFull.fiveHour = 10; weekFull.fiveHourResets = now.addingTimeInterval(5 * 3600); weekFull.week = 100; weekFull.weekResets = now.addingTimeInterval(3 * 3600)
-    caseA.update(target: QuickChatTarget(e, now: now), level: weekFull, offer: { cardOffer })
-    let aBelow = liveBelow(caseA)
-    check(aWords.contains("5-hour limit is full") && stored(caseA) == aWords && caseA.level?.full()?.kind == .week
-          && caseA.limitBubbleBelow && !caseA.limitRepeated && aBelow.title.hasPrefix("This account's week is full") && aBelow.more.contains("ultra-2"),
-          "A: the 5-hour refusal's bubble stays; the week that filled since shows below, with the switch: \(aWords) / \(aBelow.title)")
-    // B. Switch account… with nothing typed; the account switched to is full too
-    let caseB = chat(QuickChatTarget(e, now: now), level: ownLevel)
-    refuse(caseB)
-    let bWords = stored(caseB)
-    caseB.update(target: QuickChatTarget(e, now: now), level: ownLevel, offer: { cardOffer })
-    caseB.switchAccount()
-    _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 5 * 3600, login: u2.email, code: u2))
-    caseB.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { otherOffer })
-    let bBelow = liveBelow(caseB)
-    check(stored(caseB) == bWords && !bWords.contains("spare") && caseB.blocked && caseB.limitBubbleBelow && !caseB.limitRepeated
-          && bBelow.title.hasPrefix("This account's week is full") && bBelow.more.contains("spare") && caseB.turns.count == 1,
-          "B: switched with nothing typed to an account that is full too: the old bubble keeps u1's words; u2's limit and offer show below: \(bBelow.title) \(bBelow.more)")
-    // C. a refusal's made-up hour, then the reading's real reset
-    _ = Store.writeStatus(e.id, rec())
-    let caseC = chat(QuickChatTarget(e, now: now), level: ownLevel)
-    refuse(caseC)
-    let cWords = stored(caseC)
-    _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 3 * 3600))
-    caseC.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { cardOffer })
-    let cBelow = liveBelow(caseC)
-    check(stored(caseC) == cWords && caseC.limitBubbleBelow && !caseC.limitRepeated && !cBelow.title.isEmpty
-          && cBelow.title != String(cWords.prefix { $0 != "|" }) && cBelow.more.contains("ultra-2"),
-          "C: the refusal's bubble keeps its hour; the real reset shows below, with the switch: \(cWords) / \(cBelow.title)")
-    // the same reset said by Claude Code's event (whole seconds) and by a reading (fractions): the bubble below doesn't
-    // say the limit again; a renewal hours later does
-    _ = Store.writeStatus(e.id, rec())
-    let eventReset = Date(timeIntervalSince1970: (now.timeIntervalSince1970 + 2 * 3600).rounded())
-    for (shift, same) in [(0.4, true), (5 * 3600.0, false)] {
-        let m = chat(QuickChatTarget(e, now: now), level: ownLevel)
-        m.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: eventReset))
-        refuse(m)
-        var reading = QuickChatLevel(nil)
-        reading.week = 100; reading.weekResets = eventReset.addingTimeInterval(shift); reading.fiveHour = 12; reading.fiveHourResets = now.addingTimeInterval(3600)
-        m.update(target: QuickChatTarget(e, now: now), level: reading, offer: { cardOffer })
-        check(m.limitRepeated == same && liveBelow(m).title.isEmpty == same,
-              "the event's reset R, a reading's R+\(shift) s: the same limit \(same ? "(the key line alone below)" : "no more (said again below)")")
-    }
-    // a turn asked in the clash (on Other's u3) still running when the folder moves back to u1: u3's limit event and
-    // refusal are judged by what it was asked on: Other's, so u1 is neither held nor called full
-    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
-    let lateClash = chat(QuickChatTarget(e, now: now), level: QuickChatLevel(nil))
-    _ = Store.writeStatus(e.id, rec())
-    lateClash.update(target: QuickChatTarget(e, now: now), level: ownLevel, offer: { nil })
-    let filledBefore = filled
-    lateClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
-    refuse(lateClash)
-    // (its words are decided as they're fixed: the folder is back on u1 by then, so no "move it back")
-    check(!lateClash.inClash && whose(lateClash) == .moved && !lateClash.blocked && lateClash.level?.full() == nil
-          && filled == filledBefore && bubble(lateClash) == QCProblemView.otherLimitTitle && bubbleView(lateClash).more.isEmpty,
-          "asked in the clash, refused after the move back: not u1's, u1 not held nor called full, no move back: \(bubble(lateClash))")
-    // asked on u1, the folder moving to Other's u3 (a clash) before the turn ends: the turn ran on u1, so not "Other's limit"
-    _ = Store.writeStatus(e.id, rec())
-    let intoClash = chat(QuickChatTarget(e, now: now), level: ownLevel)
-    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
-    intoClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(nil), offer: { nil })
-    let filledInto = filled
-    intoClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
-    refuse(intoClash)
-    check(intoClash.inClash && whose(intoClash) == .moved && !intoClash.blocked && filled == filledInto
-          && bubble(intoClash) == QCProblemView.otherLimitTitle && !bubbleView(intoClash).more.contains("Other"),
-          "asked on u1, a clash started before it ended: no one's limit here, never \"Other's limit\", no hold: \(bubbleView(intoClash).more)")
-    // asked outside the split, the split starting mid-turn (the folder stays on u1): no hold, no block
-    _ = Store.writeStatus(e.id, appRec(appU1, code: u1))
-    let lateSplit = chat(QuickChatTarget(win, now: now), level: QuickChatLevel(nil))
-    _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
-    lateSplit.update(target: QuickChatTarget(win, now: now), level: QuickChatLevel(nil), offer: { nil })
-    let filledSplit = filled
-    lateSplit.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
-    refuse(lateSplit)
-    check(lateSplit.inSplit && !lateSplit.blocked && lateSplit.level?.full() == nil && filled == filledSplit
-          && whose(lateSplit) == .split && bubble(lateSplit) == QCProblemView.otherLimitTitle,
-          "asked outside the split, the split started mid-turn: the limit event and refusal hold nothing: \(bubble(lateSplit))")
-    // asked on u1, the folder on u2 (its own standby, no clash) before the turn ends: u1's limit, said as no one's here
-    _ = Store.writeStatus(e.id, rec())
-    let lateMove = chat(QuickChatTarget(e, now: now), level: ownLevel)
-    _ = Store.writeStatus(e.id, rec(week: 10, login: u2.email, code: u2))
-    lateMove.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
-    let filledMove = filled
-    lateMove.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
-    refuse(lateMove)
-    check(!lateMove.inClash && !lateMove.inSplit && whose(lateMove) == .moved && !lateMove.blocked && filled == filledMove
-          && bubble(lateMove) == QCProblemView.otherLimitTitle && bubbleView(lateMove).more.isEmpty,
-          "asked on u1, the folder on u2 before it ended: no account called full, no address, no hold: \(bubble(lateMove))")
-    // another limit with a reset under a minute apart: not the same (said again below)
-    _ = Store.writeStatus(e.id, rec())
-    let kindReset = now.addingTimeInterval(2 * 3600)
-    var fiveAt = QuickChatLevel(nil)
-    fiveAt.fiveHour = 100; fiveAt.fiveHourResets = kindReset; fiveAt.week = 60; fiveAt.weekResets = now.addingTimeInterval(2 * 86400)
-    let otherKind = chat(QuickChatTarget(e, now: now), level: fiveAt)
-    refuse(otherKind)
-    var weekAt = QuickChatLevel(nil)
-    weekAt.fiveHour = 10; weekAt.fiveHourResets = now.addingTimeInterval(9 * 3600); weekAt.week = 100; weekAt.weekResets = kindReset.addingTimeInterval(0.4)
-    otherKind.update(target: QuickChatTarget(e, now: now), level: weekAt, offer: { cardOffer })
-    check(otherKind.level?.full()?.kind == .week && !otherKind.limitRepeated && !liveBelow(otherKind).title.isEmpty,
-          "the 5-hour limit said, then the week with a reset 0.4 s apart: another limit, said again below")
-    // the same limit and reset on another account (the folder on u2 since): not the same, said again below
-    _ = Store.writeStatus(e.id, rec())
-    var weekAtR = QuickChatLevel(nil)
-    weekAtR.week = 100; weekAtR.weekResets = kindReset; weekAtR.fiveHour = 10; weekAtR.fiveHourResets = now.addingTimeInterval(3600)
-    let otherSeat = chat(QuickChatTarget(e, now: now), level: weekAtR)
-    refuse(otherSeat)
-    _ = Store.writeStatus(e.id, rec(week: 10, login: u2.email, code: u2))
-    otherSeat.update(target: QuickChatTarget(e, now: now), level: weekAtR, offer: { cardOffer })
-    check(otherSeat.blocked && otherSeat.level?.full()?.resets == kindReset && !otherSeat.limitRepeated && !liveBelow(otherSeat).title.isEmpty,
-          "the same week and reset, but on u2 since: another account's limit, said again below")
-    _ = Store.writeStatus(e.id, rec())
-
-    // Switch account… with a question waiting: a folder signed out on the way (no id: its address kept, or none) hasn't
-    // moved, so nothing goes and no note names the old address; on another seat (u2) the question goes, the note naming
-    // what the header names; a move into a clash names the profile's own account, never the folder's
-    func typedThenSwitch(_ r: IconStatus) -> (QuickChatModel, () -> Int) {
-        _ = Store.writeStatus(e.id, r)
-        var asked = 0
-        let m = QuickChatModel(); m.resolveClaude = { _ in asked += 1 }
-        let full = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
-        m.update(target: QuickChatTarget(e, now: now), level: full, offer: { QuickChatSwitchOffer(key: "card~k2", address: "ultra-2@example.com", words: "") })
-        m.field = "what's typed"
-        m.switchAccount()
-        return (m, { asked })
-    }
-    func move(_ m: QuickChatModel, _ r: IconStatus, as p: AccountEntry? = nil) {
-        _ = Store.writeStatus(e.id, r)
-        m.update(target: QuickChatTarget(p ?? e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
-    }
-    let fullWeek = rec(week: 100, weekIn: 3 * 3600)
-    let (w1, asked1) = typedThenSwitch(fullWeek)
-    check(w1.blocked && w1.offer != nil, "a full week: the bar holds and offers the switch")
-    move(w1, rec("ok", week: nil, five: nil, login: u1.email, code: nil))
-    move(w1, rec("noLogin", week: nil, five: nil, login: nil, code: nil))
-    check(w1.turns.isEmpty && w1.note == nil && asked1() == 0 && w1.field == "what's typed",
-          "the folder signed out on the way (its address kept, then none): not moved, nothing sent, no note: \(w1.note ?? "none")")
-    move(w1, rec(week: 10, login: u2.email, code: u2))
-    check(w1.turns.map(\.question) == ["what's typed"] && asked1() == 1 && w1.noteText == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
-          "on another seat (u2): what was typed goes, the note names u2 as the header does: \(w1.noteText ?? "none")")
-    // the note is a template kept with the address: the setting flipped AFTER it was made, the drawn text holds nothing of the address
-    check(w1.note?.contains(u2.email!) == false && w1.note?.contains(AccountNames.short(u2.email!)) == false, "the stored note holds no address: \(w1.note ?? "none")")
-    AddressPrivacy.shared.apply(blur: true)
-    check(w1.noteText == "Card switched to hidden address. Sending what you typed.", "the note, hidden since it was made: \(w1.noteText ?? "none")")
-    AddressPrivacy.shared.apply(blur: false)
-    // the same seat in a record with no organisation (from before codeOrganization): not a move, nothing goes
-    let (w3, asked3) = typedThenSwitch(fullWeek)
-    var sameNoOrg = rec(week: 10); sameNoOrg.resolved?.codeOrganization = nil
-    move(w3, sameNoOrg)
-    check(w3.turns.isEmpty && w3.note == nil && asked3() == 0, "the same seat, its organisation not recorded: no \"switched to\" the same account: \(w3.note ?? "none")")
-    // moved into a clash: Claude Code would answer on Other's u3 under a header naming u1, so nothing goes (the stand-in
-    // claude gets no turn), the wait ends, what was typed stays in the field, and the note names no account as answering
-    let clashNote = "Card's Claude Code folder is now on Other's account, so what you typed wasn't sent. Move it back to Card's own account on the Switch page."
-    func unsent(_ m: QuickChatModel, _ asked: () -> Int, _ words: String) -> Bool {
-        m.inClash && asked() == 0 && m.turns.isEmpty && m.field == "what's typed" && m.note == words
-            && m.note?.contains(AccountNames.short(u1.email!)) == false && m.note?.contains(AccountNames.short(u3.email!)) == false
-    }
-    let (w2, asked2) = typedThenSwitch(fullWeek)
-    move(w2, rec(week: nil, five: nil, login: u3.email, code: u3))
-    check(unsent(w2, asked2, clashNote), "moved into a clash (the app not deciding): nothing sent, the question kept, no address: \(w2.note ?? "none")")
-    // still in the clash (another reading): the note stays
-    move(w2, rec(week: nil, five: nil, login: u3.email!.uppercased(), code: u3))
-    check(w2.note == clashNote && asked2() == 0, "another reading of the same clash: the note stays, nothing sent")
-    // the clash told by the profile's id: a record from before clashID (the name only) keeps the note; another profile of the
-    // same name (another id) is another clash: the note goes, nothing sent
-    var clashNoID = rec(week: nil, five: nil, login: u3.email, code: u3); clashNoID.resolved?.clashID = nil
-    move(w2, clashNoID)
-    check(w2.note == clashNote && asked2() == 0, "the same clash in a record without the profile's id: by its name, the note stays")
-    let (w11, asked11) = typedThenSwitch(fullWeek)
-    move(w11, rec(week: nil, five: nil, login: u3.email, code: u3))
-    var twinClash = rec(week: nil, five: nil, login: u3.email, code: u3); twinClash.resolved?.clashID = "other-twin"
-    move(w11, twinClash)
-    check(w11.target?.clashName == "Other" && w11.note == nil && asked11() == 0 && w11.field == "what's typed",
-          "a clash with another profile of the same name (another id): another clash, the note goes, nothing sent: \(w11.note ?? "none")")
-    // …and the clash clearing later (back on u1 with room, then on u2): the note goes, nothing is sent by itself, the
-    // question stays; the person sending it again: it goes
-    move(w2, rec())
-    check(!w2.inClash && asked2() == 0 && w2.turns.isEmpty && w2.field == "what's typed" && w2.note == nil,
-          "the clash cleared (back on u1): its note gone, nothing sent by itself, the question still there: \(w2.note ?? "none")")
-    move(w2, rec(week: 10, login: u2.email, code: u2))
-    check(asked2() == 0 && w2.turns.isEmpty && w2.field == "what's typed" && w2.note == nil,
-          "then on u2: the wait is gone, so nothing goes and no \"switched to\": \(w2.note ?? "none")")
-    w2.send()
-    check(asked2() == 1 && w2.turns.map(\.question) == ["what's typed"] && w2.note == nil && w2.field.isEmpty,
-          "sent again by the person: it goes")
-    // an app-decided clash (the app on the profile's own u1, the folder on Other's u3): the same
-    let (w7, asked7) = typedThenSwitch(fullWeek)
-    move(w7, appRec(appU1, code: u3), as: win)
-    check(w7.target?.shownEmail == u1.email && unsent(w7, asked7, clashNote),
-          "moved into an app-decided clash: nothing sent, the question kept, the note as above: \(w7.note ?? "none")")
-    move(w7, appRec(appU1, code: u1), as: win)
-    check(asked7() == 0 && w7.turns.isEmpty && w7.field == "what's typed", "the app-decided clash cleared: nothing sent by itself")
-    // a clash with no account of its own known: no "move it back", an account to pick on the Switch page
-    let (w8, asked8) = typedThenSwitch(fullWeek)
-    move(w8, rec(week: nil, five: nil, login: u3.email, code: u3), as: seatless)
-    check(unsent(w8, asked8, "Card's Claude Code folder is now on Other's account, so what you typed wasn't sent. Pick an account for Card on the Switch page."),
-          "moved into a clash with no own account known: nothing sent, the Switch page to pick one: \(w8.note ?? "none")")
-    // the split (the app on u1, Claude Code moved to u2, no clash): as before, it goes on u2, and the note names u2, the
-    // account that answers there
-    let (w9, asked9) = typedThenSwitch(fullWeek)
-    move(w9, appRec(appU1, code: u2), as: win)
-    check(w9.inSplit && !w9.inClash && asked9() == 1 && w9.turns.map(\.question) == ["what's typed"] && w9.target?.email == u2.email
-          && w9.noteText == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
-          "moved into the split: what was typed goes on u2, the note naming u2 (the account answering): \(w9.noteText ?? "none")")
-    // one login's seat with no organisation (the record says none) and its Team seat: a move either way is a move (the
-    // question goes, the note says it), never "the organisation not known"; the same seat with none, or a record from
-    // before codeOrganization, isn't one
-    let switchedNote = "Card switched to \(AccountNames.short(u1.email!)). Sending what you typed."
-    let (w4, asked4) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: bare))
-    check(w4.blocked && w4.offer != nil && w4.target?.account?.organization == "", "a seat with no organisation, its week full: the bar holds and offers the switch")
-    move(w4, rec(week: 10, code: team))
-    check(asked4() == 1 && w4.turns.map(\.question) == ["what's typed"] && w4.noteText == switchedNote,
-          "from a login's seat with no organisation to its Team seat: a move, what was typed goes: \(w4.noteText ?? "none")")
-    let (w5, asked5) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: team))
-    move(w5, rec(week: 10, code: bare))
-    check(asked5() == 1 && w5.noteText == switchedNote, "from a login's Team seat to its seat with no organisation: a move, what was typed goes: \(w5.noteText ?? "none")")
-    let (w6, asked6) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: bare))
-    move(w6, rec(week: 10, login: emptyOrg.email, code: emptyOrg))
-    var bareNoOrg = rec(week: 10, code: bare); bareNoOrg.resolved?.codeOrganization = nil
-    move(w6, bareNoOrg)
-    check(asked6() == 0 && w6.note == nil && w6.turns.isEmpty,
-          "a seat with no organisation, then an empty one, then a record from before codeOrganization: not a move, nothing goes: \(w6.note ?? "none")")
-    // a wait started from an address-only reading (the record has no seat: its address only, no id) and a move to the same login's
-    // Team seat (L407): the reading made for that address names its organisation (the profile reply's organization.uuid), which is
-    // compared too, so the Team seat is another one and the question goes. When the reading doesn't name one (nil), or was made
-    // for another address, the organisation isn't known: the address alone is compared, so it is the same account as far as the
-    // wait can tell, and the question isn't sent (the fail-safe: no "switched to", the question stays typed)
-    func addressOnly(org: String?, owner: String? = u1.email) -> IconStatus {
-        var r = rec(week: 100, weekIn: 3 * 3600, login: u1.email, code: nil)
-        r.numbersOwner = owner; r.numbersAccount = owner == nil ? nil : u1.account; r.numbersOrganization = org
-        return r
-    }
-    let (w10, asked10) = typedThenSwitch(addressOnly(org: u1.organization))
-    check(w10.target?.account?.account == nil && w10.target?.account?.organization == u1.organization && w10.offer != nil,
-          "(the wait starts from an address-only reading that names its organisation, with the switch on offer: account \(w10.target?.account?.account ?? "nil"), org \(w10.target?.account?.organization ?? "nil"))")
-    move(w10, rec(week: 10, code: team))
-    check(w10.target?.account?.organization == team.organization?.lowercased() && asked10() == 1 && w10.turns.map(\.question) == ["what's typed"] && w10.noteText == switchedNote,
-          "a wait from an address-only reading of the personal seat, then the same login's Team seat: a move, what was typed goes: \(w10.noteText ?? "none")")
-    for (what, from) in [("the reading naming no organisation (not known)", addressOnly(org: nil)), ("no reading's own account (a record from before it)", addressOnly(org: u1.organization, owner: nil)),
-                         ("the reading's organisation the Team seat's own", addressOnly(org: team.organization))] {
-        let (wn, askedN) = typedThenSwitch(from)
-        check(wn.target?.account?.account == nil && wn.offer != nil, "(the wait starts from an address-only reading: \(what))")
-        move(wn, rec(week: 10, code: team))
-        check(asked10() == 1 && askedN() == 0 && wn.turns.isEmpty && wn.note == nil && wn.field == "what's typed",
-              "a wait from an address-only reading, \(what), then the same login's Team seat: not a move as far as it can tell, nothing sent, no note, the question kept: \(wn.note ?? "none")")
-    }
-    // …and the same from a seat with no organisation ("") and from a record that doesn't know it (nil), into another profile's
-    // account: a clash never sends, whichever way the wait started
-    for (what, from) in [("a seat with no organisation", rec(week: 100, weekIn: 3 * 3600, code: bare)), ("an address-only reading", rec(week: 100, weekIn: 3 * 3600, login: u1.email, code: nil)),
-                         ("a record that doesn't know the organisation", { var r = rec(week: 100, weekIn: 3 * 3600); r.resolved?.codeOrganization = nil; return r }())] {
-        let (wc, askedC) = typedThenSwitch(from)
-        move(wc, rec(week: nil, five: nil, login: u3.email, code: u3))
-        check(unsent(wc, askedC, clashNote), "a wait from \(what), moved into a clash: nothing sent, the question kept, the clash's note: \(wc.note ?? "none")")
-    }
-    // the kept level: Claude Code's refusal on the seat with no organisation stays for it, never for the Team seat
-    _ = Store.writeStatus(e.id, rec(week: 10, code: bare))
-    let tenPct = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
-    let keptOn = chat(QuickChatTarget(e, now: now), level: tenPct)
-    refuse(keptOn)
-    keptOn.update(target: QuickChatTarget(e, now: now), level: tenPct, offer: { nil })
-    let heldOnBare = keptOn.blocked
-    _ = Store.writeStatus(e.id, rec(week: 10, code: team))
-    keptOn.update(target: QuickChatTarget(e, now: now), level: tenPct, offer: { nil })
-    _ = Store.writeStatus(e.id, rec(week: 10, code: bare))
-    let keptOld = chat(QuickChatTarget(e, now: now), level: tenPct)
-    refuse(keptOld)
-    _ = Store.writeStatus(e.id, bareNoOrg)
-    keptOld.update(target: QuickChatTarget(e, now: now), level: tenPct, offer: { nil })
-    check(heldOnBare && keptOld.blocked && !keptOn.blocked && keptOn.level?.refusedUntil == nil,
-          "a refusal on a seat with no organisation: kept for it (and over a record from before codeOrganization), dropped on the Team seat")
-    _ = Store.writeStatus(e.id, rec())
-
-    // the process itself, against the stand-in claude (Checks/quick-chat/stub-claude, which numbers its answers from 1 for
-    // each process it is): a clash's process, on the folder's u3, is kept while the folder stays there (its address in
-    // capitals included), and replaced once it moves back to u1; Other's live limits never reach the header's account
-    let stub = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("quick-chat/stub-claude").path
     try? fm.createDirectory(atPath: expand(e.configDir), withIntermediateDirectories: true)
-    let keepSeam = FolderGuard.launchSeam
-    FolderGuard.launchSeam = nil
-    let live = QuickChatModel(); live.resolveClaude = { $0(stub) }
-    func say(_ q: String, on r: IconStatus) -> String {
-        _ = Store.writeStatus(e.id, r)
-        live.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
-        live.field = q
-        live.send()
-        let until = Date().addingTimeInterval(10)
-        while live.busy && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
-        return live.turns.last?.answer ?? ""
-    }
-    let a1 = say("one", on: rec(week: nil, five: nil, login: u3.email, code: u3))
-    check(a1 == "Answer 1" && live.level?.week == nil && live.level?.full() == nil && !live.blocked,"a clash: the stand-in answers; its live limits (62 %) never reach the header's account: \(a1)")
-    let a2 = say("two", on: rec(week: nil, five: nil, login: u3.email!.uppercased(), code: u3))
-    check(a2 == "Answer 2", "still on u3 (its address in capitals): the same process goes on: \(a2)")
-    let a3 = say("three", on: rec())
-    check(a3 == "Answer 1" && abs((live.level?.week ?? 0) - 62) < 0.01,"moved back to u1: a new process (it numbers from 1 again); its live week counts here: \(a3), \(live.level?.week ?? -1)")
-    // one login's seat with no organisation, then its Team seat, then back: each move a new process; the same seat goes on
-    let a4 = say("four", on: rec(code: bare))
-    let a5 = say("five", on: rec(code: team))
-    let a6 = say("six", on: rec(code: team))
-    let a7 = say("seven", on: rec(code: bare))
-    check(a4 == "Answer 1" && a5 == "Answer 1" && a6 == "Answer 2" && a7 == "Answer 1",
-          "a login's seat with no organisation, its Team seat (twice), then back: a new process at each move, kept on the same seat: \([a4, a5, a6, a7])")
-    // a question waiting for a switch that lands in a clash, against the process: nothing reaches the stand-in (no turn,
-    // no process asked for); once the clash clears the note goes, and the person's send is the second answer of the
-    // process still on that seat, so it had no turn in between
-    var resolved = 0
-    live.resolveClaude = { resolved += 1; $0(stub) }
-    let turnsBefore = live.turns.count
-    _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 3 * 3600, code: bare))
-    live.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { cardOffer })
-    live.field = "eight"
-    live.switchAccount()
-    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
-    live.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
-    let pumpUntil = Date().addingTimeInterval(0.5)
-    while Date() < pumpUntil { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
-    check(live.inClash && resolved == 0 && live.turns.count == turnsBefore && !live.busy && live.field == "eight" && live.note == clashNote,
-          "the stand-in, a switch landing in a clash: no turn, no process asked for, the question kept: \(live.note ?? "none")")
-    _ = Store.writeStatus(e.id, rec(code: bare))
-    live.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
-    let noteAfter = live.note
-    let a8 = say("eight", on: rec(code: bare))
-    check(noteAfter == nil && resolved == 1 && a8 == "Answer 2" && live.turns.count == turnsBefore + 1,
-          "the clash cleared: the note gone; sent by the person, the process on the seat answers its second: \(a8)")
-    live.shutdown()
-    FolderGuard.launchSeam = keepSeam
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
     // Settings ▸ Accounts' Sign in… keys: the in-use box's on the profile's own account (u1), Claude Code's own row's on its
     // own (the folder's u3)
@@ -3461,12 +2825,9 @@ MainActor.assumeIsolated {
     let ownOffer = onlyOwn.fullOffer(view: AccountView.of(Store.status(for: onlyOwn, now: now)), now: now)
     check(ownOffer?.key == backKey && ownOffer?.standby.seat != nil && SwitchOffer.moveBackWords == "move Claude Code back here",
           "fullOffer in a clash: the own account offered once, switchable")
-    // the move-back's words: quick chat's line and key say Claude Code moves back to the own account (the menus' decision,
-    // ProfileShow.ownStandbyID), the Switch page says cat stays with its own profile and never calls it a standby account
-    let ownQC = QuickChatSwitchOffer.best(onlyOwn, now: now)
-    check(ownQC?.own == true && ownQC?.lineWords(name: "Acc") == "Acc can move Claude Code back to its own account, \(u1Short)."
-          && ownQC?.keyTitle == "Move Claude Code back…" && SwitchOffer.moveBackTitle(u1Short) == "Move Claude Code back to \(u1Short)…",
-          "quick chat in a clash, the own account offered: it says Claude Code moves back: \(ownQC?.lineWords(name: "Acc") ?? "none")")
+    // the move-back's words: the Switch page says cat stays with its own profile and never calls it a standby account
+    check(SwitchOffer.moveBackTitle(u1Short) == "Move Claude Code back to \(u1Short)…",
+          "the move-back's title in a clash names the own account: \(SwitchOffer.moveBackTitle(u1Short))")
     let stays = SwitchPage.staysLine(from: "cat", name: "Acc", moveBack: true, owner: "Work")
     let staysNoOwner = SwitchPage.staysLine(from: "cat", name: "Acc", moveBack: true, owner: nil)
     let staysNormal = SwitchPage.staysLine(from: "ann", name: "Acc", moveBack: false, owner: "Work")
@@ -3474,17 +2835,6 @@ MainActor.assumeIsolated {
           && !stays.contains("standby") && !staysNoOwner.contains("standby") && !stays.contains("Acc")
           && staysNormal == "ann stays on Acc as a standby account: nothing read, switch back any time.",
           "the Switch page's move-back line: cat stays with its own profile (never Acc's standby); a normal switch unchanged: \(stays)")
-    // the clash wording is reachable through the model: with no live numbers in a clash (liveCounts false) an offer comes only
-    // from the record's own full level, and then it is the move-back one
-    let qcModel = QuickChatModel()
-    var clashTarget = QuickChatTarget(onlyOwn, now: now); clashTarget.liveCounts = false; clashTarget.split = false
-    var fullLevel = QuickChatLevel(nil); fullLevel.week = 100; fullLevel.weekResets = now.addingTimeInterval(86400)
-    qcModel.update(target: clashTarget, level: QuickChatLevel(nil), offer: { QuickChatSwitchOffer.best(onlyOwn, now: now) })
-    check(qcModel.offer == nil, "a clash, no live numbers, the record's level not full: no offer")
-    qcModel.update(target: clashTarget, level: fullLevel, offer: { QuickChatSwitchOffer.best(onlyOwn, now: now) })
-    check(qcModel.blocked && qcModel.offer?.own == true && qcModel.offer?.key == backKey && qcModel.offer?.keyTitle == "Move Claude Code back…"
-          && qcModel.offer?.lineWords(name: "Acc").contains("move Claude Code back to its own account") == true,
-          "a clash, the record's own full level: the model offers the move-back (words reached through update): \(qcModel.offer?.lineWords(name: "Acc") ?? "none")")
     // the Switch page's remembered move-back is used only for its own switch, while one is under way or ended: not after a
     // Cancel (ready again), another pick, or another profile's page
     let started = SwitchPage.ClashBack(key: backKey, owner: "Work")
@@ -3512,10 +2862,6 @@ MainActor.assumeIsolated {
           "the Switch page's title: only the ready one says Move Claude Code back; a failed, timed-out or undone move keeps the usual title")
     // outside a clash nothing changes: the active account is off the standby list, ticked with its week, no move words
     _ = Store.writeStatus("acc", rec())
-    let calmQC = QuickChatSwitchOffer.best(both, now: now)
-    check(calmQC?.own == false && calmQC?.keyTitle == "Switch account…" && calmQC?.lineWords(name: "Acc").hasPrefix("Acc can switch to its other account, ") == true
-          && !(calmQC?.lineWords(name: "Acc").contains("move Claude Code") ?? true),
-          "quick chat, no clash: the usual switch words: \(calmQC?.lineWords(name: "Acc") ?? "none")")
     let calmShow = ProfileShow.load(both, now: now), calmDock = dockOf(both, calmShow), calmBar = menuBarMenu(calmShow)
     check(calmShow.ownStandbyID == nil && ownRow(calmDock.menu) == nil && ownRow(calmBar) == nil
           && rowsOf(calmDock.menu, u1Short) == 1 && rowsOf(calmBar, u1Short) == 1
@@ -3757,10 +3103,6 @@ do {
           && MenuBarRow.lineWords(MenuBarItems.Profile(show: loneShow)) == words && words.contains("sign in")
           && words.count <= "Claude Code's .claude.json is too large to read: its account isn't known here.".count,
           "…and the reason shows: on the card, in the Dock panel and menu, on the menu bar row (sign in, the sweep's verb), no longer than the too-large line those rows show")
-    let loneChat = QuickChatTarget(me, now: t0)
-    check(!loneChat.liveCounts && !loneChat.split && loneChat.account?.account == AccountID.normal(h2.account)
-          && loneChat.email != foreign && loneChat.shownEmail != foreign,
-          "…quick chat: the folder's seat by its id, its live numbers never count, the reading's address never named")
     let appOnIt = AccountResolver.resolve(me, among: [me], app: appH2, code: idOnly, loginEmail: foreign, names: [:], now: t0)
     check(appOnIt.readStale == true && !appOnIt.differs && appOnIt.fromApp && appOnIt.email == h2.email && appOnIt.line == words
           && shownWeekly(appOnIt) == nil,
@@ -4480,7 +3822,7 @@ MainActor.assumeIsolated {
 
     // ---- S5, the setting turned off AFTER a value was built. The scan above reads the source's text, and the blocks above build
     // their values with the setting already off; a value that holds a finished sentence (the one line "Usage: Claude Code on …",
-    // a switch's notes, quick chat's note) passes both and still shows the address once Show emails goes off. Each case here is
+    // a switch's notes) passes both and still shows the address once Show emails goes off. Each case here is
     // built while addresses are SHOWN, the setting is turned off, and the same value (or its holder) is read again.
     do {
         let wasBlur = AddressPrivacy.shared.blur
@@ -4569,18 +3911,6 @@ MainActor.assumeIsolated {
               "S5/F3: tildeNoIds replaces each id folder on its own (x/<id> keeps x): \(oneId) | \(twoIds) | \(noId)")
     }
 
-    // F4: a value a model holds (quick chat's offer, `@Published`) keeps the address and names it when it is drawn
-    do {
-        let heldOffer = QuickChatSwitchOffer(key: "held~k1", address: "held-offer@example.com", words: "3 days ago")
-        AddressPrivacy.shared.apply(blur: false)
-        let shownOffer = heldOffer.lineWords(name: "Pf")
-        AddressPrivacy.shared.apply(blur: true)
-        let hiddenOffer = heldOffer.lineWords(name: "Pf")
-        AddressPrivacy.shared.apply(blur: false)
-        check(shownOffer.contains("held-offer") && hiddenOffer.contains("hidden address") && !hiddenOffer.contains("held") && !hiddenOffer.contains("@"),
-              "S5/F4: the same held offer read again with Show emails off names nothing of the address: \(shownOffer) | \(hiddenOffer)")
-    }
-
     // no first-letter-and-dots mask left anywhere in the app's sources
     let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
     let files = (try? FileManager.default.contentsOfDirectory(atPath: src.path))?.filter { $0.hasSuffix(".swift") } ?? []
@@ -4592,6 +3922,48 @@ MainActor.assumeIsolated {
         }
     }
     check(!files.isEmpty && masks.isEmpty && !files.contains("Privacy.swift"), "no source builds the old mask (a first letter, dots, the domain) or calls Privacy: \(masks)")
+}
+
+// ============ cl_quick's chat link, and what cl_audit's own quick chat left behind ============
+do {
+    // the menus' "Quick chat" opens cl_quick on the profile's Claude Code folder: cl-quick://chat?folder=<path>
+    let tilde = "~/.claude-work"
+    let url = ClQuick.chatURL(configDir: tilde)
+    let items = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems
+    check(url?.scheme == "cl-quick" && url?.host == "chat" && items?.count == 1 && items?.first?.name == "folder"
+          && items?.first?.value == expand(tilde) && !(items?.first?.value ?? "~").hasPrefix("~"),
+          "cl_quick's link: cl-quick://chat with the folder's tilde-expanded path: \(url?.absoluteString ?? "none")")
+    let odd = "/tmp/a&b#c+d e/.claude-x"
+    let oddItems = ClQuick.chatURL(configDir: odd).flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems
+    check(oddItems?.count == 1 && oddItems?.first?.name == "folder" && oddItems?.first?.value == odd,
+          "a folder with &, #, + and a space in its name comes back whole through the query item: \(oddItems?.first?.value ?? "none")")
+
+    // the quick chat's old project folders: named after its work folder, found in the profile's projects/, never another project
+    check(OldQuickChats.projectKey("/Users/x/Library/Application Support/usage-n-uf/quick-chat") == "-Users-x-Library-Application-Support-usage-n-uf-quick-chat",
+          "a project key: every character but a letter or digit becomes \"-\"")
+    let oqc = home + "/oqc"
+    try? fm.removeItem(atPath: oqc)
+    defer { try? fm.removeItem(atPath: oqc) }
+    let cfgDir = oqc + "/claude-oqc"
+    let key = OldQuickChats.projectKey(OldQuickChats.folder.path)
+    let p1 = cfgDir + "/projects/\(key)-p1", p2 = cfgDir + "/projects/\(key)-p2", unrelated = cfgDir + "/projects/other-project"
+    put(p1 + "/a.jsonl", "{}\n")
+    try? fm.createDirectory(atPath: p2, withIntermediateDirectories: true)
+    put(unrelated + "/b.jsonl", "{}\n")
+    let oe = profile("oqc", cfgDir, nil)
+    let kept = OldQuickChats.left([oe])
+    check(kept.chats == 1 && kept.folders.map(\.path) == [p1] && !kept.isEmpty,
+          "the old quick chats left: one chat, in the chat folder that holds it (never the empty one, never another project): \(kept.folders.map(\.path)) / \(kept.chats)")
+    // (a throwaway Trash in the suite's home: never the real one)
+    let fakeTrash = oqc + "/Trash"
+    try? fm.createDirectory(atPath: fakeTrash, withIntermediateDirectories: true)
+    let keepTrash = OldQuickChats.toTrash
+    OldQuickChats.toTrash = { u in (try? fm.moveItem(atPath: u.path, toPath: fakeTrash + "/" + u.lastPathComponent)) != nil }
+    defer { OldQuickChats.toTrash = keepTrash }
+    _ = OldQuickChats.tidy([oe])
+    check(!fm.fileExists(atPath: p2) && fm.fileExists(atPath: fakeTrash + "/" + (p2 as NSString).lastPathComponent)
+          && fm.fileExists(atPath: p1 + "/a.jsonl") && fm.fileExists(atPath: unrelated + "/b.jsonl"),
+          "tidied: the empty chat folder went to the Trash, the one with a chat and the other project stay")
 }
 
 print("checks: \(passed) passed, \(failed) failed")

@@ -1013,10 +1013,6 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
             }
         }
         snapshot(framed(panels, 760), "show3c-\(name)-panel-std", 792, 700)
-        // quick chat's header as it draws it (QCHeader): in a clash the profile's own account, never the folder's
-        let qc = QuickChatModel(); qc.target = QuickChatTarget(p, now: now)
-        snapshot(framed(QCHeader(model: qc).frame(width: QuickChatRoot.width).background(Color(white: 0.16)), QuickChatRoot.width),
-                 "show3c-\(name)-quickchat-std", QuickChatRoot.width + 32, 120)
         // the menu bar row and the Dock icon's menu, as the agent and the Dock app build them from the same value
         let show = ProfileShow.load(p, now: now)
         let dockApp = AppDelegate(); dockApp.entry = p; dockApp.show = show
@@ -1144,8 +1140,6 @@ MainActor.assumeIsolated {
                 DetailsView(info: panel, actions: noop).frame(width: min(w, 340))
                 Text("Card").font(.caption.bold())
                 AccountCard(row: cardRow(main), actions: acts).frame(width: min(w, 460))
-                Text("Quick chat").font(.caption.bold())
-                Text("\(main.name) · " + (QuickChatTarget(main).shownEmail ?? "no account")).font(.system(size: 12))
                 Text("Settings ▸ Accounts").font(.caption.bold())
                 AccountSettings(entry: .constant(main), model: model, width: w)
             }
@@ -1313,7 +1307,7 @@ MainActor.assumeIsolated {
         } }
         if tag == "o7c-card-app-other" {
             // all surfaces side by side: the menu bar row, the Dock menu's top lines, the Dock panel, the card, Settings ▸
-            // Accounts, the Switch page's in-use box and quick chat's profile line
+            // Accounts and the Switch page's in-use box
             let mp = MenuBarItems.Profile(show: ProfileShow.load(main))
             let v = AccountView.of(Store.status(for: main))
             let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: rec.loginEmail, expected: nil, mismatch: false,
@@ -1330,8 +1324,6 @@ MainActor.assumeIsolated {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(DockTileMenu.lines(DockTileMenu.rows(main, ProfileShow.load(main), windowOpen: false)).prefix(3).joined(separator: "\n"))
                         }.font(.system(size: 13)).frame(width: 300, alignment: .leading)
-                        Text("Quick chat").font(.caption.bold())
-                        Text("Claude \(main.name) · " + (QuickChatTarget(main).shownEmail ?? "no account")).font(.system(size: 12)).frame(width: 300, alignment: .leading)
                     }
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Dock panel").font(.caption.bold())

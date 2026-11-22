@@ -90,14 +90,14 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         return m
     }
 
-    /// A menu action: Quick chat and Refresh now as the Dock icon app sends them; the rest to the agent.
+    /// A menu action: Quick chat and Refresh now as their notices; the rest to the agent.
     @objc func picked(_ sender: NSMenuItem) {
         // (a switch's target is the Switch page's key, "<profile>~<standby>": only this profile's own)
         guard let id, let (act, target) = DockTileMenu.parse(sender.representedObject),
               DockTileMenu.profile(act, target) == id else { return }
         let center = DistributedNotificationCenter.default()
         switch act {
-        case .quickChat: center.postNotificationName(QuickChat.openNote, object: id, userInfo: nil, deliverImmediately: true)
+        case .quickChat: center.postNotificationName(ClQuick.openNote, object: id, userInfo: nil, deliverImmediately: true)
         case .refresh: center.postNotificationName(Installer.refreshAllNote, object: id, userInfo: nil, deliverImmediately: true)
         default: center.postNotificationName(DockTile.menuNote, object: DockTileMenu.object(act, target), userInfo: nil, deliverImmediately: true)
         }

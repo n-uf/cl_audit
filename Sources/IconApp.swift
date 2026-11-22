@@ -515,11 +515,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         redraw()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15.5) { [weak self] in self?.redraw() }
     }
-    /// Asks the agent to open the quick chat on this profile (QuickChat.swift).
-    @objc func quickChat() {
-        DistributedNotificationCenter.default().postNotificationName(QuickChat.openNote, object: accountID, userInfo: nil,
-                                                                     deliverImmediately: true)
-    }
+    /// cl_quick's chat on this profile's folder, or its site when it isn't installed (ClQuick).
+    @objc func quickChat() { ClQuick.open(entry) }
     @objc func showSettings() { Installer.openSettings(account: accountID) }
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {

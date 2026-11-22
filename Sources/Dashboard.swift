@@ -46,18 +46,18 @@ struct DashboardSettings: View {
         return [AnyView(DefaultProfileCard(model: m))]
     }
 
-    /// One subject per column, printed at its top: cl_audit itself (Usage in the background, Privacy, Backups, Quick chat,
-    /// About), how usage
+    /// One subject per column, printed at its top: cl_audit itself (Usage in the background, Privacy, Backups, About), how
+    /// usage
     /// looks (Face, Dashboard cards, Widget), and the Dock (App icon, Dock). Menu bar icons are each profile's own (its
     /// settings). In two columns the Dock goes under cl_audit; one column keeps the three-column order, top to bottom.
     var body: some View {
         SettingsColumns(width: width,
                         groups: [[AnyView(ColumnHead(text: "cl_audit"))] + defaultCard + [AnyView(usageCard), AnyView(emailsCard), AnyView(backupsCard),
-                                  AnyView(QuickChatCard()), AnyView(aboutCard)],
+                                  AnyView(aboutCard)],
                                  [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard), AnyView(WidgetCard())],
                                  [AnyView(ColumnHead(text: "The Dock")), AnyView(appIconCard), AnyView(DockCard())]],
                         two: [[AnyView(ColumnHead(text: "cl_audit · the Dock"))] + defaultCard + [AnyView(usageCard), AnyView(emailsCard),
-                               AnyView(backupsCard), AnyView(QuickChatCard()), AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
+                               AnyView(backupsCard), AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
                               [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard),
                                AnyView(WidgetCard())]])
     }
@@ -227,6 +227,7 @@ struct DashboardSettings: View {
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
             }
             SRowLine(text: "The last \(backups.last) of each profile, and any under \(backups.days) days.")
+            OldQuickChatsLine()
         }
     }
 

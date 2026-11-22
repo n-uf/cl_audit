@@ -397,7 +397,7 @@ enum ClaudeCLI {
         }
     }
 
-    /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the profile's
+    /// Log in… in the agent's surfaces (the menu bar): Claude Code's own sign-in in Terminal for the profile's
     /// one folder, with the record's address filled in.
     static func logIn(profile e: AccountEntry) {
         // the Claude app on another account than Claude Code (the split): Claude Code logs in to the app's account, and
@@ -721,7 +721,7 @@ enum Store {
     /// numbers from the status line (usage.json) carry none, so those are kept.
     ///
     /// Then (B8), what the profile's headline surfaces may show: the card, the Dock icon and its panel, the menu bar, the
-    /// tile, quick chat. In the split (the Claude app on one account, Claude Code on another: SplitUsage) Claude Code's
+    /// tile. In the split (the Claude app on one account, Claude Code on another: SplitUsage) Claude Code's
     /// numbers are not the profile's: none show here, and the record's one line says so (the raw record, Store.status(id),
     /// keeps them for the card's labelled secondary line and Settings' Claude Code row). And numbers older than the
     /// profile's read interval (5 minutes by default) plus a minute are only last known: a limit they read as full is left

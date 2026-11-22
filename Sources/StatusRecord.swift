@@ -96,7 +96,7 @@ struct IconStatus: Codable {
     /// Signed in: not expired and not signed out (an expired sign-in, or none, shows no numbers at all).
     var signedIn: Bool { state != "expired" && state != "noLogin" }
 
-    /// The card's words for it, which quick chat's line says too: "sign-in expired", or nil when the sign-in is fine.
+    /// The card's words for it: "sign-in expired", or nil when the sign-in is fine.
     var loginWords: String? {
         guard needsLogin else { return nil }
         return state == "expired" ? "sign-in expired" : state == "noLogin" ? "no Claude Code sign-in" : "sign-in is a different account"
