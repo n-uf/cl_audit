@@ -685,7 +685,7 @@ struct NewAccountView: View {
     /// app, any other folder its own window; only a clash with another profile's window needs a line.
     private func windowCard(stacked: Bool) -> some View {
         SCard(title: "Claude window", info: "A Claude window signed in to this profile's account. A folder other than ~/.claude gets its own window, with its own sign-in and Code sidebar; ~/.claude uses the usual Claude app. Off: no window, and no window sign-in step; Claude Code in Terminal still works.") {
-            SRow(label: "Claude window", info: "On: a Claude window for this profile, opened from the dashboard or its Dock icon. Off: none. Turned on after Create, its folder is made once the desktop app is checked. Turned off here, the window's folder this setup made is removed.", first: true, stacked: stacked) {
+            SRow(label: "Claude window", info: "On: a Claude window for this profile, opened from the dashboard or its Dock icon.\nOff: none.\nTurned on after Create, its folder is made once the desktop app is closed.\nTurned off, the window this setup started is quit and the folder it made is removed.", first: true, stacked: stacked) {
                 SSwitch(isOn: Binding(get: { draft.claudeWindow }, set: { setWindow($0) }),
                         on: draft.window == .standard ? "the usual Claude app" : "its own window", off: "none")
                     .disabled(windowBusy || model.discarding)
@@ -1106,14 +1106,14 @@ struct NewAccountView: View {
                 .foregroundStyle(c.state == .bad ? face.danger : c.state == .warn ? face.caution : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        if windowHeld { sub("Its window's folder is made once the desktop app is quit.") }
+        if windowHeld { sub("The window's folder is made once the desktop app is closed.") }
         FlowLayout(spacing: 8) {
             if windowHeld {
                 Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 Button("Continue anyway") { draft.continueAnyway = true; lookForWindow() }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(gate.busy || windowBusy)
             } else {
-                Button(gate.busy ? "Checking…" : "Set up the window") { lookForWindow() }
+                Button(gate.busy ? "Checking…" : "Set up the Claude window") { lookForWindow() }
                     .buttonStyle(.pill(tint, compact: true)).disabled(gate.busy || model.discarding || windowBusy)
             }
         }
@@ -1302,7 +1302,7 @@ struct NewAccountView: View {
             // the window on waits for its folder (step b); off, nothing of the window is waited for
             Button(desktop == .different ? "Finish anyway" : "Finish now") { model.finishNew() }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding || windowDue || windowBusy)
-                .help(windowDue ? "Set up the window first, or turn the Claude window off" : "Sign-in can be finished later from Settings")
+                .help(windowDue ? "Set up the Claude window first, or turn it off." : "Sign-in can be finished later from Settings.")
             if signedIn == nil {
                 Button("Sign in to Claude Code…") {
                     // the same sign-in as the address route's, followed to its end (the address typed before, if any, filled in)
@@ -1319,11 +1319,11 @@ struct NewAccountView: View {
 
     private var nextHint: String {
         switch current {
-        case 1: return monitor.failed ? "Check again: which Claude runs couldn't be checked" : monitor.checked ? "Next: quit the desktop app" : "Checking the desktop app…"
-        case 2: return draft.name.isEmpty ? "Next: name the profile" : draft.source == .existing && draft.existingDir == nil ? "Next: pick a folder" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
-        case 3: return "Next: sign in to Claude Code"
-        case 4: return windowDue ? "Next: set up the Claude window" : desktop == .different ? "Its Claude window uses another account" : "Next: sign in to the Claude window"
-        default: return draft.usageInDock ? "Next: add the Dock icon" : "Next: start reading usage"
+        case 1: return monitor.failed ? "Which Claude runs couldn't be checked. Check again." : monitor.checked ? "Quit the desktop app next." : "Checking the desktop app…"
+        case 2: return draft.name.isEmpty ? "Name the profile next." : draft.source == .existing && draft.existingDir == nil ? "Pick a folder next." : blocked ? "Fix the red lines to go on." : draft.source == .new ? "Create the folder and links next." : "Connect the folder next."
+        case 3: return "Sign in to Claude Code next."
+        case 4: return windowDue ? "Set up the Claude window next." : desktop == .different ? "Its Claude window uses another account." : "Sign in to the Claude window next."
+        default: return draft.usageInDock ? "Add the Dock icon next." : "Start reading usage next."
         }
     }
 
