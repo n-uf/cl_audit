@@ -830,6 +830,7 @@ struct WellField: View {
             .textFieldStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.hex(0xececee))
             .environment(\.colorScheme, .dark)             // the well is dark on every face: a light caret
             .opacity(standIn ? 0 : 1)
+            .accessibilityHidden(standIn)          // (the stand-in speaks "hidden address" for it, never the text)
             .overlay(alignment: .leading) {
                 if standIn {
                     BlurredAddress(address: text, size: 12).font(.system(size: 12)).foregroundStyle(Color.hex(0xececee))
