@@ -1585,11 +1585,13 @@ do {
     check(!page13.pickList.contains { $0.seat?.account == S } && !SwitchMenu.lines(added[0]).contains { $0.key.contains(S) },
           "S is never a switch target on Main (the Switch page, Switch account ›)")
 
-    // the load-time tidy: Main's file with the nine entries (and a leftover folder) loads as two, saved once, said once
+    // the load-time tidy, per seat (cl_kit 26.11.4: one entry per account and organisation, never the profile's own account
+    // in use): Main's file with the nine seats, one of them twice (P under o1), and a leftover folder loads as the nine,
+    // the twice-listed seat once with its newer last use; saved once, said once
     var nine = mainB
     nine.standby = pairs.map { (a, o, ago) in
         StandbyAccount(email: "", seat: Seat(account: a, organization: o, email: nil), id: "s\(Int(-ago))", lastInUse: t0.addingTimeInterval(ago * 3600))
-    }
+    } + [StandbyAccount(email: "", seat: Seat(account: P, organization: o1, email: nil), id: "s45", lastInUse: t0.addingTimeInterval(-45 * 3600))]
     nine.leftoverFolders = ["~/.claude-old-b2"]
     let before13 = try! JSONEncoder().encode(ConfigFile(accounts: [nine, workB]))
     try! before13.write(to: Store.configURL)
@@ -1600,9 +1602,10 @@ do {
     try? fm.removeItem(atPath: pre)
     let loaded = Store.loadChecked() ?? []
     let mainL = loaded.first { $0.id == "b2main" }
-    check(mainL?.standby.count == 2 && Set(mainL?.standby.compactMap { $0.seat?.account } ?? []) == [P, M]
-          && mainL?.standby.first { $0.seat?.account == P }?.seat?.organization == o4,
-          "a file with the nine entries loads as two, P with its record's organisation: \(mainL?.standby.map { $0.seat?.organization ?? "-" } ?? [])")
+    let pO1 = mainL?.standby.filter { $0.seat?.account == P && $0.seat?.organization == o1 } ?? []
+    check(mainL?.standby.count == 9 && pO1.count == 1 && pO1.first?.lastInUse == t0.addingTimeInterval(-40 * 3600)
+          && Set(mainL?.standby.compactMap { $0.seat?.account } ?? []) == [P, M, S],
+          "per seat: the ten entries load as the nine seats (S's too: Work's account in use stands by here, shared seats), P under o1 once, its newer use: \(mainL?.standby.map { "\($0.seat?.account.suffix(2) ?? "-")/\($0.seat?.organization?.suffix(2) ?? "-")" } ?? [])")
     check(mainL?.leftoverFolders == ["~/.claude-old-b2"] && mainL?.accountNote?.kind == .tidied && writes == 1,
           "leftovers untouched, saved once, the note said: \(mainL?.accountNote?.words ?? "-") (\(writes) writes)")
     check(mainL?.accountNote?.words == "Standby list tidied: one entry per account.", "the note in words")
@@ -2459,13 +2462,14 @@ do {
     SharedReads.alerted = [:]
     SharedReads.last = [:]
     // the default-profile move: the old profile's account is kept as a standby account only when the default profile hasn't
-    // it (the one owner rule, or its id in another organisation: StandbyTidy keeps one entry per id)
+    // that seat (the one owner rule, then StandbyTidy.merge: one entry per seat, never the account in use). Its id in another
+    // organisation is another seat: kept
     let h2Org = Seat(account: h2.account, organization: "00000000-0000-4000-8000-0000000000c2", email: h2.email)
     let def = profile("def", "~/.claude-o20def", h2, standby: [StandbyAccount(email: "HEX-1@example.com", id: "d1")])
-    check(!DefaultProfileRunner.mayKeep(h1, on: def) && !DefaultProfileRunner.mayKeep(upper(h2), on: def) && !DefaultProfileRunner.mayKeep(h2Org, on: def)
+    check(!DefaultProfileRunner.mayKeep(h1, on: def) && !DefaultProfileRunner.mayKeep(upper(h2), on: def) && DefaultProfileRunner.mayKeep(h2Org, on: def)
           && DefaultProfileRunner.mayKeep(hexSeat(3, "hex-3@example.com"), on: def),
-          "canKeepOldAsStandby: not one the default has on standby by its address, nor its account in use (any case, or its id in another organisation); a free one: yes")
-    // …and its standby merge, as StandbyTidy keeps the list: by id in any organisation, else by address, never the account in use
+          "canKeepOldAsStandby: not one the default has on standby by its address, nor its account in use (any case); its id in another organisation (another seat) or a free one: yes")
+    // …and its standby merge, as StandbyTidy keeps the list: per seat, an address-only entry by its address, never the account in use
     let e3 = hexSeat(3, "hex-3@example.com")
     let def2 = profile("def2", "~/.claude-o20def2", h2, standby: [StandbyAccount(email: h1.email!, seat: h1, id: "e1")])
     let oldList = [StandbyAccount(email: h1.email!, seat: otherOrg, id: "q1"), StandbyAccount(email: h2.email!, seat: h2Org, id: "q2"),
@@ -2473,8 +2477,8 @@ do {
                    StandbyAccount(email: e3.email!, seat: upper(e3), id: "q5")]
     let merged = DefaultProfileRunner.merged(oldList, into: def2)
     var after = def2; after.standby = merged
-    check(merged.map(\.id) == ["e1", "q4"] && !StandbyTidy.apply([after], now: t0).changed,
-          "the standby merge: h1 in another organisation, the account in use in another, h1 by its address and hex-3 twice (any case) go in once; the next tidy changes nothing")
+    check(merged.map(\.id) == ["e1", "q1", "q2", "q4"] && !StandbyTidy.apply([after], now: t0).changed,
+          "the standby merge per seat: h1 and the account in use in another organisation go in (other seats), h1 by its address doesn't, hex-3 twice (any case) once; the next tidy changes nothing: \(merged.map(\.id))")
 }
 
 // ============ 21. ClaudeWindow / WindowHold: a window found, closed by identity, reopened (stand-in processes) ============

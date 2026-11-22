@@ -1078,8 +1078,8 @@ do {
     Store.update("mg") { $0.name = "Mg3" }
     _ = Store.loadChecked()
     check(copies() == ["accounts.json.pre-m1"] && fm.contents(atPath: mPre) == legacy, "a second save and a load make no new copy, the copy unchanged")
-    // the standby tidy-up: a list with two entries of one account
-    let dup = Data(#"{"accounts":[{"id":"td","name":"Td","label":"TD","configDir":"~/.claude-td","standby":[{"id":"a1","email":"x@example.com","seat":{"account":"\#(uuid(901))","organization":"\#(uuid(902))"}},{"id":"a2","email":"x@example.com","seat":{"account":"\#(uuid(901))","organization":"\#(uuid(903))"}}]}]}"#.utf8)
+    // the standby tidy-up (per seat since cl_kit 26.11.4): a list with two entries of one seat (one account, one organisation)
+    let dup = Data(#"{"accounts":[{"id":"td","name":"Td","label":"TD","configDir":"~/.claude-td","standby":[{"id":"a1","email":"x@example.com","seat":{"account":"\#(uuid(901))","organization":"\#(uuid(902))"}},{"id":"a2","email":"x@example.com","seat":{"account":"\#(uuid(901))","organization":"\#(uuid(902))"}}]}]}"#.utf8)
     try! dup.write(to: Store.configURL)
     Store.version = "t1"
     let tidied = Store.loadChecked()
