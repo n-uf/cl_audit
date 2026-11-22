@@ -35,7 +35,7 @@ extension AccountNote {
         case .came: return "\(a) came from \(profile)'s standby accounts: it signed in to this profile's folder."
         case .left: return "\(a) left for \(profile): it signed in to \(profile)'s folder, so it's \(profile)'s account now."
         case .standsBy: return "\(a) stands by on \(profile) now: it was \(profile)'s account in use, and an account stands by on one profile only."
-        case .tidied: return "Standby list tidied: one entry per account."
+        case .tidied: return "The standby list was tidied. Each account is listed once per plan."
         case .noCopy: return "The profiles file was updated, but its copy as it was before (accounts.json.pre-…) couldn't be kept."
         }
     }

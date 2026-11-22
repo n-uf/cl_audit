@@ -1608,7 +1608,7 @@ do {
           "per seat: the ten entries load as the nine seats (S's too: Work's account in use stands by here, shared seats), P under o1 once, its newer use: \(mainL?.standby.map { "\($0.seat?.account.suffix(2) ?? "-")/\($0.seat?.organization?.suffix(2) ?? "-")" } ?? [])")
     check(mainL?.leftoverFolders == ["~/.claude-old-b2"] && mainL?.accountNote?.kind == .tidied && writes == 1,
           "leftovers untouched, saved once, the note said: \(mainL?.accountNote?.words ?? "-") (\(writes) writes)")
-    check(mainL?.accountNote?.words == "Standby list tidied: one entry per account.", "the note in words")
+    check(mainL?.accountNote?.words == "The standby list was tidied. Each account is listed once per plan.", "the note in words")
     _ = Store.loadChecked()
     check(writes == 1, "a second load writes nothing")
     let preData = fm.contents(atPath: pre)

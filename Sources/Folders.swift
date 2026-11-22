@@ -61,7 +61,7 @@ enum FolderRules {
     /// in several profiles; each shows that seat's numbers. Only the same seat twice in one profile is refused, and nothing
     /// a person picks can add one (a profile's accounts come from its own sign-ins and what is found for it): noteAccounts
     /// takes an account off the profile's own standby list as it comes into use, AccountList.adding never adds one a
-    /// profile has, and StandbyTidy keeps one entry per account.
+    /// profile has, and StandbyTidy keeps one entry per seat (an account and organisation).
     /// The other profiles (than `id`) that have this account, in the profiles file's order, each once: in use (else, not
     /// linked yet, its folder signed in to it) or standing by. Compared by the one owner rule (ProfileCore's
     /// AccountIdentity.sameAccount: the ids when both have one, any case; else the address and organisation; one known by

@@ -513,7 +513,7 @@ enum Store {
     /// "every profile was removed").
     static func loadChecked() -> [AccountEntry]? {
         guard let raw = loadRaw() else { return nil }
-        // the standby lists tidied (one entry per account): saved once, the first time a list needs it (StandbyTidy)
+        // the standby lists tidied (one entry per seat, an account and organisation): saved once, the first time a list needs it (StandbyTidy)
         let t = StandbyTidy.apply(raw, recordOrgs: { AccountList.recordOrgs(raw) })
         guard t.changed else { return raw }
         tidyLock.lock(); let busy = tidying; tidying = true; tidyLock.unlock()
@@ -595,7 +595,7 @@ enum Store {
         defer { if fd >= 0 { flock(fd, LOCK_UN); Darwin.close(fd) } }
         // a file that's there but can't be read is never written over (that would lose every profile in it)
         guard let before = exists ? loadRaw() : [] else { throw CocoaError(.fileReadCorruptFile) }
-        // the standby lists tidied before any change (one entry per account)
+        // the standby lists tidied before any change (one entry per seat)
         let tidy = StandbyTidy.apply(before, recordOrgs: { AccountList.recordOrgs(before) })
         var after = change(tidy.accounts)
         guard after != before || !exists else { return after }
