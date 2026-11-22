@@ -384,6 +384,12 @@ enum SessionsBackup {
             let real = URL(fileURLWithPath: projects).resolvingSymlinksInPath().path       // the folder itself may be a link
             if mode(real)?.kind == S_IFDIR, let walk = FileManager.default.enumerator(atPath: real) {
                 for case let rel as String in walk {
+                    // cl_audit's old quick chat kept its chats here: they stay out of counts and backups, as they always
+                    // did, until the person moves them to the Trash (OldQuickChats)
+                    if OldQuickChats.isOldProject(rel, profile: s.profile) {
+                        if !rel.contains("/") { walk.skipDescendants() }
+                        continue
+                    }
                     let path = (real as NSString).appendingPathComponent(rel)
                     guard let m = mode(path) else { continue }
                     guard m.kind == S_IFREG else { continue }                 // a link inside is never followed (nor does the walk)

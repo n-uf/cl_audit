@@ -386,9 +386,9 @@ cl_audit has no chat of its own: the quick chat is [cl_quick](https://cl-quick.n
 profile's menu bar or Dock icon menu opens cl_quick on that profile's Claude Code folder. Without cl_quick on the Mac
 the item reads **Get cl_quick…** and opens its site.
 
-Chats from cl_audit's earlier quick chat stay where they were until you move them: Settings ▸ General ▸ Backups shows
-"Old quick chats from cl_audit" with **Show in Finder** and **Move to Trash…** while any are left. Empty ones went to
-the Trash on their own.
+Chats from cl_audit's earlier quick chat stay where they were until you move them, and stay out of a profile's
+Sessions card and backups meanwhile: Settings ▸ General ▸ Backups shows "N old quick chats from cl_audit are still
+here." with **Show in Finder** and **Move to Trash…** while any are left. Empty ones went to the Trash on their own.
 
 ## Settings
 

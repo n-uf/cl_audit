@@ -443,9 +443,17 @@ MainActor.assumeIsolated {
           "a second backup with the same id is refused and the first stays")
     check(!names(place.appendingPathComponent("bk").path).contains { $0.hasPrefix(".") }, "no half-made backup left behind")
 
-    // window open: left out; transcripts off
+    // window open: left out; transcripts off. (A chat cl_audit's old quick chat kept in the profile's projects/ stays out,
+    // as it always did, until the person moves it to the Trash: OldQuickChats.)
+    let oldChat = "\(code)/projects/\(OldQuickChats.projectName("bk"))"
+    try! fm.createDirectory(atPath: oldChat, withIntermediateDirectories: true)
+    try! Data("{}\n".utf8).write(to: URL(fileURLWithPath: oldChat + "/old-chat.jsonl"))
     let m2 = try! SessionsBackup.make(src, kind: .manual, window: false, transcripts: true, place: place, now: t0.addingTimeInterval(1))
     let in2 = files(place.appendingPathComponent("bk/\(m2.id)").path)
+    try? fm.removeItem(atPath: oldChat)
+    check(!in2.contains { $0.contains(OldQuickChats.projectName("bk")) } && !in2.contains { $0.hasSuffix("old-chat.jsonl") }
+          && !m2.items.contains { $0.path.contains("old-chat") || $0.original.contains("old-chat") },
+          "an old quick chat in the profile's projects/ stays out of the backup and its manifest")
     check(!m2.window && !in2.contains { $0.hasPrefix("window/") || $0.hasPrefix("sidebar/") } && in2.contains { $0.hasPrefix("transcripts/") } && in2.contains("records/profile.json"),
           "window open: the Code-tab list and sidebar records are left out; transcripts and cl_audit's records are in")
     check(SessionsBackup.summary(m2).hasPrefix("window left out"), "its words say the window was left out")

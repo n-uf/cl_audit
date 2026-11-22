@@ -250,7 +250,9 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         // Quick chat from a Dock icon's menu (its app or plug-in asks, object: the profile id): cl_quick on that profile's
         // folder (ClQuick)
         observers.append(DistributedNotificationCenter.default().addObserver(forName: ClQuick.openNote, object: nil, queue: .main) { [weak self] note in
-            ClQuick.open((note.object as? String).flatMap { self?.readers[$0]?.entry })
+            // only for a profile the agent reads (a note from anywhere else opens nothing)
+            guard let id = note.object as? String, let e = self?.readers[id]?.entry else { return }
+            ClQuick.open(e)
         })
         // the Mac's accent colour changed: the icons in Accent are drawn again
         observers.append(NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil,

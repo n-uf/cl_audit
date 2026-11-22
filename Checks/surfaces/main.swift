@@ -356,8 +356,8 @@ do {
         let trayKeys = listed.cardTrays().map(\.id)
         let k2 = AccountEntry.switchKey("main", "k2")
         if app.account == u2.account {
-            check(!activeOnStandby && !menuKeys.contains(k2) && !trayKeys.contains(k2),
-                  "\(name): u2 (in use) is on no standby list: Settings, card trays, Dock and menu bar menus, Switch account ›")
+            check(!activeOnStandby && !menuKeys.contains(k2) && !trayKeys.contains(k2) && main.fullOffer()?.key != k2,
+                  "\(name): u2 (in use) is on no standby list: Settings, card trays, Dock and menu bar menus, Switch account ›, and never the full-limit offer")
         } else {
             check(listed.standby.map(\.id) == main.standby.map(\.id) && menuKeys.contains(k2), "\(name): the standby list is as it was")
         }
@@ -3938,32 +3938,96 @@ do {
     check(oddItems?.count == 1 && oddItems?.first?.name == "folder" && oddItems?.first?.value == odd,
           "a folder with &, #, + and a space in its name comes back whole through the query item: \(oddItems?.first?.value ?? "none")")
 
-    // the quick chat's old project folders: named after its work folder, found in the profile's projects/, never another project
+    // the item's words: Quick chat with cl_quick on the Mac, Get cl_quick… without
+    let keepProbe = ClQuick.installedProbe
+    ClQuick.installedProbe = { true }
+    let withIt = ClQuick.itemTitle
+    ClQuick.installedProbe = { false }
+    let without = ClQuick.itemTitle
+    ClQuick.installedProbe = keepProbe
+    check(withIt == "Quick chat" && without == "Get cl_quick…", "the item: Quick chat with cl_quick, Get cl_quick… without: \(withIt) / \(without)")
+
+    // the quick chat's old project folders: exactly Claude Code's name for each profile's old work folder
     check(OldQuickChats.projectKey("/Users/x/Library/Application Support/usage-n-uf/quick-chat") == "-Users-x-Library-Application-Support-usage-n-uf-quick-chat",
           "a project key: every character but a letter or digit becomes \"-\"")
+    check(OldQuickChats.projectName("oqc1") == OldQuickChats.projectKey(OldQuickChats.folder.appendingPathComponent("oqc1").path),
+          "a profile's old chat folder: the key of usage-n-uf/quick-chat/<its id>")
     let oqc = home + "/oqc"
     try? fm.removeItem(atPath: oqc)
-    defer { try? fm.removeItem(atPath: oqc) }
-    let cfgDir = oqc + "/claude-oqc"
-    let key = OldQuickChats.projectKey(OldQuickChats.folder.path)
-    let p1 = cfgDir + "/projects/\(key)-p1", p2 = cfgDir + "/projects/\(key)-p2", unrelated = cfgDir + "/projects/other-project"
-    put(p1 + "/a.jsonl", "{}\n")
-    try? fm.createDirectory(atPath: p2, withIntermediateDirectories: true)
-    put(unrelated + "/b.jsonl", "{}\n")
-    let oe = profile("oqc", cfgDir, nil)
-    let kept = OldQuickChats.left([oe])
-    check(kept.chats == 1 && kept.folders.map(\.path) == [p1] && !kept.isEmpty,
-          "the old quick chats left: one chat, in the chat folder that holds it (never the empty one, never another project): \(kept.folders.map(\.path)) / \(kept.chats)")
-    // (a throwaway Trash in the suite's home: never the real one)
     let fakeTrash = oqc + "/Trash"
     try? fm.createDirectory(atPath: fakeTrash, withIntermediateDirectories: true)
+    // (a throwaway Trash in the suite's home: never the real one)
     let keepTrash = OldQuickChats.toTrash
-    OldQuickChats.toTrash = { u in (try? fm.moveItem(atPath: u.path, toPath: fakeTrash + "/" + u.lastPathComponent)) != nil }
-    defer { OldQuickChats.toTrash = keepTrash }
-    _ = OldQuickChats.tidy([oe])
-    check(!fm.fileExists(atPath: p2) && fm.fileExists(atPath: fakeTrash + "/" + (p2 as NSString).lastPathComponent)
-          && fm.fileExists(atPath: p1 + "/a.jsonl") && fm.fileExists(atPath: unrelated + "/b.jsonl"),
-          "tidied: the empty chat folder went to the Trash, the one with a chat and the other project stay")
+    OldQuickChats.toTrash = { u in (try? fm.moveItem(atPath: u.path, toPath: fakeTrash + "/" + UUID().uuidString + "-" + u.lastPathComponent)) != nil }
+    func oldProfile(_ id: String) -> (e: AccountEntry, dir: String) {
+        let cfg = oqc + "/claude-\(id)"
+        return (profile(id, cfg, nil), cfg + "/projects/" + OldQuickChats.projectName(id))
+    }
+    let chat = oldProfile("oqc1"), empty = oldProfile("oqc2"), linked = oldProfile("oqc3"), notes = oldProfile("oqc4")
+    let locked = oldProfile("oqc5"), dsOnly = oldProfile("oqc6")
+    put(chat.dir + "/a.jsonl", "{}\n")
+    put(chat.dir + "-x/b.jsonl", "{}\n")                                  // a near-miss name: never taken for an old chat folder
+    put(oqc + "/claude-oqc1/projects/other-project/c.jsonl", "{}\n")
+    try? fm.createDirectory(atPath: empty.dir + "/sub", withIntermediateDirectories: true)
+    try? fm.createDirectory(atPath: linked.dir, withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: linked.dir + "/link", withDestinationPath: "/nonexistent")
+    put(notes.dir + "/notes.txt", "x\n")
+    try? fm.createDirectory(atPath: locked.dir + "/closed", withIntermediateDirectories: true)
+    try? fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.dir + "/closed")
+    put(dsOnly.dir + "/.DS_Store", "x")
+    defer {
+        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: locked.dir + "/closed")
+        OldQuickChats.toTrash = keepTrash
+        try? fm.removeItem(atPath: oqc)
+    }
+    let all = [chat.e, empty.e, linked.e, notes.e, locked.e, dsOnly.e]
+    let before = OldQuickChats.left(all)
+    check(before.chats == 1 && Set(before.folders.map(\.path)) == [chat.dir, linked.dir, notes.dir, locked.dir],
+          "left: the chat, a link, a non-chat file and an unreadable folder count as holding something; the empty one, a .DS_Store "
+          + "alone, a near-miss name and another project don't: \(before.folders.map(\.lastPathComponent)) / \(before.chats)")
+    _ = OldQuickChats.tidy(all)
+    check(!fm.fileExists(atPath: empty.dir) && !fm.fileExists(atPath: dsOnly.dir)
+          && [chat.dir + "/a.jsonl", chat.dir + "-x/b.jsonl", notes.dir + "/notes.txt", locked.dir].allSatisfy(fm.fileExists(atPath:))
+          && (try? fm.destinationOfSymbolicLink(atPath: linked.dir + "/link")) != nil,
+          "tidied: the empty folder and the .DS_Store-only one went to the Trash; everything that holds something stays")
+    // the quick chat's own folder: a plain settings.json and empty work folders go; a work folder with a file keeps it there
+    let own = OldQuickChats.folder.path
+    try? fm.removeItem(atPath: own)
+    put(own + "/settings.json", "{}")
+    try? fm.createDirectory(atPath: own + "/oqc1", withIntermediateDirectories: true)
+    put(own + "/oqc2/scratch.txt", "x")
+    _ = OldQuickChats.tidy(all)
+    check(!fm.fileExists(atPath: own + "/settings.json") && !fm.fileExists(atPath: own + "/oqc1") && fm.fileExists(atPath: own + "/oqc2/scratch.txt"),
+          "the quick chat's own folder keeps a work folder that holds a file; its settings.json and the empty work folder go")
+    try? fm.removeItem(atPath: own + "/oqc2")
+    _ = OldQuickChats.tidy(all)
+    check(!fm.fileExists(atPath: own), "…and with nothing else in it, the folder itself goes")
+    // once only, and only with the profiles known
+    let once = UserDefaults(suiteName: "cl-audit-surfaces-test-\(getpid())")!
+    once.removeObject(forKey: OldQuickChats.tidiedKey)
+    let emptyAgain = oldProfile("oqc7")
+    try? fm.createDirectory(atPath: emptyAgain.dir, withIntermediateDirectories: true)
+    let noProfiles = OldQuickChats.tidyOnce([], defaults: once)
+    let first = OldQuickChats.tidyOnce([emptyAgain.e], defaults: once)
+    try? fm.createDirectory(atPath: emptyAgain.dir, withIntermediateDirectories: true)
+    let second = OldQuickChats.tidyOnce([emptyAgain.e], defaults: once)
+    check(noProfiles.isEmpty && first.map(\.path) == [emptyAgain.dir] && second.isEmpty && fm.fileExists(atPath: emptyAgain.dir),
+          "the tidy runs once, and not before the profiles are known: \(first.map(\.lastPathComponent)) / \(second.count)")
+    once.removePersistentDomain(forName: "cl-audit-surfaces-test-\(getpid())")
+    // their chats stay out of counts and backups: a path is in a profile's old chat folder by its exact name
+    check(OldQuickChats.isOldProject(OldQuickChats.projectName("oqc1"), profile: "oqc1")
+          && OldQuickChats.isOldProject(OldQuickChats.projectName("oqc1") + "/a.jsonl", profile: "oqc1")
+          && !OldQuickChats.isOldProject(OldQuickChats.projectName("oqc1") + "-x/a.jsonl", profile: "oqc1")
+          && !OldQuickChats.isOldProject(OldQuickChats.projectName("oqc1") + "/a.jsonl", profile: "oqc2")
+          && !OldQuickChats.isOldProject("other-project/a.jsonl", profile: "oqc1"),
+          "a profile's old chat folder, exactly by its name, and only its own profile's")
+    // the line's and the question's words
+    check(OldQuickChats.lineWords(.init(folders: [URL(fileURLWithPath: "/x")], chats: 1)) == "1 old quick chat from cl_audit is still here."
+          && OldQuickChats.lineWords(.init(folders: [URL(fileURLWithPath: "/x")], chats: 3)) == "3 old quick chats from cl_audit are still here."
+          && OldQuickChats.lineWords(.init(folders: [URL(fileURLWithPath: "/x")], chats: 0)) == "Old quick chat files from cl_audit are still here."
+          && OldQuickChats.trashWords(.init(folders: [], chats: 0)) == "This moves the old quick chat folders to the Trash."
+          && OldQuickChats.trashWords(.init(folders: [], chats: 2)) == "This moves 2 chats and the folders they were kept in to the Trash.\nNothing is deleted until you empty the Trash.",
+          "the line and Move to Trash…'s words")
 }
 
 print("checks: \(passed) passed, \(failed) failed")

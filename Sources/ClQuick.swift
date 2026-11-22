@@ -11,21 +11,25 @@ enum ClQuick {
     /// id), and the agent opens cl_quick.
     static let openNote = Notification.Name("local.usage-n-uf.quick-chat-open")
 
-    /// cl_quick is on this Mac: an app answers its URL scheme.
-    static var installed: Bool { NSWorkspace.shared.urlForApplication(toOpen: URL(string: "cl-quick://")!) != nil }
+    /// Whether an app answers cl_quick's URL scheme; checks give their own answer.
+    nonisolated(unsafe) static var installedProbe: () -> Bool = { NSWorkspace.shared.urlForApplication(toOpen: URL(string: "cl-quick://")!) != nil }
+
+    /// cl_quick is on this Mac.
+    static var installed: Bool { installedProbe() }
 
     /// The menu item's words.
     static var itemTitle: String { installed ? "Quick chat" : "Get cl_quick…" }
+
+    private static let plain = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~/")
 
     /// cl_quick's chat on this Claude Code folder (`~` expanded, the whole path percent-encoded as one query value).
     static func chatURL(configDir: String) -> URL? {
         var c = URLComponents()
         c.scheme = "cl-quick"; c.host = "chat"
         let folder = (configDir as NSString).expandingTildeInPath
-        // (a query value: "&", "=", "+" and "#" are encoded too, so the folder comes back whole)
-        var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "&=+#")
-        guard let v = folder.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        // (a query value: only ASCII letters, digits and "-._~/" stay as they are; everything else, a space included, is
+        // percent-encoded, so the folder comes back whole)
+        guard let v = folder.addingPercentEncoding(withAllowedCharacters: Self.plain) else { return nil }
         c.percentEncodedQuery = "folder=" + v
         return c.url
     }

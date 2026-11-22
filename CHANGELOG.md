@@ -8,7 +8,13 @@ the notes before updating.
 
 ## Unreleased
 
-- cl_audit no longer has a quick chat of its own: cl_quick is the quick chat. **Quick chat** in a profile's menu bar and Dock icon menus now opens cl_quick on that profile's Claude Code folder, or reads **Get cl_quick…** and opens its site when cl_quick isn't installed. The ⌥Space shortcut and the Quick chat settings card are gone. Old quick chat folders that are empty go to the Trash once; ones that still hold chats stay, and Settings ▸ General ▸ Backups shows "Old quick chats from cl_audit" with Show in Finder and Move to Trash… until they're gone.
+- The quick chat now lives in cl_quick, and cl_audit no longer has one of its own.
+  - Quick chat opens cl_quick on that profile's Claude Code folder.
+  - Without cl_quick it reads Get cl_quick… and opens its site.
+  - The ⌥Space shortcut and the Quick chat card are gone.
+  - Empty old quick chat folders go to the Trash once, on their own.
+  - Folders that still hold chats stay.
+  - Settings ▸ General ▸ Backups shows how many are left, with Show in Finder and Move to Trash….
 
 ## 26.11.87 — 2026-11-21
 
