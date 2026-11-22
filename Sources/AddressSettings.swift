@@ -10,7 +10,8 @@
 //
 // With it off, no address is shown anywhere in clear: not its first letter, its length or its domain. A view draws one fixed
 // blurred stand-in (the address itself only while the pointer is on it; the launcher's rows, the dashboard's cards and the
-// Dock panels too, AccountValue), and a sentence says "hidden address".
+// Dock panels too, AccountValue), a sentence says "hidden address", and the Dock menus, which the Dock draws from plain
+// titles, use DockTileMenu's text form.
 //
 // Every process that shows an address calls `AddressSettings.start()` at launch (Sources/main.swift: the settings app, the
 // icon apps and the agent all start there); the Dock tile plug-in shows none and has no observable object: if it ever
@@ -127,8 +128,15 @@ struct AccountValue: View {
     var size: CGFloat = 12.5
     var reserve = true
     var blur: Bool? = nil
+    @ObservedObject private var privacy = AddressPrivacy.shared
 
+    /// Hidden: BlurredAddress (its room is the stand-in's, a revealed address cut at its tail to it). Shown: plain text, so
+    /// the caller's truncation (a card's middle cut) applies.
     var body: some View {
-        if AddressSettings.hides(text) { BlurredAddress(address: text, size: size, reserve: reserve, blur: blur) } else { Text(text) }
+        if AddressSettings.hides(text) && (blur ?? privacy.blur) {
+            BlurredAddress(address: text, size: size, reserve: reserve, blur: blur)
+        } else {
+            Text(text)
+        }
     }
 }
