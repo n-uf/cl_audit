@@ -940,7 +940,7 @@ struct NewAccountView: View {
     /// Step b's look, made now (`continueAnyway` set first by its Continue anyway): the window's folder is made only on its
     /// answer, by the same code as Create's; Cancel, the switch or leaving the page meanwhile drops it.
     private func lookForWindow() {
-        guard !gate.busy else { return }
+        guard !gate.busy, !windowBusy else { return }       // never while the switch is turning the window off
         gate.look(monitor) { fresh in
             let why = NewAccountSetup.windowStepLook(&draft, accounts: model.accounts, runs: fresh)
             // the desktop app's line shows in step b itself; only another reason (the folder couldn't be made) goes to the bar
@@ -1096,10 +1096,10 @@ struct NewAccountView: View {
             if windowHeld {
                 Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 Button("Continue anyway") { draft.continueAnyway = true; lookForWindow() }
-                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(gate.busy)
+                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(gate.busy || windowBusy)
             } else {
                 Button(gate.busy ? "Checking…" : "Set up the window") { lookForWindow() }
-                    .buttonStyle(.pill(tint, compact: true)).disabled(gate.busy || model.discarding)
+                    .buttonStyle(.pill(tint, compact: true)).disabled(gate.busy || model.discarding || windowBusy)
             }
         }
         .padding(.top, 2)
@@ -1297,7 +1297,7 @@ struct NewAccountView: View {
             } else if draft.claudeWindow, !waiting, !windowDue {
                 // (another profile's account too: the window opens all the same, shared seats)
                 Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
-                    .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding)       // (never while Cancel removes its folders)
+                    .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding || windowBusy)   // (never while Cancel or the switch removes its folder)
             }
         }
     }
