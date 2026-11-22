@@ -166,23 +166,30 @@ enum NewAccountSetup {
         }
     }
 
-    /// Why Sign in (the address route) can't go with this address, or nil. The address only fills in the sign-in, so
-    /// this is the early, by-address part (any profile's account in use or standing by, FolderRules.seatOwner); afterwards
-    /// the account and organisation ids decide (checks).
-    static func addressProblem(_ email: String, among accounts: [AccountEntry],
-                               signedIn: (String) -> Seat? = Account.signedInSeat) -> String? {
+    /// Why Sign in (the address route) can't go with this address, or nil: only an address that isn't one. Another
+    /// profile's account is no problem (shared seats): `addressNote` says so.
+    static func addressProblem(_ email: String) -> String? {
         let e = email.trimmingCharacters(in: .whitespaces)
         guard e.contains("@"), !e.hasPrefix("@"), !e.hasSuffix("@"), !e.contains(" ") else { return "Type the account's email address." }
-        let typed = AccountIdentity(account: nil, email: e, organization: nil, source: .guessed)
-        if let owner = FolderRules.seatOwner(typed, among: accounts, signedIn: signedIn) {
-            return "That's \(ownerWords(owner)). One profile per account."
-        }
         return nil
     }
 
-    /// Whose account it is, as New profile's refusals say it: "the account of “Work”", or "a standby account of “Work”".
-    static func ownerWords(_ o: FolderRules.SeatOwner, inUse: String = "the account of") -> String {
-        "\(o.standby ? "a standby account of" : inUse) “\(o.profile.name)”"
+    /// The amber note for an address typed that another profile has, in use or standing by (FolderRules.sharedNote), or nil.
+    /// The address only fills in the sign-in, so this is the early, by-address part; afterwards the account and organisation
+    /// ids decide (`signInNote`).
+    static func addressNote(_ email: String, among accounts: [AccountEntry],
+                            signedIn: (String) -> Seat? = Account.signedInSeat) -> String? {
+        let e = email.trimmingCharacters(in: .whitespaces)
+        guard addressProblem(e) == nil else { return nil }
+        let typed = AccountIdentity(account: nil, email: e, organization: nil, source: .guessed)
+        return FolderRules.sharedNote(FolderRules.seatSharers(typed, among: accounts, signedIn: signedIn))
+    }
+
+    /// The amber note for the account the draft's folder is signed in to, when another profile has it too, or nil.
+    static func signInNote(_ d: NewAccountDraft, among accounts: [AccountEntry],
+                           signedIn: (String) -> Seat? = Account.signedInSeat) -> String? {
+        guard signedInEmail(d) != nil else { return nil }
+        return FolderRules.sharedNote(FolderRules.seatSharers(signedIn(d.configDir), among: accounts, signedIn: signedIn))
     }
 
     /// A free folder already signed in to this address, if any: picking it connects that folder, no new sign-in.
@@ -281,16 +288,16 @@ enum NewAccountSetup {
             }
         }
 
-        // the sign-in: one profile per Claude account seat (account and organisation ids, from the folder's
-        // .claude.json), in use or standing by; the address typed only filled in the sign-in, so another one is said, not refused
+        // the sign-in: the account (account and organisation ids, from the folder's .claude.json) may be another profile's
+        // too (shared seats): an amber note, never a block; the address typed only filled in the sign-in, so another one is
+        // said, not refused
         if let email = signedInEmail(d) {
-            if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: d.configDir), among: accounts) {
-                out.append(.init(section: .signIn, state: .bad, text: "Signed in as \(AddressSettings.words(email)), \(ownerWords(owner, inUse: "the Claude account of")): one profile per account"))
-            } else if !d.email.isEmpty, d.email.lowercased() != email.lowercased() {
+            if !d.email.isEmpty, d.email.lowercased() != email.lowercased() {
                 out.append(.init(section: .signIn, state: .warn, text: "Signed in as \(AddressSettings.words(email)), not \(AddressSettings.words(d.email)): the browser's claude.ai account decided"))
             } else {
                 out.append(.init(section: .signIn, state: .ok, text: "Signed in as \(AddressSettings.words(email))"))
             }
+            if let note = signInNote(d, among: accounts) { out.append(.init(section: .signIn, state: .warn, text: note)) }
         }
 
         // The desktop app open: it writes sign-in and settings, which matters only until the folders exist, and only
@@ -615,7 +622,7 @@ struct NewAccountView: View {
     /// after its path, so moving one would lose it.
     private func folderCard(stacked: Bool) -> some View {
         SCard(title: "Claude Code", info: "Where this profile's Claude Code sign-in, settings and history live: one folder, signed in to one claude.ai account. Folders are used where they are; Claude Code names a folder's Keychain sign-in after its path, so a moved folder would lose it.") {
-            SRow(label: "Account", info: "The claude.ai account this profile is for. Accounts signed in in Claude Code folders on this Mac that no profile uses come with their folder; other profiles' are dimmed (one profile per account). Sign in to another account… opens Claude Code's own sign-in in Terminal with the address filled in; the browser's claude.ai account decides which account it is, checked afterwards by its account and organisation ids.", first: true, stacked: stacked) {
+            SRow(label: "Account", info: "The claude.ai account this profile is for. Accounts signed in in Claude Code folders on this Mac that no profile uses come with their folder. Another profile's account can be this profile's too, and both profiles then show the same numbers. Sign in to another account… opens Claude Code's own sign-in in Terminal with the address filled in; the browser's claude.ai account decides which account it is, checked afterwards by its account and organisation ids.", first: true, stacked: stacked) {
                 accountValue
             }
             accountLine
@@ -632,11 +639,8 @@ struct NewAccountView: View {
 
     /// The account the folder is signed in to, or the one about to be: the label of the Account pop-up.
     private var accountShown: (text: String, tint: Color?, icon: String?) {
-        let red = Color(nsColor: Painter.red), green = Color(nsColor: Painter.green)
+        let green = Color(nsColor: Painter.green)
         if let email = signedIn {
-            if FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) != nil {
-                return (email, red, "exclamationmark.triangle.fill")
-            }
             if !draft.email.isEmpty, draft.email.lowercased() != email.lowercased() { return (email, FaceTheme.ledAmber, "exclamationmark.triangle.fill") }
             return (email, green, nil)
         }
@@ -666,21 +670,28 @@ struct NewAccountView: View {
         }
     }
 
-    /// The Account menu's other profiles' accounts, dimmed: "address   Plan · Name's".
-    private var otherAccountLines: [String] {
-        var out: [String] = []
+    /// The Account menu's other profiles' accounts, "address   Plan · Name's": each can be picked (shared seats), which signs
+    /// in to it in this profile's own folder (another profile's folder is never shared) with its address filled in.
+    private var otherAccountLines: [(title: String, email: String)] {
+        var out: [(title: String, email: String)] = []
         for o in model.accounts {
-            guard let e = o.seat?.email ?? Account.expectedEmail(configDir: o.configDir) else { continue }
+            guard let e = o.seat?.email ?? Account.expectedEmail(configDir: o.configDir), !out.contains(where: { $0.email.lowercased() == e.lowercased() }) else { continue }
             var detail: [String] = []
             if let plan = Store.status(o.id)?.plan { detail.append(Account.planWords(plan)) }
             detail.append(o.name + "'s")
-            out.append(AddressSettings.words(e) + "   " + detail.joined(separator: " · "))
+            out.append((AddressSettings.words(e) + "   " + detail.joined(separator: " · "), e))
         }
         return out
     }
 
     private func pickFreeAccount(_ path: String) {
         draft.source = .existing; draft.existingDir = path; draft.email = ""; draft.asking = false
+    }
+
+    /// Another profile's account picked: the address route with its address filled in (the note under it says it's shared).
+    private func pickOtherAccount(_ email: String) {
+        draft.email = email
+        askAddress()
     }
 
     @ViewBuilder private var accountValue: some View {
@@ -712,7 +723,7 @@ struct NewAccountView: View {
                         Button(a.title) { pickFreeAccount(a.path) }.disabled(draft.started)
                     }
                 }
-                ForEach(others, id: \.self) { line in Button(line) {}.disabled(true) }
+                ForEach(others, id: \.email) { o in Button(o.title) { pickOtherAccount(o.email) }.disabled(draft.started && !canSignInAgain) }
                 Divider()
                 if model.claudeKnownMissing { Button(ClaudeInstall.missingInstall) { model.showInstallHelp() } }
                 Button("Sign in to another account…") { askAddress() }
@@ -736,6 +747,8 @@ struct NewAccountView: View {
             }
             if draft.asking {
                 if let p = addressProblem { return (p, face.danger) }
+                // another profile's account typed or picked: taken all the same, said once, amber
+                if let note = NewAccountSetup.addressNote(draft.email, among: model.accounts) { return (note, face.caution) }
                 if let dir = NewAccountSetup.freeFolder(for: draft.email, among: model.accounts), !draft.started {
                     return ("\(AddressSettings.words(draft.email)) is signed in in \(dir) already: pick it in the pop-up to use that folder as it is.", nil)
                 }
@@ -746,13 +759,12 @@ struct NewAccountView: View {
             }
             // a free account picked: say what Connect does before it's done (its sign-in is already there)
             if draft.source == .existing, !draft.started, let dir = draft.existingDir,
-               signedIn == nil || FolderRules.seatOwner(Account.signedInSeat(configDir: dir), among: model.accounts) == nil {
+               signedIn == nil || NewAccountSetup.signInNote(draft, among: model.accounts) == nil {
                 return ("Connects \(dir) as it is: its sign-in, settings and history stay.", nil)
             }
             if let email = signedIn {
-                if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) {
-                    return ("\(AddressSettings.words(email)) is \(NewAccountSetup.ownerWords(owner)). One profile per account: Sign in to another account… in the pop-up.", face.danger)
-                }
+                // another profile's account too (shared seats): the one amber note, no address in it (the field shows it)
+                if let note = NewAccountSetup.signInNote(draft, among: model.accounts) { return (note, face.caution) }
                 if !draft.email.isEmpty, draft.email.lowercased() != email.lowercased() {
                     return ("Signed in as \(AddressSettings.words(email)), not \(AddressSettings.words(draft.email)): the browser's claude.ai account decided. Keep it, or sign in again from the pop-up after switching the browser.", face.caution)
                 }
@@ -806,7 +818,7 @@ struct NewAccountView: View {
     /// `confirmed`: a look made at the click found nothing in the way (the folder is made only then).
     private func startAddressSignIn(confirmed: Bool = false) {
         guard !gate.busy else { return }
-        if let p = NewAccountSetup.addressProblem(draft.email, among: model.accounts) { addressProblem = p; return }
+        if let p = NewAccountSetup.addressProblem(draft.email) { addressProblem = p; return }
         let e = draft.email.trimmingCharacters(in: .whitespaces)
         // a folder connected as it was is never signed in again from here; the folder this setup made can be
         guard !draft.started || canSignInAgain else { addressProblem = "This profile uses \(draft.configDir) as it is. Cancel the setup to sign in to another account."; return }
@@ -867,23 +879,21 @@ struct NewAccountView: View {
 
     /// The two parts of signing in: a · Claude Code (Terminal), b · the desktop app (its own window).
     private var signInParts: some View {
-        let owner = signedIn.flatMap { _ in FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) }
         return VStack(spacing: 1) {
-            part(signedIn == nil ? (current == 3 ? .now : .todo) : owner != nil ? .warn : .done, current: current == 3,
+            part(signedIn == nil ? (current == 3 ? .now : .todo) : .done, current: current == 3,
                  title: "a · Claude Code") {
                 if waiting {
                     sub("Waiting for \(AddressSettings.words(draft.email.isEmpty ? "the sign-in" : draft.email)) in the browser")
                 } else if let email = signedIn {
-                    if let o = owner {
-                        Text("\(AddressSettings.words(email)) is \(NewAccountSetup.ownerWords(o)): one profile per account")
-                            .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
-                        if canSignInAgain {
-                            // signing in again in the folder this setup made replaces its sign-in; no sign-out first
-                            Button("+ Sign in to another account…") { askAddress() }
-                                .buttonStyle(.link).font(.system(size: 12)).fixedSize().padding(.top, 3)     // a link, not a big key
-                        }
-                    } else {
-                        sub(AddressSettings.words(email) + (draft.source == .existing && !draft.started ? ", already in the folder" : ""))
+                    // the address in the drawn form (the stand-in while Show emails is off, never "hidden address" or real
+                    // text under a blur), as the Account field shows it; then the shared note, amber, with no address in it
+                    HStack(spacing: 0) {
+                        AccountValue(text: email, size: 11.5, reserve: false)
+                        if draft.source == .existing && !draft.started { Text(", already in the folder") }
+                    }
+                    .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if let note = NewAccountSetup.signInNote(draft, among: model.accounts) {
+                        Text(note).font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                     }
                 } else {
                     sub(draft.email.isEmpty ? "Terminal opens; approve in the browser"
@@ -893,10 +903,10 @@ struct NewAccountView: View {
             if !draft.claudeWindow {
                 part(.todo, current: false, title: "b · Claude window", droppedOut: true) { sub("Only when the profile has a Claude window") }
             } else if needsDesktop {
-                let state: StepState = signedIn == nil || owner != nil || waiting ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
+                let state: StepState = signedIn == nil || waiting ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
                 part(state, current: current == 4, title: draft.window == .standard ? "b · Claude window (the usual Claude app)" : "b · Claude window") {
                     // one status line: its own sign-in, checked against Claude Code's by account id
-                    if signedIn == nil || owner != nil || waiting {
+                    if signedIn == nil || waiting {
                         sub("After Claude Code")
                     } else {
                         switch desktop {
@@ -985,7 +995,7 @@ struct NewAccountView: View {
                     detail: folders ? draft.configDir : running ? "held until the desktop app is quit" : checks.contains(where: { $0.blocks && $0.section != .running }) ? "fix the red lines first" : nil,
                     detailBad: running && !folders) { EmptyView() }
             stepRow(3 + n, state: !folders ? .todo
-                        : (signedIn.flatMap { _ in FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) } != nil || (needsDesktop && signedIn != nil && desktop == .different)) ? .warn
+                        : (needsDesktop && signedIn != nil && desktop == .different) ? .warn
                         : current == 3 || current == 4 ? .now : .done,
                     title: "Sign in",
                     detail: folders ? nil : needsDesktop ? "Claude Code, then the Claude window" : "Claude Code") {
@@ -1122,9 +1132,8 @@ struct NewAccountView: View {
                     if let c = model.requireClaude() { model.startNewSignIn(c, email: draft.email.isEmpty ? nil : draft.email) }
                 }
                     .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding || waiting)
-            } else if draft.claudeWindow, !waiting,
-                      FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) == nil {
-                // the window waits until Claude Code is on an account no other profile has
+            } else if draft.claudeWindow, !waiting {
+                // (another profile's account too: the window opens all the same, shared seats)
                 Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
                     .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding)       // (never while Cancel removes its folders)
             }
