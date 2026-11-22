@@ -28,9 +28,9 @@ struct SwitchOffer {
     /// Its week was full when it left, and hasn't started again yet.
     func knownFull(now: Date = Date()) -> Bool { standby.knownFull(now: now) }
 
-    /// "Ultra · last in use 3 days ago", or "on standby".
+    /// "Ultra · last used 3 days ago", or "on standby" (never "in use": the tick and the IN USE badge say that).
     func lineWords(now: Date = Date()) -> String {
-        let parts = [standby.plan.map(Account.planWords), standby.lastInUse.map { "last in use " + AccountBook.ago($0, now: now) }].compactMap { $0 }
+        let parts = [standby.plan.map(Account.planWords), standby.lastInUse.map { "last used " + AccountBook.ago($0, now: now) }].compactMap { $0 }
         return parts.isEmpty ? "on standby" : parts.joined(separator: " · ")
     }
 

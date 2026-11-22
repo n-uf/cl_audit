@@ -1632,7 +1632,7 @@ do {
           "a week that started again since it left: no longer known full, offered first")
     var none = cm; none.standby = []
     check(none.cardTrays(now: now).isEmpty, "no standby accounts: no trays")
-    check(trays.first?.offer.lineWords(now: now) == "Ultra · last in use 2 h ago" && trays.last?.offer.lineWords(now: now) == "on standby",
+    check(trays.first?.offer.lineWords(now: now) == "Ultra · last used 2 h ago" && trays.last?.offer.lineWords(now: now) == "on standby",
           "a tray's line: its plan and when it was last in use, else 'on standby' (never a level: it isn't read)")
 
     // the selection rule (retired with cardBest, above)

@@ -2813,7 +2813,7 @@ MainActor.assumeIsolated {
     let k1 = both.standby[1], k2 = both.standby[0]
     check(SwitchPage.boxWords(k1, back: true, name: "Acc", moveCount: nil, now: now) == "Move Claude Code back here."
           && SwitchPage.boxWords(k1, back: true, name: "Acc", moveCount: "41 Code-tab sessions", now: now) == "Move Claude Code back here (41 Code-tab sessions)."
-          && SwitchPage.boxWords(k2, back: false, name: "Acc", moveCount: "41 Code-tab sessions", now: now) == "Last in use yesterday.",
+          && SwitchPage.boxWords(k2, back: false, name: "Acc", moveCount: "41 Code-tab sessions", now: now) == "Last used yesterday.",
           "the TO box's words: the own account says it moves Claude Code back (count once picked); another says its last use")
     // the card's menu takes the same rule from the profile's value (Launcher.switchMenu: ticks `named`, the own id, no second row)
     check(cardRow(both, now: now).show.ownStandbyID == "k1" && cardRow(both, now: now).show.named.label == u1.email
@@ -2944,7 +2944,7 @@ MainActor.assumeIsolated {
     // a standby box says when it was last in use, never numbers (even with a last week remembered)
     var remembered = e.standby[0]; remembered.lastWeek = 77; remembered.lastWeekResets = now.addingTimeInterval(86400)
     let words = surfaces(rec()).settings.standbyWords(remembered, name: "Acc")
-    check(words == "Last in use on Acc " + AccountBook.ago(remembered.lastInUse!) && !words.contains("%") && !words.contains("77"),
+    check(words == "Last used on Acc " + AccountBook.ago(remembered.lastInUse!) && !words.contains("%") && !words.contains("77"),
           "Settings' standby box: its last use only, never numbers: \(words)")
     Store.removeStatus("acc"); Store.removeStatus("asp")
     try? Store.save([])

@@ -234,7 +234,7 @@ struct SwitchPage: View {
     // MARK: accounts: NOW lit, TO picked (in mint)
 
     private var accountsCard: some View {
-        SCard(title: "Accounts", info: "The account \(name) works on now, with its limits, and the one it switches to. A standby account isn't read, so it shows no limits: only when it was last in use here.") {
+        SCard(title: "Accounts", info: "The account \(name) works on now, with its limits, and the one it switches to. A standby account isn't read, so it shows no limits: only when it was last used here.") {
             VStack(alignment: .leading, spacing: 12) {
                 labelled("Now") { inUseBox }
                 if runner.phase == .reached, !again, let was = cameFrom {
@@ -366,7 +366,7 @@ struct SwitchPage: View {
             let words = SwitchOffer.moveBackWords
             return words.prefix(1).uppercased() + words.dropFirst() + (moveCount.map { " (\($0))" } ?? "") + "."
         }
-        return (s.lastInUse.map { "Last in use " + AccountBook.ago($0, now: now) } ?? "Not in use on \(name) yet") + "."
+        return (s.lastInUse.map { "Last used " + AccountBook.ago($0, now: now) } ?? "Not used on \(name) yet") + "."
     }
 
     // MARK: what changes, and what doesn't
