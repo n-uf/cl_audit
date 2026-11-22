@@ -457,9 +457,19 @@ MainActor.assumeIsolated {
               "hostile: a name with control and bidi characters is one plain line; a bad id, path and place are cleaned: \(x.name) \(x.id) \(x.entry.configDir) \(x.place)")
         check(x.entry.style == AccountEntry(id: "a", name: "a", label: "A", configDir: "x").style && x.entry.pollMinutes == 5 && x.entry.notify == true && x.entry.color == .orange,
               "hostile: settings of the wrong type or out of range fall back to the default")
-        check(x.accounts.count == 1 && x.accounts[0].seat.account == sid(7) && x.accounts[0].email == nil && f.profiles[1].accounts.isEmpty
-              && f.profiles[1].notes.contains { $0.contains("another profile of the file has too") },
-              "hostile: an account id that isn't one is dropped, a bad address is dropped, one account isn't in two profiles")
+        check(x.accounts.count == 1 && x.accounts[0].seat.account == sid(7) && x.accounts[0].email == nil && f.profiles[1].accounts.map(\.seat.account) == [sid(7)]
+              && !f.profiles[1].notes.contains { $0.contains("twice") },
+              "hostile: an account id that isn't one is dropped, a bad address is dropped; one account in two profiles is kept in both (shared seats)")
+        // the same seat twice in one profile: once (said), never twice; the shared one is planned as a new profile, not "here"
+        let twice = readJSON(base.merging(["profiles": [["name": "Twice", "accounts": [["account": sid(7), "organization": sid(8)], ["account": sid(7), "organization": sid(8)]]]]],
+                                          uniquingKeysWith: { $1 }))
+        check(twice?.profiles.first?.accounts.count == 1 && twice?.profiles.first?.notes.contains("an account listed twice is read once") == true,
+              "the same seat twice in one profile of the file: read once, said")
+        if let t = twice {
+            var mine = AccountEntry(id: "mine-m4", name: "Mine", label: "MINE", configDir: "~/.claude-mine-m4"); mine.seat = Seat(account: sid(7), organization: sid(8))
+            let pt = SessionsMove.plan(t, accounts: [mine])
+            check(pt.here.isEmpty && pt.create.map(\.name) == ["Twice"], "a profile whose account another profile here has (another name and id): made, shared seats: \(pt.here.map(\.why))")
+        }
         check(f.backups[BackupPrefs.placeKey] == "/System/Library" && f.backups[BackupPrefs.lastKey] == nil && f.backups[BackupPrefs.daysKey] == nil && f.general["face"] == nil && f.general[AddressSettings.key] == nil,
               "hostile: settings of the wrong type or range aren't read")
         check(SessionsMove.placeProblem("/System/Library")?.contains("system folder") == true && SessionsMove.placeProblem("~/nowhere-m0") != nil && SessionsMove.placeProblem("~/../..") != nil

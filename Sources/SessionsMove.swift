@@ -192,7 +192,7 @@ enum SessionsMove {
         var f = File(move: bool(j["move"]) ?? false, profiles: [], general: [:], backups: [:])
         let raw = (j["profiles"] as? [Any]) ?? []
         if raw.count > maxProfiles { f.notes.append("The file names \(raw.count) profiles; the first \(maxProfiles) are read.") }
-        var ids = Set<String>(), names = Set<String>(), seats = Set<SeatID>()
+        var ids = Set<String>(), names = Set<String>()
         for (i, any) in raw.prefix(maxProfiles).enumerated() {
             guard let o = any as? [String: Any] else { f.notes.append("A profile in the file can't be read: left out."); continue }
             guard let name = cleanName(o["name"]) else { f.notes.append("A profile in the file has no name a profile can have: left out."); continue }
@@ -221,8 +221,10 @@ enum SessionsMove {
             entry.desktopDataDir = ownDataDir(id)
             if (o["window"] as? String) == DesktopMode.standard.rawValue { notes.append("it used the usual Claude app on the other Mac: here it gets a window of its own") }
             entry.seat = nil; entry.standby = []; entry.leftoverFolders = []
-            // its accounts: real ids only, each account once in the whole file (one account belongs to one profile)
+            // its accounts: real ids only, each account once in this profile (another profile of the file may have it too:
+            // shared seats)
             var accounts: [Account] = []
+            var seats = Set<SeatID>()
             let list = (o["accounts"] as? [Any]) ?? []
             var fingerprints = 0, bad = 0
             for a in list.prefix(maxAccounts) {
@@ -230,7 +232,7 @@ enum SessionsMove {
                 if Fingerprint.isValid(acc) || Fingerprint.isValid(org) { fingerprints += 1; continue }
                 guard ClaudeFiles.isUUID(acc), ClaudeFiles.isUUID(org) else { bad += 1; continue }
                 let seat = SeatID(account: acc.lowercased(), organization: org.lowercased())
-                guard seats.insert(seat).inserted else { notes.append("an account another profile of the file has too: left out"); continue }
+                guard seats.insert(seat).inserted else { notes.append("an account listed twice is read once"); continue }
                 let email = (x["email"] as? String).flatMap { validEmail($0) ? $0 : nil }
                 accounts.append(Account(email: email, seat: seat, inUse: bool(x["inUse"]) ?? false))
             }
@@ -468,7 +470,9 @@ enum SessionsMove {
         for fp in f.profiles.sorted(by: { $0.place != $1.place ? $0.place < $1.place : $0.name < $1.name }) {
             // (with their addresses, as apply's made profiles have them: one remembered here by its address only is this account too)
             let seats = fp.accounts.map { Seat(account: $0.seat.account, organization: $0.seat.organization, email: $0.email) }
-            if let owner = here.first(where: { e in seats.contains { e.has($0) } }) {
+            // the same profile here: one of its accounts, and its id or its name (an account alone may be another profile's here
+            // too: shared seats, so that profile is made)
+            if let owner = here.first(where: { e in (e.id == fp.id || e.name.lowercased() == fp.name.lowercased()) && seats.contains { e.has($0) } }) {
                 p.here.append(Here(name: fp.name, here: owner.name, id: owner.id, part: fp.part,
                                    why: owner.name.lowercased() == fp.name.lowercased() ? "the same account" : "its account is \(owner.name)'s here"))
                 continue
@@ -578,7 +582,7 @@ enum SessionsMove {
     static func apply(_ p: Plan, takeSettings: Bool, file: String, now: Date = Date()) throws -> Receipt {
         var r = Receipt(id: SessionsBackup.newID(now), started: now, file: SessionsBackup.oneLine(file, max: 200), move: p.move, made: p.create)
         do { try store.save(r) } catch { throw BackupError("The import's receipt couldn't be saved; nothing was made.") }
-        // 1. the profiles: each still free (its id, name, accounts and folders, its folder still without a sign-in) in the file as it is
+        // 1. the profiles: each still free (its id, name and folders, its folder still without a sign-in; its accounts may be others' too) in the file as it is
         // now, added after the profiles that are here
         var wrote = Set<String>()
         do {
@@ -586,8 +590,8 @@ enum SessionsMove {
                 var out = list
                 for m in p.create.sorted(by: { $0.place != $1.place ? $0.place < $1.place : $0.name < $1.name }) {
                     let e = m.entry
+                    // (an account another profile has is no clash: shared seats)
                     let clash = out.contains { $0.id == e.id || $0.name.lowercased() == e.name.lowercased() }
-                        || e.seats.contains { s in out.contains { $0.has(s) } }
                         || FolderRules.configOwner(e.configDir, among: out) != nil
                         || FolderRules.windowOwner(e.desktop, e.desktop == .standard ? FolderKey.standardDataDir : e.desktopDataDir, among: out) != nil
                         || e.desktop == .standard || isDefaultFolder(e.configDir)
