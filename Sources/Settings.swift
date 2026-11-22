@@ -265,7 +265,7 @@ final class SettingsModel: ObservableObject {
     }
 
     /// Each profile works on the account its folder is signed in to: when that changes, the profile follows by itself
-    /// and the account before joins its standby accounts (FolderRules.noteAccounts; one profile per account). Saved like
+    /// and the account before joins its standby accounts (FolderRules.noteAccounts; an account may be several profiles'). Saved like
     /// any other change; the agent does the same while this window is closed.
     func noteAccounts() {
         guard Self.followsDock, !isFirstRun, !needsApply, problem == nil else { return }   // not under the first-run page
@@ -369,16 +369,15 @@ final class SettingsModel: ObservableObject {
         // (never the list being edited), and no other profile may own it
         SignInWindow.start(claude, profile: e, saved: saved, listed: true, wanted: SignInWindow.wanted(for: e, email: email)) { [weak self] end in
             guard let self, self.signInGenerations[id] == generation else { return }
-            // another profile's account that signed in is refused in words (one profile per account), never taken or called
-            // "Signed in.": whatever the sign-in was wanted for (a plain sign-in wants nobody), confirmed or not
-            var owner: String?
+            // another profile's account that signed in is taken like any other (shared seats), with the amber note that
+            // says which profiles have it too (FolderRules.sharedNote), whatever the sign-in was wanted for, confirmed or not
             var who: SignedInAccount?
             switch end {
             case .signedIn(let a), .unverified(let a), .wrongAccount(let a, _): who = a
             default: break
             }
-            if let who, let o = FolderRules.seatOwner(who.identity, among: self.saved, except: id) { owner = NewAccountSetup.ownerWords(o) }
-            let said = SignInSaid(end, configDir: folder, owner: owner, previous: previous)
+            let shared = FolderRules.sharedNote(FolderRules.seatSharers(who?.identity, among: self.saved, except: id))
+            let said = SignInSaid(end, configDir: folder, shared: shared, previous: previous)
             self.signIns[id] = said.map { .said($0) }
             self.tick += 1
             // every line is only for a while, never a stale one: the box's own lines say who is signed in and what the agent
@@ -731,12 +730,11 @@ final class SettingsModel: ObservableObject {
         }
     }
 
-    /// The seat a new profile is linked to when it is added: the seat its folder is signed in to (Finish is refused while another
-    /// profile has that seat). None while its last sign-in ended unconfirmed (the folder's record alone is a guess: the agent's
-    /// own confirmation links it later, as for any profile not linked yet).
+    /// The seat a new profile is linked to when it is added: the seat its folder is signed in to, another profile's too (shared
+    /// seats: Finish goes on, New profile's note says so). None while its last sign-in ended unconfirmed (the folder's record
+    /// alone is a guess: the agent's own confirmation links it later, as for any profile not linked yet).
     static func seatToLink(_ d: NewAccountDraft, among accounts: [AccountEntry], now: Date = Date()) -> Seat? {
-        guard !d.unconfirmed, var s = Account.signedInSeat(configDir: d.entry.configDir),
-              FolderRules.seatOwner(s, among: accounts) == nil else { return nil }
+        guard !d.unconfirmed, var s = Account.signedInSeat(configDir: d.entry.configDir) else { return nil }
         s.linkedAt = now
         return s
     }
@@ -1550,11 +1548,6 @@ struct AccountSettings: View {
             SRow(label: "Fable's limit", info: "Fable's own weekly limit (Max and Ultra plans, premium Team and Enterprise seats): shown on this profile's dashboard card, usage panels, Dock and menu bar menus and the widget, with its alerts. Off: left out everywhere; it still counts in Anthropic's limits.") {
                 SSwitch(isOn: $entry.showFable, on: "shown and alerted", off: "left out")
             }
-            if let other = FolderRules.seatTaken(entry, among: model.accounts) {
-                Text("Its Claude Code folder is signed in to the same Claude account as “\(other.name)”. One profile per account: sign this folder in with another account, or remove this profile.")
-                    .font(.system(size: 11)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
-                    .padding(.vertical, 4)
-            }
             Button("Remove profile…") { model.askRemove(entry.id) }
                 .buttonStyle(.plain).font(.system(size: 12.5)).foregroundStyle(face.danger)
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
@@ -1676,7 +1669,6 @@ struct AccountSettings: View {
     /// the pop-up, drawn like the Folder one; only when something needs a choice, the keys for it sit under the pop-up
     /// in the same row (wrapping in a narrow column), with one grey line under the row. Renew sign-in is a pop-up item.
     @ViewBuilder func accountRows(stacked: Bool) -> some View {
-        let name = entry.name.isEmpty ? "This profile" : entry.name
         let move = elsewhere
         // "was X, now on standby": only while X is on standby in the boxes too (never the active account or Claude Code's)
         let linkedLately: (was: String, at: Date)? = entry.seat.flatMap { s in
@@ -1709,8 +1701,9 @@ struct AccountSettings: View {
             }
         }
         // one grey line, worded like New profile's and short enough for one line in a 460 pt column
-        if let move {
-            rowLine("Signed in as \(AddressSettings.words(move.seat.email ?? "another account")), the account of “\(move.owner.name)”. One profile per account: \(name)'s numbers wait until its folder is on one of its own.", color: face.danger)
+        // the account in use is another profile's too (shared seats): one amber line, nothing refused
+        if let shared = FolderRules.sharedNote(FolderRules.seatSharers(entry.seat, among: model.accounts, except: entry.id)) {
+            rowLine(shared, color: face.caution)
         } else if mismatch {
             rowLine("The Keychain's sign-in is another account than the folder's .claude.json names.")
         } else if status?.state == "denied" {
@@ -1878,7 +1871,7 @@ struct AccountSettings: View {
             case .waiting: EmptyView()          // (above)
             case .said(let said):
                 BoxNote(text: said.text, size: said.kind == .signedIn ? 10.5 : 11.5,
-                        tone: said.danger ? .danger : said.kind == .signedIn ? .muted : .caution)
+                        tone: said.danger ? .danger : said.kind == .signedIn && said.shared == nil ? .muted : .caution)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

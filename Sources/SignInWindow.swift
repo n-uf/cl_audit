@@ -267,27 +267,26 @@ struct SignInSaid: Equatable {
     /// The account that signed in (unverified, wrong account) and the one wanted.
     var address: String? = nil
     var wanted: String? = nil
-    /// A wrong account that is another profile's: whose ("the account of “Work”", NewAccountSetup.ownerWords): refused.
-    var owner: String? = nil
+    /// The account that signed in is another profile's too (shared seats): FolderRules.sharedNote's amber line, said after
+    /// the rest. Never a refusal.
+    var shared: String? = nil
     var failure: ClaudeSignIn.Failure? = nil
     /// The profile follows its folder's account within seconds (FolderRules.noteAccounts): an unconfirmed or wrong account
-    /// that isn't another profile's becomes the account in use, and `previous` (the account in use when Sign in was pressed,
+    /// becomes the account in use (another profile's too), and `previous` (the account in use when Sign in was pressed,
     /// nil: none, a new profile) goes to standby. False where nothing is linked (New profile's draft): no such sentence.
     var follows = true
     var previous: String? = nil
 
     /// nil: nothing to say (the person's Cancel).
-    /// `owner`: the name-words of the profile whose account signed in, when it isn't this profile's.
-    init?(_ end: SignInWindow.End, configDir: String, owner: String? = nil, previous: String? = nil, follows: Bool = true) {
+    /// `shared`: the note when the account that signed in is another profile's too (FolderRules.sharedNote).
+    init?(_ end: SignInWindow.End, configDir: String, shared: String? = nil, previous: String? = nil, follows: Bool = true) {
         self.configDir = configDir
         self.previous = previous; self.follows = follows
         switch end {
-        // another profile's account (`owner`) is refused whatever the sign-in was asked for or confirmed: never "Signed in."
-        case .signedIn(let a):
-            if owner != nil { kind = .wrongAccount; address = a.email; self.owner = owner } else { kind = .signedIn }
-        case .unverified(let a):
-            if owner != nil { kind = .wrongAccount; address = a.email; self.owner = owner } else { kind = .unverified; address = a.email }
-        case .wrongAccount(let a, let w): kind = .wrongAccount; address = a.email; wanted = w.email; self.owner = owner
+        // another profile's account is taken like any other: its note goes with the line
+        case .signedIn: kind = .signedIn; self.shared = shared
+        case .unverified(let a): kind = .unverified; address = a.email; self.shared = shared
+        case .wrongAccount(let a, let w): kind = .wrongAccount; address = a.email; wanted = w.email; self.shared = shared
         case .declined: kind = .declined
         case .failed(let f): kind = .failed; failure = f
         case .timedOut: kind = .timedOut
@@ -301,10 +300,14 @@ struct SignInSaid: Equatable {
     var text: String { text(emailsShown: !AddressPrivacy.shared.blur) }
 
     /// The same for a given "Show emails" setting (what a check hands in: never the real preference). The amber lines name
-    /// accounts by their short names only; the red one (another profile's) by the address, "hidden address" while emails are hidden.
+    /// accounts by their short names only; another profile's account gets the shared note after them, with no address.
     func text(emailsShown shown: Bool) -> String {
+        guard let shared else { return line(emailsShown: shown) }
+        return line(emailsShown: shown) + " " + shared
+    }
+
+    private func line(emailsShown shown: Bool) -> String {
         let folder = tilde(configDir)
-        func who(_ a: String?) -> String { a.map { AddressSettings.words($0, blur: !shown) } ?? "another account" }
         switch kind {
         case .signedIn: return "Signed in."
         case .unverified:
@@ -312,9 +315,7 @@ struct SignInSaid: Equatable {
                 return "The sign-in ended, but cl_audit couldn't confirm which account it is\(address.map { " (\(AccountNames.shortName($0, shown: shown)))" } ?? ""). Sign in again, or Refresh now."
             }
             return "The sign-in ended, but cl_audit couldn't confirm which account it is. " + followWords(address, shown: shown)
-        case .wrongAccount:
-            if let owner { return "\(who(address)) is \(owner): one profile per account." }
-            return followWords(address, shown: shown)
+        case .wrongAccount: return followWords(address, shown: shown)
         case .declined: return "The sign-in was declined in the browser; nothing changed."
         case .timedOut: return "No sign-in came in 10 minutes; nothing changed."
         case .replaced: return "Another sign-in started, so this one ended; nothing changed."
@@ -334,7 +335,7 @@ struct SignInSaid: Equatable {
         }
     }
 
-    /// What happened after a wrong or unconfirmed account (not another profile's): the profile follows its folder to it, and
+    /// What happened after a wrong or unconfirmed account (another profile's too): the profile follows its folder to it, and
     /// the account before is on standby (none before: nothing to go back to). Short names only, "hidden address" while emails
     /// are hidden (AccountNames.short).
     private func followWords(_ address: String?, shown: Bool) -> String {
@@ -344,6 +345,6 @@ struct SignInSaid: Equatable {
         return s
     }
 
-    /// Red: a refusal or a failure. Amber: the rest but "Signed in.".
-    var danger: Bool { kind == .failed || kind == .refused || (kind == .wrongAccount && owner != nil) }
+    /// Red: a refusal or a failure. Amber: the rest but "Signed in." (amber too with the shared note).
+    var danger: Bool { kind == .failed || kind == .refused }
 }
