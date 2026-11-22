@@ -342,7 +342,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         SwitchEngine.linkReached(list, signedIn: { Account.signedInSeat(configDir: $0) })
         guard FolderRules.noteAccounts(list) != list else { return }
         do { _ = try Store.edit { FolderRules.noteAccounts($0) } }
-        catch { agentLog.error("agent: the account a folder is signed in to couldn't be noted: \(String(describing: error), privacy: .public)") }
+        catch { agentLog.error("agent: the account a folder is signed in to couldn't be noted: \(PlainWords.why(error), privacy: .public)") }
     }
 
     /// The accounts found on this Mac for each profile (AccountList, claude-transplant's logins()/accounts()) go on its
@@ -355,7 +355,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             let found = AccountList.find(list)
             if AccountList.adding(found, to: list) != list {
                 do { _ = try Store.edit { AccountList.adding(found, to: $0) } }
-                catch { agentLog.error("agent: the accounts found couldn't be noted: \(String(describing: error), privacy: .public)") }
+                catch { agentLog.error("agent: the accounts found couldn't be noted: \(PlainWords.why(error), privacy: .public)") }
             }
             DispatchQueue.main.async { self?.discovering = false }
         }
