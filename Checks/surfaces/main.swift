@@ -1531,6 +1531,16 @@ do {
     check(head?.weekly == nil && head?.fiveHour == nil && head?.plan == nil && AccountView.of(head).label == pat.email
           && AccountView.of(head).line == "cl_audit can't read \(AddressSettings.words(pat.email!))'s usage: Claude Code in Terminal is signed in to \(AddressSettings.words(mo.email!)).",
           "the profile's record has no numbers for pat, and its line says so: \(AccountView.of(head).line ?? "-")")
+    // the record holds the fact, not the sentence (the sentence names both accounts): the line is built when it is drawn, so the
+    // same record read again with Show emails off says "hidden address" and a record never holds an address-bearing line
+    let splitSentence = AccountView.of(head).line ?? ""
+    AddressPrivacy.shared.apply(blur: true)
+    let splitHidden = AccountView.of(head).line ?? ""
+    AddressPrivacy.shared.apply(blur: false)
+    check(head?.resolved?.line == nil && head?.resolved?.splitLine == true && head?.resolved?.lineText() == splitSentence
+          && splitHidden == "cl_audit can't read hidden address's usage: Claude Code in Terminal is signed in to hidden address."
+          && !splitHidden.contains("example.com") && !splitHidden.contains("@"),
+          "the split's sentence is not stored in the record (a flag), and it is said by the setting when drawn: \(splitHidden)")
     let row = cardRow(e, now: now)
     check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
           && AtLimit.tileCountdown(fiveHour: row.fiveHour, fiveHourResets: head?.fiveHourResets, weekly: row.weekly, weeklyResets: head?.weeklyResets) == nil,
@@ -1559,7 +1569,7 @@ do {
     notSplit.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: mo, loginEmail: mo.email, names: [:], now: now)
     let notSplitShow = ProfileShow.of(e, raw: notSplit, now: now)
     check(MenuBarRow.lineWords(barProfile) == split?.shortLine && notSplitShow.display.split == nil
-          && MenuBarRow.lineWords(MenuBarItems.Profile(show: notSplitShow)) == notSplit.resolved?.line,
+          && MenuBarRow.lineWords(MenuBarItems.Profile(show: notSplitShow)) == notSplit.resolved?.lineText(),
           "the menu bar row says the short split line, and the record's line outside the split")
     // every key and menu item reads its label once, with its ellipsis (the menus no longer add one)
     check(split?.key?.hasSuffix("…") == true && split?.key?.hasSuffix("……") == false && split?.shortKey?.hasSuffix("…") == true,
@@ -1719,7 +1729,7 @@ do {
     // nor the plan: the reader writes none into a clash record (it is mo's, Spm's), so every reader of it, the widget too,
     // shows none; the profile whose account it is keeps it
     let widgetClash = AgentFiles.load(from: Store.folder, now: now)
-    check(Store.status("spm")?.plan == "Ultra" && Store.status("spt")?.plan == nil && Store.status("spt")?.problem == Store.status("spt")?.resolved?.line
+    check(Store.status("spm")?.plan == "Ultra" && Store.status("spt")?.plan == nil && Store.status("spt")?.problem == Store.status("spt")?.resolved?.lineText()
           && widgetClash.first { $0.id == "spm" }?.plan == "Ultra" && widgetClash.first { $0.id == "spt" }.map { $0.plan == nil && $0.week == nil } == true,
           "the reader's clash record has no plan (Spm's Ultra stays on Spm): the widget shows none for the twin: \(Store.status("spt")?.plan ?? "nil")")
     mr.stop(); tr.stop()
@@ -4537,16 +4547,6 @@ MainActor.assumeIsolated {
               "S5/F3: tildeNoIds replaces each id folder on its own (x/<id> keeps x): \(oneId) | \(twoIds) | \(noId)")
     }
 
-    // no first-letter-and-dots mask left anywhere in the app's sources
-    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
-    let files = (try? FileManager.default.contentsOfDirectory(atPath: src.path))?.filter { $0.hasSuffix(".swift") } ?? []
-    var masks: [String] = []
-    for f in files {
-        let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? []
-        for (i, l) in lines.enumerated() where l.contains("•••") || l.contains("repeating: \"•\"") || l.contains("Privacy.mask") || l.contains("Privacy.masked") || l.contains("settingsEmail") {
-            masks.append("\(f):\(i + 1)")
-        }
-    }
     // F4: a value a model holds (quick chat's offer, `@Published`) keeps the address and names it when it is drawn
     do {
         let heldOffer = QuickChatSwitchOffer(key: "held~k1", address: "held-offer@example.com", words: "3 days ago")
@@ -4559,6 +4559,16 @@ MainActor.assumeIsolated {
               "S5/F4: the same held offer read again with Show emails off names nothing of the address: \(shownOffer) | \(hiddenOffer)")
     }
 
+    // no first-letter-and-dots mask left anywhere in the app's sources
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    let files = (try? FileManager.default.contentsOfDirectory(atPath: src.path))?.filter { $0.hasSuffix(".swift") } ?? []
+    var masks: [String] = []
+    for f in files {
+        let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? []
+        for (i, l) in lines.enumerated() where l.contains("•••") || l.contains("repeating: \"•\"") || l.contains("Privacy.mask") || l.contains("Privacy.masked") || l.contains("settingsEmail") {
+            masks.append("\(f):\(i + 1)")
+        }
+    }
     check(!files.isEmpty && masks.isEmpty && !files.contains("Privacy.swift"), "no source builds the old mask (a first letter, dots, the domain) or calls Privacy: \(masks)")
 }
 

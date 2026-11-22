@@ -154,6 +154,9 @@ extension ResolvedAccount {
     /// on" and Claude Code's account (hidden while addresses are hidden: AddressSettings.words). `blur`: a test override.
     func lineText(blur: Bool? = nil) -> String? {
         if let line { return line }
+        // the split's sentence (Store.shown marks it, `splitLine`): built here from the accounts the record names, so no record
+        // holds a sentence with an address in it
+        if splitLine == true { return SplitUsage.of(self, switched: switchWaits == true).line(blur: blur) }
         guard codeUsageLine == true, let name = codeName else { return nil }
         return Self.usageOnPrefix + AddressSettings.words(name, blur: blur)
     }
@@ -176,18 +179,25 @@ struct SplitUsage: Equatable {
     /// isn't, or the record has no resolver answer to name the accounts.
     static func words(_ s: IconStatus?, _ split: Headline.Split?) -> SplitUsage? {
         guard let split, let r = s?.resolved else { return nil }
-        // (the split has Claude Code's account by its name or the numbers': Headline.split needs one of them)
-        return SplitUsage(app: r.email ?? r.account.map { "account \($0.prefix(8))" } ?? "the Claude app's account",
-                          code: r.codeName ?? r.numbersFor ?? "Claude Code's account", switched: split.switchWaits)
+        return of(r, switched: split.switchWaits)
+    }
+
+    /// The split of a resolver answer: the app's account and Claude Code's, named as the record names them.
+    /// (the split has Claude Code's account by its name or the numbers': Headline.split needs one of them)
+    static func of(_ r: ResolvedAccount, switched: Bool) -> SplitUsage {
+        SplitUsage(app: r.email ?? r.account.map { "account \($0.prefix(8))" } ?? "the Claude app's account",
+                   code: r.codeName ?? r.numbersFor ?? "Claude Code's account", switched: switched)
     }
 
     /// "cl_audit can't read P@…'s usage: Claude Code in Terminal is signed in to M@…" (Claude Code inside the Claude app runs
     /// on the app's own sign-in, so the app's account is the one in use; only Terminal's login, the one cl_audit reads with,
     /// is on M); a switch waiting for the app, the card's words on every surface (Settings, menu bar, widget, Dock panel,
     /// quick chat): "Switching to M@…: one step left. Sign the Claude app in to M@… to finish."
-    var line: String {
-        switched ? "\(Self.switchingHead(code)). Sign the Claude app in to \(AddressSettings.words(code)) to finish."
-                 : "cl_audit can't read \(AddressSettings.words(app))'s usage: Claude Code in Terminal is signed in to \(AddressSettings.words(code))."
+    var line: String { line(blur: nil) }
+    /// `line` for a given "Show emails" setting (nil: the app's own): what a check hands in.
+    func line(blur: Bool?) -> String {
+        switched ? "\(Self.switchingHead(code, blur: blur)). Sign the Claude app in to \(AddressSettings.words(code, blur: blur)) to finish."
+                 : "cl_audit can't read \(AddressSettings.words(app, blur: blur))'s usage: Claude Code in Terminal is signed in to \(AddressSettings.words(code, blur: blur))."
     }
     /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…"; a switch waiting for the app:
     /// its first clause, "Switching to M@…: one step left".
@@ -195,7 +205,7 @@ struct SplitUsage: Equatable {
         switched ? Self.switchingHead(code) : "Can't read \(AddressSettings.words(app))'s usage\nTerminal: \(AddressSettings.words(code))"
     }
     /// The after-switch heading, the same on the card (UsageNotice) and every other surface.
-    static func switchingHead(_ to: String) -> String { "Switching to \(AddressSettings.words(to)): one step left" }
+    static func switchingHead(_ to: String, blur: Bool? = nil) -> String { "Switching to \(AddressSettings.words(to, blur: blur)): one step left" }
     /// Under the line, in place of "No numbers yet": what gives the numbers. Nil while a switch waits for the app (nothing
     /// to sign in to then).
     var numbersHint: String? {

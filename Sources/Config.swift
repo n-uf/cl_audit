@@ -739,10 +739,11 @@ enum Store {
         // numbers whose account couldn't be confirmed, or older than the profile's read interval, are never full
         let a = s.headline(now: now, ages: ages(e))
         var out = s.shown(a, split: headline, now: now)
-        if headline, let split = SplitUsage.words(s, a.split) { out.resolved?.line = split.line }
+        // (the fact only: the sentence names accounts, so it is built when a surface draws it, ResolvedAccount.lineText)
+        if headline, SplitUsage.words(s, a.split) != nil { out.resolved?.line = nil; out.resolved?.splitLine = true }
         // the numbers' account couldn't be confirmed: as read, with their age, but never full (no panel, countdown, red
         // or offer), and said so
-        if a.unconfirmed { out.resolved?.line = Self.unconfirmedWords }
+        if a.unconfirmed { out.resolved?.line = Self.unconfirmedWords; out.resolved?.splitLine = nil }
         return out
     }
 

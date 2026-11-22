@@ -185,6 +185,10 @@ struct ResolvedAccount: Codable, Equatable {
     /// is stored, not the sentence: `lineText` builds it when a surface shows it, so it follows Show emails and never holds an
     /// address in the record (a record from before it holds the sentence in `line`: StatusCodec.drawable turns it into this).
     var codeUsageLine: Bool? = nil
+    /// The one line is the split's sentence (SplitUsage.line: "cl_audit can't read <app>'s usage: Claude Code in Terminal is signed
+    /// in to <code>", or the switch waiting for the app). Set only on the value a surface is shown (Store.shown), never written;
+    /// like `codeUsageLine`, only the fact is kept and `lineText` builds the sentence from the record's accounts when it is drawn.
+    var splitLine: Bool? = nil
 
     static let usageOnPrefix = "Usage: Claude Code on "
     // (`lineText`, the sentence, is in AccountResolver.swift: this file is the widget's too, which has no AddressSettings)
