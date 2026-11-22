@@ -2439,6 +2439,23 @@ do {
           "claim: the first profile that alerts takes the slot; the next one on the seat doesn't alert")
     SharedReads.release(seat: seatA, slot: "f.wk", mark: stamp, by: "a3")
     check(SharedReads.claim(seat: seatA, slot: "f.wk", mark: stamp, by: "a2"), "release: an alert that wasn't shown frees the slot for another profile")
+    // after a restart (the ledger empty, A's own mark kept): A skips at its mark and notes it, so B doesn't post it again
+    SharedReads.alerted = [:]
+    SharedReads.noteSent(seat: seatA, slot: "n80.5h", mark: stamp, by: "a1")
+    check(!SharedReads.claim(seat: seatA, slot: "n80.5h", mark: "1800000020", by: "a2") && SharedReads.claim(seat: seatA, slot: "n80.5h", mark: stamp, by: "a1"),
+          "after a restart: what A sent before (its own mark) is in the ledger, so B doesn't post it; A itself still may")
+    SharedReads.noteSent(seat: seatA, slot: "f.wk", mark: stamp, by: "a3")
+    SharedReads.noteSent(seat: seatA, slot: "f.wk", mark: stamp, by: "a2")
+    check(SharedReads.alerted[seatA + "#f.wk"]?.by == "a3" && SharedReads.mayAlert(SharedReads.alerted, seat: nil, slot: "f.wk", mark: stamp, by: "a2"),
+          "noteSent: another profile's note in the same window stays its own; a seat not known keeps nothing")
+    // the "back" slot's joined mark ("r1-r2"): each reset within 10 minutes is the same window, a second's wobble included
+    let back: [String: (mark: String, by: String)] = [seatA + "#back": ("1800000000-1800086400", "a1")]
+    check(!SharedReads.mayAlert(back, seat: seatA, slot: "back", mark: "1800000001-1800086399", by: "a2")
+          && SharedReads.mayAlert(back, seat: seatA, slot: "back", mark: "1800018000-1800086400", by: "a2")
+          && SharedReads.mayAlert(back, seat: seatA, slot: "back", mark: "1800000000", by: "a2")
+          && SharedReads.sameWindow("?", "?") && !SharedReads.sameWindow("?", "1800000000")
+          && SharedReads.sameWindow("day-20000", "day-20000"),
+          "the back slot's joined mark: compared reset by reset (a second's wobble is one window); another reset, or one reset alone: another")
     SharedReads.alerted = [:]
     SharedReads.last = [:]
     // the default-profile move: the old profile's account is kept as a standby account only when the default profile hasn't

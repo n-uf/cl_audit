@@ -467,10 +467,15 @@ final class UsageReader {
             let k = "\(full ? "f" : "n")\(key).\(id)", levelKey = "n\(key).\(id)"
             // one alert per reset: Anthropic's reset time wobbles by a fraction of a second between replies, so
             // marks within 10 minutes of each other are the same reset (windows are hours apart)
-            if let old = defaults.string(forKey: k), old == mark || Self.sameReset(old, stamp) { continue }
+            let seat = seatKey, slot = full ? "f.\(key)" : "n\(Int(limit)).\(key)"
+            if let old = defaults.string(forKey: k), old == mark || Self.sameReset(old, stamp) {
+                // sent already (its mark survives a restart, the ledger doesn't): the ledger learns it, so another
+                // profile on a shared seat doesn't send it again
+                SharedReads.noteSent(seat: seat, slot: slot, mark: old, by: id)
+                continue
+            }
             guard !alerting.contains(k) else { continue }
             // a shared seat: another profile on it already alerted this level (or full) in this window, so not again
-            let seat = seatKey, slot = full ? "f.\(key)" : "n\(Int(limit)).\(key)"
             guard SharedReads.claim(seat: seat, slot: slot, mark: mark, by: id) else { continue }
             alerting.insert(k)
             let c = UNMutableNotificationContent()
@@ -776,7 +781,26 @@ enum SharedReads {
     static func mayAlert(_ ledger: [String: (mark: String, by: String)], seat: String?, slot: String, mark: String, by id: String) -> Bool {
         guard let seat, let had = ledger[seat + "#" + slot] else { return true }
         guard had.by != id else { return true }
-        return !(had.mark == mark || UsageReader.sameReset(had.mark, Int(mark)))
+        return !sameWindow(had.mark, mark)
+    }
+
+    /// Two marks of one window: the same text, or each reset in them within 10 minutes of the other's (UsageReader.sameReset).
+    /// A joined mark ("back" after both limits: "r1-r2") is compared part by part, so a second's wobble in either reset is
+    /// still the same window.
+    static func sameWindow(_ a: String, _ b: String) -> Bool {
+        if a == b { return true }
+        let x = a.split(separator: "-", omittingEmptySubsequences: false), y = b.split(separator: "-", omittingEmptySubsequences: false)
+        guard x.count == y.count else { return false }
+        return zip(x, y).allSatisfy { p, q in p == q || UsageReader.sameReset(String(p), Int(q)) }
+    }
+
+    /// An alert this profile sent before (its own mark, kept across restarts, says so) that the ledger doesn't hold: noted as
+    /// this profile's, so another profile on the same seat doesn't send it again. One another profile sent in that window
+    /// stays its own. nil seat: nothing kept.
+    static func noteSent(seat: String?, slot: String, mark: String, by id: String) {
+        guard let seat, mayAlert(alerted, seat: seat, slot: slot, mark: mark, by: id) else { return }
+        if let had = alerted[seat + "#" + slot], had.by == id, sameWindow(had.mark, mark) { return }
+        alerted[seat + "#" + slot] = (mark, id)
     }
 
     /// The same, and when yes, this profile claims the slot (it is the one that alerts). nil seat: yes, nothing kept.
