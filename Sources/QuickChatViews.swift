@@ -829,7 +829,7 @@ enum QuickChatRender {
         case "full":
             m.field = q1
             level.week = 100; level.weekResets = Date().addingTimeInterval(26 * 3600); m.level = level
-            m.offer = QuickChatSwitchOffer(key: "main~u3", short: "ultra-3", words: "3 days ago")
+            m.offer = QuickChatSwitchOffer(key: "main~u3", address: "ultra-3@example.com", words: "3 days ago")
         case "level95": level.week = 96; m.level = level; m.turns = [t1]
         default: break
         }

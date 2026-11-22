@@ -104,16 +104,21 @@ struct QuickChatLevel: Equatable {
 /// used first, never the account in use), for the Switch page. `words`: when it was last in use, or empty.
 struct QuickChatSwitchOffer: Equatable {
     var key: String
-    var short: String
+    /// The standby account's address (its label): kept as it is and shortened when drawn (`short`), so a value held while
+    /// Show emails goes off never holds the name it had.
+    var address: String
     var words: String
     /// The profile's own account in a clash (ProfileShow.ownStandbyID, as the menus decide it): choosing it moves Claude Code
     /// back to it, so the words say that, never "switch to its other account".
     var own = false
 
+    /// The account as the setting names it now ("ultra-3", or "hidden address").
+    var short: String { AccountNames.short(address) }
+
     static func best(_ e: AccountEntry, now: Date = Date()) -> QuickChatSwitchOffer? {
         let ownID = ProfileShow.load(e, now: now).ownStandbyID
         return e.fullOffer(now: now).map { o in
-            QuickChatSwitchOffer(key: o.key, short: o.short, words: o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? "",
+            QuickChatSwitchOffer(key: o.key, address: o.standby.label, words: o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? "",
                                  own: o.standby.id == ownID)
         }
     }

@@ -1130,6 +1130,7 @@ struct AccountTile: View {
     let entry: AccountEntry
     let selected: Bool
     @ObservedObject var model: SettingsModel
+    @ObservedObject private var privacy = AddressPrivacy.shared      // (its second line names an account: drawn again when Show emails changes)
 
     var body: some View {
         HStack(spacing: 0) {

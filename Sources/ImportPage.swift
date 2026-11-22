@@ -11,6 +11,7 @@
 // The file is unpacked as a backup of the target profile first (kind "imported", in General ▸ Backups' place), then
 // restored from: the same rules as Restore, the same receipt, the same Undo.
 
+import AddressPrivacy
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -456,6 +457,7 @@ final class ImportRunner: ObservableObject {
 struct ImportHappens: View {
     let entry: AccountEntry
     @ObservedObject var runner: RestoreRunner
+    @ObservedObject private var privacy = AddressPrivacy.shared      // (it names the account in use: drawn again when Show emails changes)
     /// Memory files of a file from elsewhere: nil on a page that only shows (the choice is made in the preview).
     var memory: ((Bool) -> Void)? = nil
     var addMemory = false
@@ -599,6 +601,7 @@ struct ImportPage: View {
     let entry: AccountEntry
     @ObservedObject var model: SettingsModel
     @ObservedObject var runner: ImportRunner
+    @ObservedObject private var privacy = AddressPrivacy.shared      // (it names accounts: drawn again when Show emails changes)
     var width: CGFloat = 980
     @Environment(\.face) private var face
     /// An import (or a move's profiles) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
@@ -907,6 +910,7 @@ struct ImportPage: View {
 struct MoveSteps: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var runner: ImportRunner
+    @ObservedObject private var privacy = AddressPrivacy.shared      // (its steps name the accounts to sign in to: drawn again when Show emails changes)
     var width: CGFloat = 980
     @Environment(\.face) private var face
 

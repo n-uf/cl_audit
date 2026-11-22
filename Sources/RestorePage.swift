@@ -12,6 +12,7 @@
 //
 // Display colours, as on the Switch page: green = in use / done, mint = under way, amber = waiting or a warning, red = failed.
 
+import AddressPrivacy
 import AppKit
 import SwiftUI
 
@@ -20,6 +21,7 @@ struct RestorePage: View {
     let key: RestoreKey
     @ObservedObject var model: SettingsModel
     @ObservedObject var runner: RestoreRunner
+    @ObservedObject private var privacy = AddressPrivacy.shared      // (it names the account in use and the backup's: drawn again when Show emails changes)
     var width: CGFloat = 980
     @State private var showChanged = false
     @State private var showHeld = false

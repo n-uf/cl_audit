@@ -2237,7 +2237,7 @@ do {
     model.target = t
     var refused = QuickChatLevel(nil); refused.refusedUntil = now.addingTimeInterval(600)
     model.level = refused
-    let offered = QuickChatSwitchOffer(key: "qa~kpat", short: "pat", words: "")
+    let offered = QuickChatSwitchOffer(key: "qa~kpat", address: "pat@example.com", words: "")
     model.update(target: t, level: QuickChatLevel(nil), offer: { offered })
     check(model.blocked && model.offer == nil, "a refusal before the numbers count: the bar holds, but no offer (it could name the account in use)")
     var counting = t; counting.liveCounts = true
@@ -2679,7 +2679,7 @@ do {
         if case .limitFull(let f)? = m.turns.last?.problem { return f.other }
         return nil
     }
-    let cardOffer = QuickChatSwitchOffer(key: "card~k2", short: "ultra-2", words: "")
+    let cardOffer = QuickChatSwitchOffer(key: "card~k2", address: "ultra-2@example.com", words: "")
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
     let inClash = chat(QuickChatTarget(e, now: now), level: QuickChatLevel(nil))
     inClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
@@ -2752,7 +2752,7 @@ do {
     // a turn's bubble is never rewritten, whatever holds the bar later; the live bubble below says what holds it now:
     // A. the 5-hour limit refused a turn; it resets, then the week fills
     _ = Store.writeStatus(e.id, rec())
-    let otherOffer = QuickChatSwitchOffer(key: "card~k3", short: "spare", words: "")
+    let otherOffer = QuickChatSwitchOffer(key: "card~k3", address: "spare@example.com", words: "")
     var fiveFull = QuickChatLevel(nil)
     fiveFull.fiveHour = 100; fiveFull.fiveHourResets = now.addingTimeInterval(3600); fiveFull.week = 60; fiveFull.weekResets = now.addingTimeInterval(2 * 86400)
     let caseA = chat(QuickChatTarget(e, now: now), level: fiveFull)
@@ -2880,7 +2880,7 @@ do {
         var asked = 0
         let m = QuickChatModel(); m.resolveClaude = { _ in asked += 1 }
         let full = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
-        m.update(target: QuickChatTarget(e, now: now), level: full, offer: { QuickChatSwitchOffer(key: "card~k2", short: "ultra-2", words: "") })
+        m.update(target: QuickChatTarget(e, now: now), level: full, offer: { QuickChatSwitchOffer(key: "card~k2", address: "ultra-2@example.com", words: "") })
         m.field = "what's typed"
         m.switchAccount()
         return (m, { asked })
@@ -4547,6 +4547,18 @@ MainActor.assumeIsolated {
             masks.append("\(f):\(i + 1)")
         }
     }
+    // F4: a value a model holds (quick chat's offer, `@Published`) keeps the address and names it when it is drawn
+    do {
+        let heldOffer = QuickChatSwitchOffer(key: "held~k1", address: "held-offer@example.com", words: "3 days ago")
+        AddressPrivacy.shared.apply(blur: false)
+        let shownOffer = heldOffer.lineWords(name: "Pf")
+        AddressPrivacy.shared.apply(blur: true)
+        let hiddenOffer = heldOffer.lineWords(name: "Pf")
+        AddressPrivacy.shared.apply(blur: false)
+        check(shownOffer.contains("held-offer") && hiddenOffer.contains("hidden address") && !hiddenOffer.contains("held") && !hiddenOffer.contains("@"),
+              "S5/F4: the same held offer read again with Show emails off names nothing of the address: \(shownOffer) | \(hiddenOffer)")
+    }
+
     check(!files.isEmpty && masks.isEmpty && !files.contains("Privacy.swift"), "no source builds the old mask (a first letter, dots, the domain) or calls Privacy: \(masks)")
 }
 

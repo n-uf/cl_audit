@@ -2,6 +2,7 @@
 // the Dock and menu bar menus. It says what stays, what follows and what will happen. Read-only for now: the switch
 // itself comes in a later build, so its key is off and one grey line says so.
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -140,6 +141,7 @@ private struct RunnerTileDisplay: View {
     let entry: AccountEntry
     @ObservedObject var model: SettingsModel
     @ObservedObject var runner: SwitchRunner
+    @ObservedObject private var privacy = AddressPrivacy.shared      // (it names accounts: drawn again when Show emails changes)
 
     var body: some View {
         let open = model.selection == SettingsModel.switchID && model.switching == runner.key
