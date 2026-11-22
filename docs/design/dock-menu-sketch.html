@@ -298,10 +298,15 @@ profile Main, sample addresses ann@example.com, bob@example.com and cy@example.c
       <li>The account in use is ticked, with no "· in use" (cl_audit's rule; cl_quick writes "· in use" with a green dot).</li>
       <li>The same addresses as cl_quick: each account as its whole address through the shared address rules
         (AddressPrivacy); never a name made from an address. While emails are hidden the menu bar's menu draws the blurred
-        stand-in (AddressMenuRow, the address while the row is highlighted). The Dock draws the Dock menus itself and leaves
-        out an item's view, so there a hidden address is the words <code>hidden address 1</code>,
-        <code>hidden address 2</code>…: numbered so the rows stay apart, nothing of any address. Rows of at most 40
-        characters.</li>
+        stand-in (AddressMenuRow, as cl_quick: the address only while the pointer is on the row, never on a keyboard
+        highlight). The Dock draws the Dock menus itself from plain titles: no item view, image or styled title, and no
+        hover reaches the app (probed live), so nothing there can blur or reveal. A hidden address is a fixed text
+        stand-in, the same for every account, numbered by account: <code>░░░░░░░@░░░░░ 1</code>,
+        <code>░░░░░░░@░░░░░ 2 · Terminal</code>, <code>Sign Terminal in to ░░░░░░░@░░░░░ 1…</code> (one account, one
+        number, wherever it's named); in a split the status line then reads
+        <code>Usage hidden: Terminal's account differs</code> and the Terminal row carries the address. VoiceOver reads a
+        Dock row's title as it is, so it reads the stand-in as shade characters. Rows of at most 40 characters, the words
+        around an address never cut.</li>
       <li>The menu bar's menu keeps its own row on top (the profile, its bars) and then these rows without the profile row
         and the status line, and Hide from the menu bar last.</li>
       <li>Left out on purpose: the Switch account ▸ submenu and its "Experimental: may lose data" line (no submenu carries

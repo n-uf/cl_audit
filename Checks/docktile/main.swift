@@ -375,9 +375,12 @@ do {
           "the menu, addresses shown: the profile, the account in use ticked, its status line, the standby account, Sign in to "
           + "another account…, Claude window ▸ Open, Quick chat, Refresh now, Dashboard, Profile settings… (got \(shown))")
     let hiddenLines = DockTileMenu.lines(rows, blur: true)
-    check(hiddenLines[1] == "✓ hidden address 1" && hiddenLines[3] == "hidden address 2" && !hiddenLines.joined().contains("@")
-          && !hiddenLines.joined().contains("ann") && !hiddenLines.joined().contains("bob"),
-          "addresses hidden: \"hidden address\", numbered so the rows stay apart, nothing of any address (got \(hiddenLines))")
+    let s = DockTileMenu.dockStandIn
+    check(hiddenLines[1] == "✓ \(s) 1" && hiddenLines[3] == "\(s) 2"
+          && !hiddenLines.joined().replacingOccurrences(of: s, with: "").contains("@")
+          && !hiddenLines.joined().contains("ann") && !hiddenLines.joined().contains("bob") && !hiddenLines.joined().contains("example"),
+          "addresses hidden: the Dock's text stand-in, the same for every account, numbered so the rows stay apart, nothing of any address (got \(hiddenLines))")
+    check(s.count == 13 && !s.contains { $0.isLetter || $0.isNumber }, "the Dock's stand-in: 13 characters, no letter or digit of anything")
     check(rows.contains(.address(.init(address: "bob@example.com", act: .switchTo, target: AccountEntry.switchKey(id, standbyID))))
           && rows.contains(.address(.init(address: "ann@example.com", ticked: true))),
           "a standby account's row opens the Switch page with it; the account in use's row does nothing")
@@ -398,9 +401,17 @@ do {
     check(every.allSatisfy { $0.count <= DockTileMenu.rowCharacters + 2 }, "every row at most 40 characters (the ticked row's mark aside)")
     check(DockTileMenu.fit(String(repeating: "a", count: 50)).count == 40 && DockTileMenu.fit("short") == "short",
           "a longer row is cut in the middle to 40 characters")
-    check(DockTileMenu.splitDiffers.count <= DockTileMenu.rowCharacters
-          && ("Usage hidden: Terminal on " + AddressText.hidden).count <= DockTileMenu.rowCharacters,
-          "the split's status line fits whole: its fallback, and the address form while hidden")
+    check(DockTileMenu.splitDiffers.count <= DockTileMenu.rowCharacters,
+          "the split's status line fits whole: its fallback (also its words while addresses are hidden)")
+    // one account reads the same wherever it is named: the ticked row and "Sign Terminal in to …" share its number
+    let named: [DockTileMenu.Row] = [.address(.init(address: "ann@example.com", ticked: true)),
+                                     .address(.init(address: "bob@example.com", suffix: " · Terminal")),
+                                     .address(.init(prefix: "Sign Terminal in to ", address: "ann@example.com", suffix: "…", account: false)),
+                                     .address(.init(address: "cy@example.com"))]
+    let namedLines = DockTileMenu.lines(named, blur: true)
+    check(namedLines == ["✓ \(s) 1", "\(s) 2 · Terminal", "Sign Terminal in to \(s) 1…", "\(s) 3"]
+          && namedLines.allSatisfy { $0.count <= DockTileMenu.rowCharacters + 2 },
+          "hidden: numbered by account, the sign-in row carrying the ticked account's number (got \(namedLines))")
     // credits being spent and why the numbers aren't fresh: short fixed status lines of their own under the account
     var troubled = record(); troubled.state = "rateLimited"; troubled.problem = "Usage service busy, retrying later"
     troubled.credits = Credits(enabled: true, used: 4.2, cap: 50, currency: "USD", out: false, spentAt: now.addingTimeInterval(-60))
@@ -422,7 +433,8 @@ do {
           "the Dock icon app's word that the agent isn't running: its own line")
     let back = DockTileMenu.AddressRow(address: "ann@example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
     let longBack = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
-    check(DockTileMenu.words(back, blur: true) == "hidden address · move back here" && DockTileMenu.words(back, blur: false) == "ann@example.com · move back here"
+    check(DockTileMenu.words(back, blur: true) == DockTileMenu.dockStandIn + " · move back here"
+          && DockTileMenu.words(back, number: 2, blur: true) == DockTileMenu.dockStandIn + " 2 · move back here" && DockTileMenu.words(back, blur: false) == "ann@example.com · move back here"
           && DockTileMenu.words(longBack, blur: false).hasSuffix(" · move back here") && DockTileMenu.words(longBack, blur: false).count == DockTileMenu.rowCharacters,
           "a clash's ticked row: only the address is cut, its words whole, within 40 (got \(DockTileMenu.words(longBack, blur: false)))")
     let noAgent = DockTileMenu.rows(win, show, windowOpen: false, agentRuns: false, now: now)
@@ -471,9 +483,10 @@ plugInfo(build: "b1")
 _ = Store.writeStatus(id, record())
 Agent.writeMark(AgentMark(pid: getpid(), started: Date(), beat: Date(), version: "check", build: "check", path: "/check"))
 let menu = child("menu")
-check(clean(menu, "menu") && menu.out.contains("menu: Claude Dock | hidden address 1 | 5-hour 12% · Week 40% | hidden address 2 | ")
+check(clean(menu, "menu") && menu.out.contains("menu: Claude Dock | \(DockTileMenu.dockStandIn) 1 | 5-hour 12% · Week 40% | \(DockTileMenu.dockStandIn) 2 | ")
       && menu.out.contains("| Claude window | Open | Quick chat |")
-      && menu.out.contains("heard: openWindow:\(id)") && !menu.out.contains("@") && log().contains("menu: openWindow"),
+      && menu.out.contains("heard: openWindow:\(id)") && !menu.out.replacingOccurrences(of: DockTileMenu.dockStandIn, with: "").contains("@")
+      && log().contains("menu: openWindow"),
       "the plug-in's menu in the Dock's place: built from the record, addresses hidden (the check's setting) and numbered, "
       + "Claude window ▸ Open asks the agent, no tripwire (got \(menu.out))")
 check(menu.out.contains("tags unique"), "each item of the menu, the submenu's too, has its own non-zero tag (the Dock hands a click back by its tag)")

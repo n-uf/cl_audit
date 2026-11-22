@@ -4241,11 +4241,13 @@ MainActor.assumeIsolated {
     check(tickedRow?.1.ticked == true && tickedRow?.0.title == "hidden address" && tickedRow?.1.prefix == "",
           "hidden, the menu bar icon's menu: the account in use ticks as the native rows do (its state, a mark in the margin), "
           + "no \"✓\" in its words, its address in the standby rows' column")
-    // the Dock icon's menu (the Dock draws it, no item views): plain titles, "hidden address" numbered so the rows stay apart
+    // the Dock icon's menu (the Dock draws it, no item views): plain titles, the Dock's text stand-in numbered so the rows
+    // stay apart
     let dockMenu = dockOf(e, show).menu
-    let dockAccounts = all(dockMenu).filter { $0.title.hasPrefix("hidden address") }
+    let st = DockTileMenu.dockStandIn
+    let dockAccounts = all(dockMenu).filter { $0.title.hasPrefix(st) }
     check(!all(dockMenu).contains { $0.view != nil } && titles(dockMenu).allSatisfy(clean)
-          && dockAccounts.map(\.title) == ["hidden address 1", "hidden address 2", "hidden address 3"]
+          && dockAccounts.map(\.title) == ["\(st) 1", "\(st) 2", "\(st) 3"]
           && dockAccounts[0].state == .on
           && Set(dockAccounts.dropFirst().compactMap { $0.representedObject as? String }) == Set(keys),
           "hidden, the Dock icon's menu: plain titles, numbered, the account in use ticked, the standby rows naming their Switch pages: \(titles(dockMenu))")

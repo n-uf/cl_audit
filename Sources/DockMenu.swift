@@ -17,8 +17,10 @@
 //
 // Addresses are whole, never a name made from one, and go through AddressPrivacy (Settings ▸ General ▸ Emails): shown as they
 // are, or hidden. The menu bar's menu draws a hidden one as AddressMenuRow (the blurred stand-in, the address while the row
-// is highlighted). The Dock draws the Dock menus itself and leaves out an item's view, so there a hidden address is the
-// words "hidden address", numbered when several rows would read the same (a cue that holds nothing of any address). Every
+// has the pointer on it). The Dock draws the Dock menus itself from plain titles (it leaves out an item's view, image and
+// attributed title, and no highlight reaches the app: probed live 2026-11-22), so there a hidden address is a fixed text
+// stand-in, "░░░░░░░@░░░░░" (dockStandIn), the same for every account, numbered by account when two or more are hidden, the
+// same number wherever one account is named. A status line never holds a hidden address of its own. Every
 // row is at most 40 characters (a longer one is cut in the middle). Every item has its own tag, the submenu's too: the
 // Dock hands a click on a Dock tile's menu back by the item's tag (_sendDockMenuCommand:withTag:).
 //
@@ -180,16 +182,19 @@ enum DockTileMenu {
     static let agentDownWords = "Agent not running · open cl_audit"
 
     /// The account's one status line: a full limit (crimson), why the numbers aren't shown, the numbers, or why there are none.
-    static func status(_ show: ProfileShow, now: Date = Date()) -> Row {
+    /// `blur`: a test override of the setting.
+    static func status(_ show: ProfileShow, now: Date = Date(), blur: Bool? = nil) -> Row {
         let d = show.display
         if let full = d.full(now: now) {
             return .status(full.title + (full.resets.map { " · in \(TimeWords.countdown($0, now: now))" } ?? ""), full: true)
         }
         if d.split != nil, let w = show.splitWords {
             if w.switched { return .status(SplitUsage.switchingHead(w.code), full: false) }
-            // Terminal's account is the row below: its address here only when the line still fits whole
-            let named = "Usage hidden: Terminal on " + AddressSettings.words(w.code)
-            return .status(named.count <= rowCharacters ? named : splitDiffers, full: false)
+            // Terminal's account is the row below: its address here only while addresses are shown and the line still fits
+            // whole; while hidden the row below draws it (a status line never holds a hidden address of its own)
+            let named = "Usage hidden: Terminal on " + w.code
+            let shown = !(AddressSettings.hides(w.code) && (blur ?? AddressPrivacy.shared.blur))
+            return .status(shown && named.count <= rowCharacters ? named : splitDiffers, full: false)
         }
         // the record's one line of state (the card's, cut to the row), then the sign-in, then why the numbers are another's
         if let line = show.lineWords(short: true), !line.contains("\n") { return .status(line, full: false) }
@@ -222,12 +227,17 @@ enum DockTileMenu {
         AddressSettings.hides(r.address) && (blur ?? AddressPrivacy.shared.blur)
     }
 
-    /// A row's words as plain text (a Dock menu's title, every row's accessibility words): the address as it is, or "hidden
-    /// address" while hidden, with `number` after it ("hidden address 2") where several account rows would read the same.
-    /// Only the address is cut to keep the row within 40 characters, never the words around it ("Sign Terminal in to …",
-    /// " · Terminal", " · move back here").
+    /// A Dock menu's hidden address: a fixed text stand-in that reads as a smudge, the same for every account (the Dock draws
+    /// plain titles only, so this is the nearest it gets to the menu bar's blurred stand-in). Nothing of any address; the
+    /// operator's pick (2026-11-22). VoiceOver reads it as shade characters.
+    static let dockStandIn = "░░░░░░░@░░░░░"
+
+    /// A row's words as plain text (a Dock menu's title): the address as it is, or while hidden the Dock's stand-in
+    /// (dockStandIn), with `number` after it ("░░░░░░░@░░░░░ 2"), the account's number wherever it is named. Only the address
+    /// is cut to keep the row within 40 characters, never the words around it ("Sign Terminal in to …", " · Terminal",
+    /// " · move back here").
     static func words(_ r: AddressRow, number: Int? = nil, blur: Bool? = nil) -> String {
-        let shown = hidden(r, blur: blur) ? AddressText.hidden + (number.map { " \($0)" } ?? "")
+        let shown = hidden(r, blur: blur) ? dockStandIn + (number.map { " \($0)" } ?? "")
                                           : AddressSettings.words(r.address, blur: blur)
         let room = rowCharacters - r.prefix.count - r.suffix.count
         return r.prefix + (shown.count > room ? fit(shown, max: max(room, 9)) : shown) + r.suffix
@@ -236,14 +246,20 @@ enum DockTileMenu {
     /// The clash's ticked row: what choosing the profile's own account does, short enough to leave its address room.
     static let moveBackSuffix = " · move back here"
 
-    /// Each hidden account row's number, in the order they are shown, when more than one is hidden (else none).
+    /// Each hidden address row's number, by its address: the accounts numbered in the order they are first shown, and every
+    /// row that names one of them (Sign Terminal in to …) carrying that account's number, so one account reads the same
+    /// wherever it is mentioned. None when fewer than two accounts are hidden.
     static func numbers(_ rows: [Row], blur: Bool? = nil) -> [Int: Int] {
-        let hiddenRows = rows.enumerated().compactMap { n, row -> Int? in
-            if case .address(let r) = row, r.account, hidden(r, blur: blur) { return n }
-            return nil
+        var order: [String] = []
+        var at: [(row: Int, address: String)] = []
+        for (n, row) in rows.enumerated() {
+            guard case .address(let r) = row, hidden(r, blur: blur) else { continue }
+            let key = r.address.lowercased()
+            if !order.contains(key) { order.append(key) }
+            at.append((n, key))
         }
-        guard hiddenRows.count > 1 else { return [:] }
-        return Dictionary(uniqueKeysWithValues: hiddenRows.enumerated().map { ($1, $0 + 1) })
+        guard order.count > 1 else { return [:] }
+        return Dictionary(uniqueKeysWithValues: at.map { ($0.row, order.firstIndex(of: $0.address)! + 1) })
     }
 
     /// The rows as plain lines, top to bottom (the checks read the menu this way): "✓ " before the ticked row, "▸" after a
