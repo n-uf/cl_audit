@@ -511,7 +511,7 @@ struct NewAccountView: View {
     @State private var checking = false
     @StateObject private var gate = ClickGate()         // the click-time look before a folder is made; Cancel and leaving call it off
     @State private var addressProblem: String?      // why Sign in (the address route) can't go yet
-    @State private var windowNote: String?          // the Claude window switch's one line after it was turned on or off
+    @State private var windowNote: WindowNote?      // the Claude window switch's line after it was turned on or off
     @State private var windowBusy = false           // turning the window off: its window quitting, its folder going
     @Environment(\.face) private var face
 
@@ -690,7 +690,7 @@ struct NewAccountView: View {
                         on: draft.window == .standard ? "the usual Claude app" : "its own window", off: "none")
                     .disabled(windowBusy || model.discarding)
             }
-            if let note = windowNote { SRowLine(text: note, color: face.caution) }
+            if let note = windowNoteShown { SRowLine(text: note, color: face.caution) }
             if draft.claudeWindow, let clash = checks(.window).first(where: { $0.state != .ok }) {
                 SRowLine(text: clash.text, color: clash.state == .bad ? face.danger : face.caution)
             }
@@ -911,14 +911,17 @@ struct NewAccountView: View {
     private func setWindow(_ on: Bool) {
         guard on != draft.claudeWindow, !windowBusy else { return }
         windowNote = nil
-        gate.cancel()                                   // a look for step b under way does nothing when it lands
+        // a look under way (Create's or step b's) does nothing when it lands, and the line says so
+        let stopped = gate.busy ? Self.lookStopped : nil
+        gate.cancel()
         error = nil
         if on {
             NewAccountSetup.windowOn(&draft)
+            noteWindow(stopped)
             if windowDue { lookForWindow() }
             return
         }
-        guard draft.started else { draft.claudeWindow = false; return }
+        guard draft.started else { draft.claudeWindow = false; noteWindow(stopped); return }
         let d = draft
         windowBusy = true
         DispatchQueue.global(qos: .userInitiated).async {
@@ -928,13 +931,25 @@ struct NewAccountView: View {
                 switch r {
                 case .off(let quit):
                     NewAccountSetup.turnedOff(&draft)
-                    windowNote = quit ? NewAccountSetup.windowQuitFirst : nil
+                    noteWindow([stopped, quit ? NewAccountSetup.windowQuitFirst : nil].compactMap { $0 }.joined(separator: "\n"))
                 case .kept(let why):
-                    windowNote = why
+                    noteWindow([stopped, why].compactMap { $0 }.joined(separator: "\n"))
                 }
                 model.tick += 1
             }
         }
+    }
+    static let lookStopped = "The desktop app check under way was stopped, so nothing was made."
+
+    /// The switch's line, tied to the draft as it is now and whether its window is open: either changing hides it.
+    struct WindowNote { let text: String; let draft: NewAccountDraft; let open: Bool }
+    private func noteWindow(_ text: String?) {
+        guard let text, !text.isEmpty else { windowNote = nil; return }
+        windowNote = WindowNote(text: text, draft: draft, open: ClaudeWindow.isOpen(Account(draft.entry)))
+    }
+    private var windowNoteShown: String? {
+        guard let n = windowNote, n.draft == draft, n.open == ClaudeWindow.isOpen(Account(draft.entry)) else { return nil }
+        return n.text
     }
 
     /// Step b's look, made now (`continueAnyway` set first by its Continue anyway): the window's folder is made only on its
@@ -1040,7 +1055,7 @@ struct NewAccountView: View {
                 part(.todo, current: false, title: "b · Claude window", droppedOut: true) { sub("Only when the profile has a Claude window") }
             } else if windowDue {
                 // turned on after Create: the same desktop-app check as step 1, then its folder; its sign-in follows as usual
-                part(windowHeld || monitor.failed ? .bad : .now, current: true, title: "b · Claude window") { windowStep }
+                part(windowHeld || monitor.failed ? .bad : .now, current: current == 4 || signedIn == nil, title: "b · Claude window") { windowStep }
             } else if needsDesktop {
                 let state: StepState = signedIn == nil || waiting ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
                 part(state, current: current == 4, title: draft.window == .standard ? "b · Claude window (the usual Claude app)" : "b · Claude window") {
