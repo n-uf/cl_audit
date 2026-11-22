@@ -1711,7 +1711,7 @@ do {
     sr.stop()
     // the same read with the app on mo (no split): the full alert goes out (the check above isn't empty by accident). Shared
     // seats: a second profile whose folder is signed in to mo too shows the same numbers, but the full limit alerts exactly
-    // once, from the first profile that has mo in use (SharedReads.alertsHere)
+    // once, from the first profile that alerts (SharedReads' ledger: the twin, same level and window, doesn't)
     var same = profile("spm", "~/.claude-spm", mo); same.claudeWindow = false
     var twin = profile("spt", "~/.claude-spt", nil); twin.claudeWindow = false
     signIn(same.configDir, mo, plan: "Ultra"); signIn(twin.configDir, mo, plan: "Ultra")
@@ -1726,7 +1726,7 @@ do {
     RunLoop.main.run(until: Date().addingTimeInterval(0.5))                // time for a second, unwanted one to show
     let fulls = posts.filter { $0.contains("full") }
     check(fulls == ["Claude Spm: weekly limit full"],
-          "two profiles' folders on one account: exactly one full alert, from the first profile that has it: \(fulls)")
+          "two profiles' folders on one account: exactly one full alert, from the first one that alerts: \(fulls)")
     check(Store.status("spt")?.resolved?.clash == nil && Store.status(for: twin)?.weekly == 100,
           "the twin shares the seat: no clash, its card shows the same numbers, and it stays quiet")
     // and the plan: both records have it, so every reader of them, the widget too, shows it on both
@@ -1735,6 +1735,7 @@ do {
           && widgetShared.first { $0.id == "spm" }?.plan == "Ultra" && widgetShared.first { $0.id == "spt" }?.plan == "Ultra",
           "a shared seat's plan shows on both profiles, the widget's too: \(Store.status("spt")?.plan ?? "nil")")
     mr.stop(); tr.stop()
+    SharedReads.alerted = [:]; SharedReads.last = [:]                         // the next checks start with no shared seat's past
     Store.removeStatus("spt")                                               // the widget checks below read every record
     try! Store.save([e, same])
     UsageReader.testPoster = nil

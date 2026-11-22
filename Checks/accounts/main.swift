@@ -2394,22 +2394,42 @@ do {
     // the agent's one read per shared seat (SharedReads): a reading taken for a seat is reused by another reader on it
     SharedReads.last = [:]
     let read = Usage(fiveHour: 40, weekly: 10, fetchedAt: t0, source: "Anthropic")
-    SharedReads.note(read, owner: h1.account, organization: h1.organization, by: "early")
+    SharedReads.note(read, owner: h1.account, organization: h1.organization)
     check(SharedReads.reuse(owner: upper(h1).account, organization: h1.organization, folder: upper(h1), have: nil, within: 300, now: t0.addingTimeInterval(60)) == read,
           "one read per shared seat: another reader on the same seat (ids in another case) takes it within its interval")
     check(SharedReads.reuse(owner: h1.account, organization: h1.organization, folder: h1, have: nil, within: 300, now: t0.addingTimeInterval(400)) == nil
           && SharedReads.reuse(owner: h1.account, organization: h1.organization, folder: h1, have: t0, within: 300, now: t0.addingTimeInterval(60)) == nil
           && SharedReads.reuse(owner: h1.account, organization: h1.organization, folder: otherID, have: nil, within: 300, now: t0.addingTimeInterval(60)) == nil
           && SharedReads.reuse(owner: h1.account, organization: "00000000-0000-4000-8000-0000000000c1", folder: otherOrg, have: nil, within: 300, now: t0.addingTimeInterval(60)) == nil
-          && SharedReads.reuse(owner: nil, organization: nil, folder: h1, have: nil, within: 300, now: t0.addingTimeInterval(60)) == nil,
-          "…never past its interval, never one it has already, never across a switch (another folder seat), another organisation, or an owner not confirmed")
-    // …and its alerts go out once: from the first profile that has the seat in use
-    let sharers = [profile("a1", "~/.claude-o20a1", h1), profile("a2", "~/.claude-o20a2", upper(h1)), profile("a3", "~/.claude-o20a3", h2)]
-    check(SharedReads.alertsHere("a1", owner: h1.account, organization: h1.organization, among: sharers)
-          && !SharedReads.alertsHere("a2", owner: h1.account, organization: h1.organization, among: sharers)
-          && SharedReads.alertsHere("a3", owner: h2.account, organization: h2.organization, among: sharers)
-          && SharedReads.alertsHere("a2", owner: nil, organization: nil, among: sharers),
-          "a shared seat alerts from its first profile only; a seat of one profile, or an owner not known, alerts as before")
+          && SharedReads.reuse(owner: nil, organization: nil, folder: h1, have: nil, within: 300, now: t0.addingTimeInterval(60)) == nil
+          && SharedReads.reuse(owner: h1.account, organization: h1.organization, folder: Seat(account: h1.account, organization: nil, email: h1.email),
+                               have: nil, within: 300, now: t0.addingTimeInterval(60)) == nil,
+          "…never past its interval, never one it has already, never across a switch (another folder seat), another organisation "
+          + "(a folder with none recorded included), or an owner not confirmed")
+    // …and its alerts: the ledger (SharedReads.mayAlert, pure). A profile whose own switch and level said yes alerts unless
+    // another profile on the seat already sent that slot in that window; only the one that alerts claims it
+    let seatA = SharedReads.key(h1.account, h1.organization), stamp = "1800000000"
+    let ledger: [String: (mark: String, by: String)] = [seatA + "#n80.5h": (stamp, "a1")]
+    check(!SharedReads.mayAlert(ledger, seat: seatA, slot: "n80.5h", mark: stamp, by: "a2")
+          && !SharedReads.mayAlert(ledger, seat: seatA, slot: "n80.5h", mark: "1800000030", by: "a2"),
+          "ledger: another profile already alerted this level in this window (its reset within 10 minutes): no second alert")
+    check(SharedReads.mayAlert(ledger, seat: seatA, slot: "n90.5h", mark: stamp, by: "a2") && SharedReads.mayAlert(ledger, seat: seatA, slot: "f.5h", mark: stamp, by: "a2")
+          && SharedReads.mayAlert(ledger, seat: seatA, slot: "n80.wk", mark: stamp, by: "a2"),
+          "ledger: another level (its own threshold), full, or the other limit: it alerts (never silenced by a profile with another level)")
+    check(SharedReads.mayAlert(ledger, seat: seatA, slot: "n80.5h", mark: "1800018000", by: "a2") && SharedReads.mayAlert(ledger, seat: seatA, slot: "n80.5h", mark: stamp, by: "a1")
+          && SharedReads.mayAlert(ledger, seat: nil, slot: "n80.5h", mark: stamp, by: "a2"),
+          "ledger: the next window, the profile's own entry, or a seat not confirmed: it alerts")
+    // a personal seat never silences a Team seat of the same login (the organisation is in the key, strictly)
+    check(SharedReads.mayAlert(ledger, seat: SharedReads.key(h1.account, ""), slot: "n80.5h", mark: stamp, by: "a2")
+          && SharedReads.mayAlert(ledger, seat: SharedReads.key(h1.account, "00000000-0000-4000-8000-0000000000c1"), slot: "n80.5h", mark: stamp, by: "a2"),
+          "ledger: the same account id in another organisation, or with none, is another seat: it alerts")
+    // claim and release: only a profile that alerts claims; one that couldn't be shown lets another send it
+    SharedReads.alerted = [:]
+    check(SharedReads.claim(seat: seatA, slot: "f.wk", mark: stamp, by: "a3") && !SharedReads.claim(seat: seatA, slot: "f.wk", mark: stamp, by: "a2"),
+          "claim: the first profile that alerts takes the slot; the next one on the seat doesn't alert")
+    SharedReads.release(seat: seatA, slot: "f.wk", mark: stamp, by: "a3")
+    check(SharedReads.claim(seat: seatA, slot: "f.wk", mark: stamp, by: "a2"), "release: an alert that wasn't shown frees the slot for another profile")
+    SharedReads.alerted = [:]
     SharedReads.last = [:]
     // the default-profile move: the old profile's account is kept as a standby account only when the default profile hasn't
     // it (the one owner rule, or its id in another organisation: StandbyTidy keeps one entry per id)

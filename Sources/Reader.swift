@@ -85,7 +85,7 @@ final class UsageReader {
             case .considerRenew: maybeRenew()
             case let .numbersTaken(u, before, now):
                 // a reading taken for its confirmed account: the one another profile on the same seat reuses (SharedReads)
-                SharedReads.note(u, owner: machine.numbersAccount, organization: machine.numbersOrganization, by: id)
+                SharedReads.note(u, owner: machine.numbersAccount, organization: machine.numbersOrganization)
                 alertGate(u, before: before, now: now)
             case .planResetRead(let at): planResetRead(at)
             case .startedOver:
@@ -139,7 +139,7 @@ final class UsageReader {
             send(.relinked(folderMoved: folderMoved, now: Date()))
             return
         }
-        if followFolder() || pollChanged { send(.readNow); tick(); return }
+        if followFolder() || pollChanged { forceFresh = true; send(.readNow); tick(); return }
         if renewsByItself && state == .expired { maybeRenew() }
         save()
     }
@@ -184,6 +184,7 @@ final class UsageReader {
         guard let at, !machine.stopped else { return }
         let item = DispatchWorkItem { [weak self] in
             guard let self, !self.machine.stopped else { return }
+            self.forceFresh = true
             self.send(.readNow)
             self.tick()
         }
@@ -193,7 +194,11 @@ final class UsageReader {
 
     /// Refresh now (a Dock icon, the dashboard, the cl_audit window after a switch): fetch now, read the sign-in again, and
     /// write the record at once, changed or not.
-    func refreshNow() { send(.refreshRequested); tick() }
+    func refreshNow() { forceFresh = true; send(.refreshRequested); tick() }
+
+    /// The next usage read goes to Anthropic, never a shared seat's reading (SharedReads): Refresh now, a read at a reset,
+    /// another folder or interval.
+    private var forceFresh = false
 
     // MARK: another account signed in
 
@@ -255,14 +260,17 @@ final class UsageReader {
 
     /// The usage, asked with the kept sign-in; the answer goes to `finish`. A seat another profile shares (SharedReads) that
     /// profile's reader read within this one's interval is answered with that reading instead: one read per seat per cycle.
+    /// Never for a read asked for now (Refresh now, a read at a reset, another interval: `forceFresh`).
     private func fetchUsage(_ req: ReaderMachine.Request) {
         // (no kept sign-in for its key: never asked, but answered as a failure, so the read under way ends)
         guard let token = token(for: req) else {
             send(.usageFailed(.network("the sign-in to ask with is gone"), asked: req.asked, generation: req.generation, now: Date()))
             return
         }
-        let now = Date()
-        if let u = SharedReads.reuse(owner: machine.numbersAccount, organization: machine.numbersOrganization,
+        let now = Date(), fresh = forceFresh
+        forceFresh = false
+        if !fresh, machine.numbersKey == req.key,
+           let u = SharedReads.reuse(owner: machine.numbersAccount, organization: machine.numbersOrganization,
                                      folder: Account.signedInSeat(configDir: account.configDir), have: machine.usage?.fetchedAt,
                                      within: Self.timing(entry).poll, now: now) {
             agentLog.log("reader \(self.id, privacy: .public): another profile read this account just now; its numbers are taken, no second read")
@@ -375,17 +383,12 @@ final class UsageReader {
         // Claude Code's in the split, SplitUsage, nor a reading the sign-in has moved on from), confirmed, and fresh by the
         // reading's own time (a reading held until its account was confirmed, and confirmed more than the read interval
         // later, is only last known: its alerts wait for the next read). And none for another account than the profile's
-        // (onOtherAccount, until it follows it), nor in a clash (a record from an older build: the resolver makes none now,
-        // an account may be several profiles').
+        // (onOtherAccount, until it follows it). A seat several profiles share alerts once per level and window: each alert
+        // asks the ledger (SharedReads.claim) after this profile's own switch and level decided it.
         let resolved = answer()
         let a = Headline.of(resolved.owner(reading: nil, unconfirmed: unconfirmed), signedIn: true, readAt: u.fetchedAt,
                             now: now, ages: Store.ages(entry))
-        // A seat several profiles share (shared seats) alerts once, from the first profile in the profiles file that has it
-        // in use (SharedReads.alertsHere): the numbers and the limit are the seat's, so a second banner for the same limit
-        // would only repeat it; the other profiles' Dock icons and cards still show it full.
-        let list = Store.loadChecked() ?? [entry]
-        let leads = SharedReads.alertsHere(id, owner: machine.numbersAccount, organization: machine.numbersOrganization, among: list)
-        if !machine.onOtherAccount, resolved.clash == nil, leads, a.acts, a.numbers() {
+        if !machine.onOtherAccount, a.acts, a.numbers() {
             noteBack(u)
             // the account in use as the resolver says it now (the record is saved after this)
             var view = IconStatus(state: "ok"); view.resolved = resolved
@@ -466,6 +469,9 @@ final class UsageReader {
             // marks within 10 minutes of each other are the same reset (windows are hours apart)
             if let old = defaults.string(forKey: k), old == mark || Self.sameReset(old, stamp) { continue }
             guard !alerting.contains(k) else { continue }
+            // a shared seat: another profile on it already alerted this level (or full) in this window, so not again
+            let seat = seatKey, slot = full ? "f.\(key)" : "n\(Int(limit)).\(key)"
+            guard SharedReads.claim(seat: seat, slot: slot, mark: mark, by: id) else { continue }
             alerting.insert(k)
             let c = UNMutableNotificationContent()
             // the 5-hour or weekly limit full holds the profile back: another of its accounts with room is offered, with
@@ -488,6 +494,7 @@ final class UsageReader {
                 let code = Self.post(id: "\(me).\(kind)\(key).\(mark)", title: c.title, body: c.body, thread: me, offer: offer)
                 DispatchQueue.main.async { [weak self] in
                     self?.alerting.remove(k)
+                    if code != 0 { SharedReads.release(seat: seat, slot: slot, mark: mark, by: me) }    // another profile may send it
                     // marked only for the account it was about (not one read since a switch, whose marks were cleared)
                     if code == 0, self?.machine.stopped != true, self?.generation == gen { d.set(mark, forKey: k); if full { d.set(mark, forKey: levelKey) } }
                 }
@@ -551,14 +558,24 @@ final class UsageReader {
         sendOnce(title: "Claude \(account.name) is back", body: body, slot: "back", stamp: back.map(\.mark).joined(separator: "-"))
     }
 
+    /// The seat this reader's numbers were read for (SharedReads.key), for the alert ledger; nil: not confirmed yet.
+    private var seatKey: String? {
+        machine.numbersAccount.flatMap { $0.isEmpty ? nil : SharedReads.key($0, machine.numbersOrganization) }
+    }
+
     /// One alert that isn't kept for later ("back", credits): tried once.
     private func sendOnce(title: String, body: String, slot: String, stamp: String) {
-        let me = id, k = "\(slot).\(id)"
+        let me = id, k = "\(slot).\(id)", seat = seatKey
         guard !alerting.contains(k) else { return }
+        // a shared seat: once per window for the seat (its stamp: a reset's, or the moment credits started)
+        guard SharedReads.claim(seat: seat, slot: slot, mark: stamp, by: me) else { return }
         alerting.insert(k)
         DispatchQueue.global(qos: .utility).async {
             let code = Self.post(id: "\(me).\(slot).\(stamp)", title: title, body: body, thread: me)
-            DispatchQueue.main.async { [weak self] in self?.alerting.remove(k) }
+            DispatchQueue.main.async { [weak self] in
+                self?.alerting.remove(k)
+                if code != 0 { SharedReads.release(seat: seat, slot: slot, mark: stamp, by: me) }
+            }
             switch code {
             case 0: agentLog.log("\(me, privacy: .public): \(slot, privacy: .public) alert sent")
             case 2: agentLog.log("\(me, privacy: .public): \(slot, privacy: .public) alert dropped: notifications for cl_audit aren't allowed")
@@ -718,13 +735,10 @@ struct SignInWatch {
 /// Shared seats (operator, 2026-11-22): one account may be several profiles', each with its own folder and sign-in, so
 /// the agent keeps one reading per seat (account id and organisation) and a reader whose sign-in is on that seat takes it
 /// instead of asking Anthropic again within its interval: one usage read per seat per cycle, no extra 429s. Main thread only
-/// (the readers' actions and replies all run there). Its alerts go out once, from the first profile that has it in use.
+/// (the readers' actions and replies all run there). Its alerts go out once per level and window, from the first profile
+/// that actually alerts (`claim`, the ledger).
 enum SharedReads {
-    struct Read: Equatable {
-        var usage: Usage
-        var by: String                      // the profile whose reader read it
-    }
-    nonisolated(unsafe) static var last: [String: Read] = [:]
+    nonisolated(unsafe) static var last: [String: Usage] = [:]
 
     /// A seat as a key: its id and organisation in their normal form ("" for none recorded).
     static func key(_ account: String, _ organization: String?) -> String {
@@ -732,34 +746,53 @@ enum SharedReads {
     }
 
     /// A reading taken for its confirmed account (`owner`, with its organisation): kept for that seat, newest only.
-    static func note(_ u: Usage, owner: String?, organization: String?, by id: String) {
+    static func note(_ u: Usage, owner: String?, organization: String?) {
         guard let owner, !owner.isEmpty else { return }
         let k = key(owner, organization)
-        if let old = last[k], old.usage.fetchedAt >= u.fetchedAt { return }
-        last[k] = Read(usage: u, by: id)
+        if let old = last[k], old.fetchedAt >= u.fetchedAt { return }
+        last[k] = u
     }
 
     /// The reading another profile took for this seat, to take instead of a read of its own: only when this reader's own
-    /// last reading was confirmed for that seat (`owner`, `organization`), its folder is still signed in to it (`folder`:
-    /// never across a switch), it is newer than what this reader has (`have`), and no older than `within` (the reader's
+    /// last reading was confirmed for that seat (`owner`, `organization`, read with the key asked with: the caller's), its
+    /// folder is still signed in to that very seat (`folder`, the organisation too: never across a switch, never a personal
+    /// seat for a Team one), it is newer than what this reader has (`have`), and no older than `within` (the reader's
     /// interval). nil: read as usual.
     static func reuse(owner: String?, organization: String?, folder: Seat?, have: Date?, within: TimeInterval, now: Date = Date()) -> Usage? {
         guard let owner, !owner.isEmpty, let folder, AccountID.same(folder.account, owner),
-              AccountID.sameOrganization(folder.organization, organization) || (folder.organization ?? "").isEmpty,
-              let r = last[key(owner, organization)] else { return nil }
-        let age = now.timeIntervalSince(r.usage.fetchedAt)
-        guard age >= 0, age < within, have.map({ r.usage.fetchedAt > $0 }) ?? true else { return nil }
-        return r.usage
+              AccountID.sameOrganization(folder.organization, organization),
+              let u = last[key(owner, organization)] else { return nil }
+        let age = now.timeIntervalSince(u.fetchedAt)
+        guard age >= 0, age < within, have.map({ u.fetchedAt > $0 }) ?? true else { return nil }
+        return u
     }
 
-    /// Whether this profile sends a shared seat's alerts: the first profile in the list whose account in use is that seat
-    /// (by its id; the organisation where both know it) does; a seat no profile has in use (or not known yet) alerts here.
-    static func alertsHere(_ id: String, owner: String?, organization: String?, among list: [AccountEntry]) -> Bool {
-        guard let owner, !owner.isEmpty else { return true }
-        let first = list.first { e in
-            e.seat.map { AccountID.same($0.account, owner) && ((organization ?? "").isEmpty || ($0.organization ?? "").isEmpty
-                                                              || AccountID.sameOrganization($0.organization, organization)) } == true
-        }
-        return first.map { $0.id == id } ?? true
+    // MARK: the alert ledger
+
+    /// Per seat (`key`) and slot (a limit at a level, "n80.5h", or full, "f.5h"; "back", a model's back, credits): the window's
+    /// mark of the alert that went out, and the profile that sent it. Main thread only.
+    nonisolated(unsafe) static var alerted: [String: (mark: String, by: String)] = [:]
+
+    /// Whether a profile may send this alert for a shared seat, by the ledger alone (pure): yes, unless another profile already
+    /// sent the same slot in the same window (the same mark, or reset times within 10 minutes: Anthropic's wobble). A seat not
+    /// known (nil) never shares: always yes. Each profile's own switch and threshold decide before this is asked, so a
+    /// profile with alerts off, a higher level, a failed read or a slower interval never stands in for another.
+    static func mayAlert(_ ledger: [String: (mark: String, by: String)], seat: String?, slot: String, mark: String, by id: String) -> Bool {
+        guard let seat, let had = ledger[seat + "#" + slot] else { return true }
+        guard had.by != id else { return true }
+        return !(had.mark == mark || UsageReader.sameReset(had.mark, Int(mark)))
+    }
+
+    /// The same, and when yes, this profile claims the slot (it is the one that alerts). nil seat: yes, nothing kept.
+    static func claim(seat: String?, slot: String, mark: String, by id: String) -> Bool {
+        guard mayAlert(alerted, seat: seat, slot: slot, mark: mark, by: id) else { return false }
+        if let seat { alerted[seat + "#" + slot] = (mark, id) }
+        return true
+    }
+
+    /// An alert that couldn't be shown after all: its claim goes, so another profile on the seat may send it.
+    static func release(seat: String?, slot: String, mark: String, by id: String) {
+        guard let seat, let had = alerted[seat + "#" + slot], had.by == id, had.mark == mark else { return }
+        alerted[seat + "#" + slot] = nil
     }
 }
