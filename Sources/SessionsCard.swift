@@ -6,6 +6,7 @@
 // backups go and how many are kept: General. Export… (ExportPage.swift) makes the sessions one file for another Mac or for
 // keeping; Import… (ImportPage.swift) restores such a file, and Undo last import takes back what the last one added.
 
+import AddressPrivacy
 import AppKit
 import SwiftUI
 
@@ -13,6 +14,7 @@ struct SessionsCard: View {
     let entry: AccountEntry
     @ObservedObject var model: SettingsModel
     @ObservedObject private var prefs = BackupPrefs.shared
+    @ObservedObject private var privacy = AddressPrivacy.shared    // (a backup's title names the account its switch went to: drawn again when Show emails changes)
     @Environment(\.face) private var face
 
     @State private var kept: SessionsBackup.Kept?                  // nil: still counting
@@ -24,7 +26,7 @@ struct SessionsCard: View {
         var id: String { m.id + "@" + (place ?? "") }
     }
     @State private var backups: [Listed] = []
-    @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, short
+    @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, by address (shortened when drawn: `targetName`)
     /// A switch that stopped half way, not dismissed yet: said, with where its sessions are and Undo it.
     @State private var oldSwitch: SwitchReceipt?
     @State private var retention = Retention()                     // what Claude Code's clean-up does
@@ -118,7 +120,7 @@ struct SessionsCard: View {
             Button("Keep it", role: .cancel) {}
         } message: {
             Text(deleting.map { l in
-                "\(SessionsBackup.title(l.m, target: targets[l.m.id])): \(SessionsBackup.summary(l.m)). The sessions it was made from are not touched."
+                "\(Self.title(l.m, address: targets[l.m.id])):\(SessionsBackup.summary(l.m)). The sessions it was made from are not touched."
                     + (SessionsRestore.finishedRestores(of: l.m.id, profile: entry.id, place: placeOf(l).path) > 0
                        ? " A restore from it is finished: its receipt, which Undo this restore needs, goes with the backup, so that restore can't be undone afterwards." : "")
                     + (SessionsRestore.halfUndoneRestores(of: l.m.id, profile: entry.id, place: placeOf(l).path) > 0
@@ -227,7 +229,7 @@ struct SessionsCard: View {
         let m = l.m
         return HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(SessionsBackup.title(m, target: targets[m.id])).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.text)
+                Text(Self.title(m, address: targets[m.id])).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.text)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(SessionsBackup.summary(m) + (l.place.map { " · in \(tilde($0))" } ?? "")).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
             }
@@ -347,16 +349,23 @@ struct SessionsCard: View {
         d.set(Array(Set((d.stringArray(forKey: dismissedKey) ?? []) + [id])), forKey: dismissedKey)
     }
 
+    /// A backup's title as the setting names the account its switch went to now ("Before switch to ultra-2", or "… hidden
+    /// address"): the address is kept in `targets` and shortened here, when a title is drawn.
+    static func title(_ m: SessionsBackup.Manifest, address: String?) -> String {
+        SessionsBackup.title(m, target: address.map(AccountNames.short))
+    }
+
     /// For each switch's backup, the account that switch went to (the receipt names it by id; this profile knows both
-    /// accounts' addresses): "ultra-2".
-    private nonisolated static func targets(_ list: [SessionsBackup.Manifest], for e: AccountEntry) -> [String: String] {
+    /// accounts' addresses): its address, "ultra-2@example.com". Not shortened here: this runs off the main thread, and the
+    /// words follow Show emails as it is when they are drawn.
+    nonisolated static func targets(_ list: [SessionsBackup.Manifest], for e: AccountEntry) -> [String: String] {
         var out: [String: String] = [:]
         let seats = [e.seat] + e.standby.map(\.seat)
         let emails = [e.seat?.email] + e.standby.map { $0.seat?.email ?? $0.email }
         for m in list {
             guard case .beforeSwitch(let rid) = m.kind, let r = SwitchEngine.store.load(rid),
                   let i = seats.firstIndex(where: { r.to.same($0) }), let email = emails[i] else { continue }
-            out[m.id] = AccountNames.short(email)
+            out[m.id] = email
         }
         return out
     }

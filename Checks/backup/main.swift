@@ -663,6 +663,19 @@ MainActor.assumeIsolated {
     check(RestoreRunner.targetWord(kb, for: stranger) == nil, "an account this profile no longer knows: not named")
     let manual = try! SessionsBackup.make(src, kind: .manual, window: false, transcripts: false, place: p, now: made.addingTimeInterval(60))
     check(RestoreRunner.targetWord(manual, for: entry) == nil && RestoreRunner.targetWord(nil, for: entry) == nil, "a manual backup, or none: no account named")
+    // the Sessions card keeps the address (read off the main thread, never shortened there) and names the account when it draws:
+    // the title read again after Show emails goes off holds nothing of the address, and back on it names the account again
+    let held = SessionsCard.targets([kb], for: entry)
+    check(held[kb.id] == b.email, "the card keeps the account's address, not a short name: \(held)")
+    func cardTitle() -> String { SessionsCard.title(kb, address: held[kb.id]) }
+    let shownTitle = cardTitle()
+    AddressPrivacy.shared.apply(blur: true)
+    let hiddenTitle = cardTitle()
+    AddressPrivacy.shared.apply(blur: false)
+    check(shownTitle.hasPrefix("Before switch to \(AccountNames.short(b.email!)) · ") && !shownTitle.contains("hidden")
+          && hiddenTitle.hasPrefix("Before switch to hidden address · ") && !hiddenTitle.contains(AccountNames.short(b.email!)) && !hiddenTitle.contains("@")
+          && cardTitle() == shownTitle,
+          "the card's title is made when it is drawn: \(shownTitle) | \(hiddenTitle)")
     check(SessionsBackup.list(profile: "bk", place: p).map(\.id).contains(kb.id), "an old switch's backup stays listed (and restorable, as the restore stages show)")
     try? fm.removeItem(at: SwitchEngine.root.appendingPathComponent(rid))
 
