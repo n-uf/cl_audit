@@ -727,9 +727,8 @@ struct PaletteView: View {
                             ProfileLED(color: row.entry.ownColor)
                             Text(row.entry.name).font(.system(size: 13, weight: .semibold))
                             if row.activity.desktopOpen { OpenBadge() }
-                            Text(row.subtitle).font(.caption2).lineLimit(1)
+                            AccountValue(text: row.subtitle, size: 10).font(.caption2).lineLimit(1)
                                 .foregroundStyle(row.needsLogin ? Color.red : Color.secondary)
-                                .hidesEmail(AddressSettings.hides(row.subtitle))
                             Spacer(minLength: 0)
                             // while a limit is full, one value: how long until it's back
                             if let full = row.full {
@@ -997,18 +996,16 @@ struct AccountCard: View {
                         let out = notice?.signedOut == true
                         HStack(spacing: 5) {
                             Circle().fill(out ? face.danger : row.lit ? FaceTheme.ledOn : face.muted.opacity(0.4)).frame(width: 6, height: 6)
-                            Text(label).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                            AccountValue(text: label, size: 12).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
                                 .foregroundStyle(out ? face.danger : face.muted)
-                                .hidesEmail(AddressSettings.hides(label))
                         }
                         if let n = row.line, notice == nil {          // (a notice says it once, in the limits' place)
                             Text(n).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     } else {
-                        Text(row.subtitle).font(.system(size: 12)).lineLimit(1)
+                        AccountValue(text: row.subtitle, size: 12).font(.system(size: 12)).lineLimit(1)
                             .foregroundStyle(row.needsLogin ? face.danger : face.muted)
-                            .hidesEmail(AddressSettings.hides(row.subtitle))
                     }
                 }
                 Spacer(minLength: 0)

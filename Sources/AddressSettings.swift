@@ -9,8 +9,8 @@
 // first profile is made. A key that is there (the new one or the legacy `blurEmails`) is never touched.
 //
 // With it off, no address is shown anywhere in clear: not its first letter, its length or its domain. A view draws one fixed
-// blurred stand-in (the address itself only while the pointer is on it), a sentence says "hidden address", and the
-// launcher, dashboard, Dock panels and Dock menus leave an address out (`hidesEmail`).
+// blurred stand-in (the address itself only while the pointer is on it; the launcher's rows and the dashboard's cards too,
+// AccountValue), a sentence says "hidden address", and the Dock panels leave an address out (`hidesEmail`).
 //
 // Every process that shows an address calls `AddressSettings.start()` at launch (Sources/main.swift: the settings app, the
 // icon apps and the agent all start there); the Dock tile plug-in shows none and has no observable object: if it ever
