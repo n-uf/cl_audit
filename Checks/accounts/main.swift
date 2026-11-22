@@ -2553,6 +2553,26 @@ do {
     } else {
         check(false, "the page opened afresh holds a stopped switch: \(rS.phase)")
     }
+    // the receipt's account isn't one of the profile's (it came off the standby list): its account, never the target's or the goal's
+    // address (those belong to another switch)
+    let swWith = mS.accounts
+    var swNoStandby = sw; swNoStandby.standby = []
+    mS.accounts = [swNoStandby]
+    rS.reset()
+    if case .failed(let stoppedWhy) = rS.phase {
+        let said3 = [rS.said(stoppedWhy), rS.windowText ?? ""]
+        check(said3.allSatisfy { $0.contains("sign in as its account") && !$0.contains("ultra") && !$0.contains("hidden address") } && rS.stoppedTo == nil,
+              "a stopped switch whose account isn't the profile's: \"its account\", not the target's address (shown) and not \"hidden address\": \(said3)")
+        AddressPrivacy.shared.apply(blur: true)
+        let said4 = [rS.said(stoppedWhy), rS.windowText ?? ""]
+        check(said4.allSatisfy { $0.contains("sign in as its account") && !$0.contains("ultra") && !$0.contains("hidden address") },
+              "…and the same with Show emails off: \(said4)")
+        AddressPrivacy.shared.apply(blur: false)
+    } else {
+        check(false, "the page opened afresh holds a stopped switch (its account off the list): \(rS.phase)")
+    }
+    mS.accounts = swWith
+    rS.reset()
     rS.undo()
     waitFor(15) { rS.phase == .undone && !winOpened.isEmpty }
     spin(0.3)

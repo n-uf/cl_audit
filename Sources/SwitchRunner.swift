@@ -99,16 +99,20 @@ final class SwitchRunner: ObservableObject {
     private(set) var oldAccount: String?
     /// The account an earlier stopped switch went for (showStopped), by address; else the goal's, else the target's.
     private(set) var stoppedTo: String?
+    /// The page shows an earlier stopped switch (showStopped): its account is `stoppedTo` and nothing else. When that is nil (the
+    /// receipt's account isn't among the profile's) it says "its account": the goal and the target belong to another switch.
+    private(set) var stoppedShown = false
     static let oldMark = "{old}", toMark = "{to}"
     /// The address of the account the switch went for, nil when it has none.
     var toAddress: String? {
-        stoppedTo ?? [goal?.wantedEmail, targetSnapshot?.email].compactMap { $0 }.first { !$0.isEmpty }
+        if stoppedShown { return stoppedTo }
+        return stoppedTo ?? [goal?.wantedEmail, targetSnapshot?.email].compactMap { $0 }.first { !$0.isEmpty }
     }
     /// A template as the page says it now: the accounts named as Show emails lets them be named.
     func said(_ template: String) -> String {
         template
             .replacingOccurrences(of: Self.oldMark, with: oldAccount.map(AccountNames.short) ?? "the old account")
-            .replacingOccurrences(of: Self.toMark, with: toAddress.map(AccountNames.short) ?? "the account it went for")
+            .replacingOccurrences(of: Self.toMark, with: toAddress.map(AccountNames.short) ?? (stoppedShown ? "its account" : "the account it went for"))
     }
     var moveText: String? { moveNote.map(said) }
     var leftText: String? { leftNote.map(said) }
@@ -202,7 +206,7 @@ final class SwitchRunner: ObservableObject {
     func start(_ s: StandbyAccount) {
         guard !isRunning, let e = entry else { return }
         targetSnapshot = s; receipt = nil; moveNote = nil; leftNote = nil; windowNote = nil; planned = nil; failedStep = nil
-        oldAccount = nil; stoppedTo = nil
+        oldAccount = nil; stoppedTo = nil; stoppedShown = false
         let g = Goal(standby: s.id, wantedSeat: s.seat, wantedEmail: s.email,
                      from: Account.signedInSeat(configDir: e.configDir) ?? e.seat, started: Date())
         // the profile's folder deleted: nothing closes, moves or signs in (a sign-in would make it again), said instead
@@ -486,7 +490,7 @@ final class SwitchRunner: ObservableObject {
 
     /// Back to the start, for another switch from the page.
     func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
-        quitAsked = false; oldAccount = nil; stoppedTo = nil
+        quitAsked = false; oldAccount = nil; stoppedTo = nil; stoppedShown = false
         if windowNote != Self.windowLateClose { windowNote = nil }          // (a Cancel's late-close watch still says its line)
         if !canUndo { receipt = nil }
         // a switch of this profile that moved sessions, closed the window and isn't settled holds the window closed: the page
@@ -506,6 +510,7 @@ final class SwitchRunner: ObservableObject {
         // never for good: Undo puts it back, and signing in as the account it went for finishes it (linkReached)
         // (the account it went for is kept by address; the failure text and the window's line hold its marker, `said` at draw time)
         stoppedTo = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email
+        stoppedShown = true                                          // (an account of none of the profile's: "its account", never the goal's)
         let to = Self.toMark
         if Self.halfDoneFinishLine(u) {
             fail(.notStarted, "An earlier switch of \(e.name) stopped half way. \(Self.finishLineStopped) Then switch again.")
@@ -575,6 +580,6 @@ final class SwitchRunner: ObservableObject {
                  window: String? = nil, old: String? = nil, stoppedTo to: String? = nil) {
         phase = p; goal = g; targetSnapshot = target ?? targetSnapshot
         planned = plan; receipt = r; moveNote = note; leftNote = left; seen = s; failedStep = f
-        windowNote = window; oldAccount = old; stoppedTo = to
+        windowNote = window; oldAccount = old; stoppedTo = to; stoppedShown = to != nil
     }
 }
