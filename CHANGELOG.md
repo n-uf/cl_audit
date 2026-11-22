@@ -8,6 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
+- The note after the standby list is tidied reads "The standby list was tidied. Each account is listed once per plan."
 - The quick chat now lives in cl_quick, and cl_audit no longer has one of its own.
   - Quick chat opens cl_quick on that profile's Claude Code folder.
   - Without cl_quick it reads Get cl_quick… and opens its site.
