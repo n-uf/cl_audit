@@ -15,6 +15,11 @@ the notes before updating.
   - Empty old quick chat folders go to the Trash once, on their own.
   - Folders that still hold chats stay.
   - Settings ▸ General ▸ Backups shows how many are left, with Show in Finder and Move to Trash….
+- **One account can now be several profiles'.** An account (its account and organisation) may be in use in more than one profile, or stand by in more than one, each profile with its own Claude Code folder, and every profile on it shows that account's numbers. Where you pick, sign in to or look at such an account (New profile's Account pop-up and Sign in step, a sign-in from Settings, Settings ▸ Accounts, the Switch page), one amber line says so, for example "This account is also in use in “Main”. Both profiles show the same numbers." It never stops Finish, a sign-in or a switch. Before, New profile refused another profile's account, a sign-in landing on one was refused, and a profile whose folder was on another profile's account showed no numbers.
+- New profile's Account pop-up lists the other profiles' accounts as choices (no longer dimmed): picking one signs in to it in the new profile's own folder, with its address filled in.
+- An account several profiles share is read once per read interval, not once per profile, and its limit alerts come once, from the first profile that has it in use, not from every profile on it.
+- Before a switch to an account another profile's Claude window is on, the Switch page says that both windows will show the same sidebar (claude.ai keeps one per account).
+- With Show emails off, the address field of Sign in to another account… shows the stand-in while you aren't typing in it, and New profile's Sign in step draws the signed-in address as the stand-in, like the Account pop-up.
 
 ## 26.11.87 — 2026-11-21
 
