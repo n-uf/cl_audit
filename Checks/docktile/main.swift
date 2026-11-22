@@ -17,6 +17,7 @@
 // themselves, which the Mac's cl_audit hears too: a few per run, naming no real profile (a redraw, a reload of the real
 // file, nothing more).
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 
@@ -109,11 +110,15 @@ if args.count >= 3, args[1] == "--child" {
         print(given != nil && given === p.shownMenu ? "menu kept" : "menu lost")
         guard let m = p.dockMenu() else { print("no menu"); exit(6) }
         print(m === p.shownMenu ? "menu replaced" : "menu not replaced")
-        let tags = m.items.map(\.tag)
+        // every item, the Claude window submenu's too
+        func all(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(all) ?? []) } }
+        let tags = all(m).map(\.tag)
         print(Set(tags).count == tags.count && !tags.contains(0) ? "tags unique" : "tags not unique: \(tags)")
-        let titles = m.items.map(\.title)
+        print(all(m).contains { $0.view != nil } ? "item views" : "plain titles")
+        let titles = all(m).map(\.title)
         print("menu: \(titles.joined(separator: " | "))")
-        if let open = m.items.first(where: { $0.title == "Open Claude window" }) { p.picked(open) }
+        let window = m.items.first { $0.title == "Claude window" }?.submenu
+        if let open = window?.items.first(where: { $0.title == "Open" }) { p.picked(open) }
         RunLoop.main.run(until: Date().addingTimeInterval(0.8))
         dn.removeObserver(o)
         print("heard: \(heard.joined(separator: ","))")
@@ -358,35 +363,57 @@ do {
     check(run([(60, facts(beat: at(-31)))], &t) == [.none], "one stale tick after a minute isn't enough (two in a row)")
 }
 
-// 4. the Dock tile's own menu (DockTileMenu): the usage and the actions, no address; its actions are notices to the agent
+// 4. the Dock icon's menu (DockTileMenu), cl_quick's shape: the profile, its accounts with the status line under the one in
+// use, the Claude window and the actions; addresses whole or hidden; its actions are notices to the agent
 do {
     var win = e; win.claudeWindow = true
     let show = ProfileShow.of(win, raw: record(), now: now)
     let rows = DockTileMenu.rows(win, show, windowOpen: false, now: now)
-    let infos = rows.compactMap { if case .info(let s) = $0 { return s } else { return nil } }
-    let acts = rows.compactMap { if case .action(let s, let a) = $0 { return "\(s)=\(a.rawValue)" } else { return nil } }
-    check(infos.first == "Dock" && infos.contains { $0.hasPrefix("5-hour limit: 12% · resets ") } && infos.contains { $0.hasPrefix("Weekly limit: 40% · resets ") }
-          && infos.contains("Updated 1 min ago"),
-          "the menu: the profile's name, its limits with their resets and the reading's age (got \(infos))")
-    check(acts == ["Quick chat=quickChat", "Open Claude window=openWindow", "Refresh now=refresh", "Dashboard=dashboard", "Profile settings…=settings"],
-          "the menu's actions, in order (got \(acts))")
-    let open = DockTileMenu.rows(win, show, windowOpen: true, now: now).compactMap { if case .action(let s, _) = $0 { return s } else { return nil } }
-    check(open.contains("Show Claude window") && open.contains("Quit Claude window"), "its window open: Show and Quit Claude window")
+    let shown = DockTileMenu.lines(rows, blur: false)
+    check(shown == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "bob@example.com", "Sign in to another account…", "—",
+                    "Claude window ▸", "  Open", "Quick chat", "Refresh now", "—", "Dashboard", "Profile settings…"],
+          "the menu, addresses shown: the profile, the account in use ticked, its status line, the standby account, Sign in to "
+          + "another account…, Claude window ▸ Open, Quick chat, Refresh now, Dashboard, Profile settings… (got \(shown))")
+    let hiddenLines = DockTileMenu.lines(rows, blur: true)
+    check(hiddenLines[1] == "✓ hidden address 1" && hiddenLines[3] == "hidden address 2" && !hiddenLines.joined().contains("@")
+          && !hiddenLines.joined().contains("ann") && !hiddenLines.joined().contains("bob"),
+          "addresses hidden: \"hidden address\", numbered so the rows stay apart, nothing of any address (got \(hiddenLines))")
+    check(rows.contains(.address(.init(address: "bob@example.com", act: .switchTo, target: AccountEntry.switchKey(id, standbyID))))
+          && rows.contains(.address(.init(address: "ann@example.com", ticked: true))),
+          "a standby account's row opens the Switch page with it; the account in use's row does nothing")
+    check(DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: true, now: now), blur: false).contains("  Show")
+          && DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: true, now: now), blur: false).contains("  Quit")
+          && !DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: true, now: now), blur: false).contains("  Quit and keep"),
+          "its window open: Claude window ▸ Show, Quit (Quit and keep only in the running app's own menu)")
     var noWin = e; noWin.claudeWindow = false
-    let noWinActs = DockTileMenu.rows(noWin, show, windowOpen: false, now: now).compactMap { if case .action(_, let a) = $0 { return a } else { return nil } }
-    check(!noWinActs.contains(.openWindow) && !noWinActs.contains(.quitWindow), "no Claude window: no window actions")
-    let none = DockTileMenu.rows(win, ProfileShow.of(win, raw: nil, now: now), windowOpen: false, now: now)
-    check(none.contains(.info("No usage read yet")), "no reading yet: said so")
+    check(!DockTileMenu.lines(DockTileMenu.rows(noWin, show, windowOpen: false, now: now), blur: false).contains("Claude window ▸"),
+          "no Claude window: no Claude window ▸")
+    let none = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: nil, now: now), windowOpen: false, now: now), blur: false)
+    check(none.contains("No usage yet"), "no reading yet: said so (got \(none))")
     let full = DockTileMenu.rows(win, ProfileShow.of(win, raw: record(five: 100, week: 40), now: now), windowOpen: false, now: now)
-    check(full.contains { if case .full(let s) = $0 { return s.hasPrefix("5-hour full") } else { return false } }, "a full limit: its crimson line first")
-    let all = [rows, none, full].flatMap { $0 }.map { r -> String in
-        switch r { case .info(let s), .full(let s), .action(let s, _): return s; case .separator: return "" }
-    }
-    check(!all.contains { $0.contains("@") }, "the menu never shows an address")
+    check(full.contains { if case .status(let s, true) = $0 { return s.hasPrefix("5-hour full · in ") } else { return false } }
+          && DockTileMenu.lines(full, blur: false).contains("bob@example.com"),
+          "a full limit: the crimson status line, the standby account under it the way back")
+    let every = [rows, full].flatMap { DockTileMenu.lines($0, blur: false) } + none
+    check(every.allSatisfy { $0.count <= DockTileMenu.rowCharacters + 2 }, "every row at most 40 characters (the ticked row's mark aside)")
+    check(DockTileMenu.fit(String(repeating: "a", count: 50)).count == 40 && DockTileMenu.fit("short") == "short",
+          "a longer row is cut in the middle to 40 characters")
+    check(DockTileMenu.splitDiffers.count <= DockTileMenu.rowCharacters
+          && ("Usage hidden: Terminal on " + AddressText.hidden).count <= DockTileMenu.rowCharacters,
+          "the split's status line fits whole: its fallback, and the address form while hidden")
     let noAgent = DockTileMenu.rows(win, show, windowOpen: false, agentRuns: false, now: now)
-    check(noAgent.contains(.info("cl_audit's agent isn't running: open cl_audit"))
-          && !noAgent.contains { if case .action = $0 { return true } else { return false } },
-          "no agent running: the menu says so and offers no action (none would happen)")
+    check(DockTileMenu.lines(noAgent, blur: false) == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "—", "cl_audit's agent isn't running"]
+          && !noAgent.contains { if case .action = $0 { return true }; if case .address(let r) = $0 { return r.act != nil }; return false },
+          "no agent running: the account and its status, the menu says so and offers no action (none would happen)")
+    // the NSMenu: every item its own tag (the submenu's too), the account in use ticked, a standby row's ask
+    let probe = NSObject()
+    let m = DockTileMenu.menu(rows, light: nil, views: false, target: probe, action: Selector(("x:")))
+    func all(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(all) ?? []) } }
+    let tags = all(m).map(\.tag)
+    check(Set(tags).count == tags.count && !tags.contains(0), "every item, the submenu's too, its own non-zero tag (got \(tags))")
+    check(m.items[1].state == .on && m.items[1].isEnabled && m.items[1].action == nil
+          && m.items[3].representedObject as? String == "switchTo:" + AccountEntry.switchKey(id, standbyID),
+          "the account in use ticked and enabled, doing nothing; the standby row asks for its Switch page")
     // the agent's mark (a capped read): written within three beats counts as running; none, old or in the future: not
     try? fm.removeItem(at: Agent.markURL)
     check(!DockTile.agentRuns(), "no agent mark: not running")
@@ -420,10 +447,13 @@ plugInfo(build: "b1")
 _ = Store.writeStatus(id, record())
 Agent.writeMark(AgentMark(pid: getpid(), started: Date(), beat: Date(), version: "check", build: "check", path: "/check"))
 let menu = child("menu")
-check(clean(menu, "menu") && menu.out.contains("menu: Dock | ") && menu.out.contains("Open Claude window")
+check(clean(menu, "menu") && menu.out.contains("menu: Claude Dock | hidden address 1 | 5-hour 12% · Week 40% | hidden address 2 | ")
+      && menu.out.contains("| Claude window | Open | Quick chat |")
       && menu.out.contains("heard: openWindow:\(id)") && !menu.out.contains("@") && log().contains("menu: openWindow"),
-      "the plug-in's menu in the Dock's place: built from the record, Open Claude window asks the agent, no tripwire (got \(menu.out))")
-check(menu.out.contains("tags unique"), "each item of the menu has its own non-zero tag (the Dock hands a click back by its tag)")
+      "the plug-in's menu in the Dock's place: built from the record, addresses hidden (the check's setting) and numbered, "
+      + "Claude window ▸ Open asks the agent, no tripwire (got \(menu.out))")
+check(menu.out.contains("tags unique"), "each item of the menu, the submenu's too, has its own non-zero tag (the Dock hands a click back by its tag)")
+check(menu.out.contains("plain titles"), "the Dock draws the menu itself: plain titles, no item views")
 check(menu.out.contains("menu kept") && menu.out.contains("menu replaced"),
       "the menu given to the Dock is the one the plug-in keeps, alive after the call (a click comes later), until the next ask")
 

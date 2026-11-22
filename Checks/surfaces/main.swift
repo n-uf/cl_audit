@@ -337,8 +337,10 @@ do {
         let mainShow = ProfileShow.load(main)
         check(panel.accountLine?.text == named && (panel.activeNote == want.line || splitHere) && panel.activeLit == want.lit,
               "\(name): the Dock panel agrees (as drawn: \(panel.accountLine?.text ?? "no account line"))")
-        check(SwitchMenu.dockTitle(name: "P", mainShow.named, plan: nil) == (named.map { "Claude P · \(AccountNames.short($0))" } ?? "Claude P")
-              && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree")
+        // (the Dock menu's ticked row: the account in use, whole)
+        let dockLines = DockTileMenu.lines(DockTileMenu.rows(main, mainShow, windowOpen: false), blur: false)
+        check((named.map { n in dockLines.contains { $0.hasPrefix("✓ " + n) } } ?? !dockLines.contains { $0.hasPrefix("✓ ") })
+              && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree (\(dockLines))")
         let qcMain = QuickChatTarget(main)
         check(qcMain.email == want.numbersOwner && qcMain.shownEmail == (want.clash != nil ? named : want.numbersOwner),
               "\(name): quick chat's process on the folder's account, even when the app decided the one in use; its header names it, except in a clash (the profile's own, as the menus): \(qcMain.shownEmail ?? "none")")
@@ -1611,9 +1613,10 @@ do {
     // lives in the launcher's window code, which a headless run can't build)
     MainActor.assumeIsolated {
     let dockApp = AppDelegate(); dockApp.entry = e; dockApp.show = ProfileShow.load(e)
-    let dockKey = dockApp.profileMenu().items.first { $0.action == #selector(AppDelegate.logIn) }
-    check(dockKey?.title == ProfileShow.load(e).keyWords(short: false) && dockKey?.target === dockApp, "(the Dock menu has the Sign in key in the split: \(dockKey?.title ?? "none"))")
-    let dockPresses: [(String, () -> Void)] = [("the Dock menu's Sign in", { if let k = dockKey, let a = k.action { _ = dockApp.perform(a) } }),
+    let dockKey = dockApp.profileMenu().items.first { $0.representedObject as? String == DockTileMenu.object(.signIn, e.id) }
+    check(dockKey?.title.hasPrefix("Sign Terminal in to ") == true && dockKey?.target === dockApp
+          && dockKey?.action == #selector(AppDelegate.menuPicked(_:)), "(the Dock menu has the Sign in key in the split: \(dockKey?.title ?? "none"))")
+    let dockPresses: [(String, () -> Void)] = [("the Dock menu's Sign in", { if let k = dockKey { dockApp.menuPicked(k) } }),
                                                ("the Dock panel's Sign in", { dockApp.detailsActions().logIn() })]
     for (what, press) in dockPresses {
         launches.removeAll(); scripts.removeAll()
@@ -1936,9 +1939,11 @@ MainActor.assumeIsolated {
     func show(_ r: IconStatus, _ entry: AccountEntry? = nil) -> ProfileShow {
         _ = Store.writeStatus("show", r); return ProfileShow.load(entry ?? e, now: now)
     }
-    func lamp(_ m: NSMenu) -> Bool { m.items.first?.image != nil }
     func items(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) } }
-    let u2Short = AccountNames.short(u2.email!)
+    /// The menu's ticked row (the account in use), if any.
+    func ticked(_ m: NSMenu) -> [String] { items(m).filter { $0.state == .on }.map(\.title) }
+    /// The menu has the one key, Claude Code's sign-in ("Sign Terminal in to …", or "Sign in…" with no address to fill in).
+    func signIn(_ m: NSMenu) -> Bool { items(m).contains { ($0.representedObject as? String)?.hasPrefix("signIn:") == true } }
 
     // the one formula for the thresholds: the app's and the widget's
     check(Store.ages(e) == StatusAges.of(pollMinutes: 5) && StatusAges.freshFor(pollMinutes: 5) == 6 * 60
@@ -1950,9 +1955,9 @@ MainActor.assumeIsolated {
     let ok = show(rec())
     let okDock = dockOf(e, ok), okItem = MenuBarItems.item(MenuBarItems.Profile(show: ok), now: now)
     check(ok.display.usage?.weekly == 40 && ok.display.tier == .fresh && ok.display.lamp && ok.display.key == nil && !ok.display.grey
-          && okItem.week == 40 && !okItem.stale && !okDock.face.stale && okDock.face.weekly == 40 && okDock.panel.activeLit && lamp(okDock.menu)
-          && titles(okDock.menu).contains("Weekly limit: 40% · resets \(AppDelegate.when(now.addingTimeInterval(2 * 86400)))"),
-          "fresh: the numbers, the lamp lit, no key; the menu bar, the Dock face, its panel and its menu alike")
+          && okItem.week == 40 && !okItem.stale && !okDock.face.stale && okDock.face.weekly == 40 && okDock.panel.activeLit && !ticked(okDock.menu).isEmpty
+          && titles(okDock.menu).contains { $0.hasSuffix("Week 40%") },
+          "fresh: the numbers, the lamp lit, no key; the menu bar, the Dock face, its panel and its menu (the account ticked, its status line) alike")
 
     // the tiers: last known at 10 minutes (a full week left out, the 5-hour shown), grey past 30 minutes
     let known = show(rec(week: 100, age: 10 * 60))
@@ -1976,12 +1981,12 @@ MainActor.assumeIsolated {
     let fullDock = dockOf(e, full), fullBar = menuBarMenu(full)
     check(full.display.full?.kind == .week && MenuBarItems.item(MenuBarItems.Profile(show: full), now: now).countdown != nil
           && fullDock.face.countdown != nil && fullDock.panel.full != nil
-          && titles(fullDock.menu).contains { $0.hasPrefix("Week full · ") } && titles(fullDock.menu).contains("Switch to \(u2Short)…")
-          && titles(fullBar).contains("Switch to \(u2Short)…"),
-          "a fresh full week: the countdown on both icons, the full panel, the full line and the offer in both menus")
+          && titles(fullDock.menu).contains { $0.hasPrefix("Week full · in ") } && titles(fullDock.menu).contains(u2.email!)
+          && titles(fullBar).contains(u2.email!),
+          "a fresh full week: the countdown on both icons, the full panel, the full status line, and the standby account (the way back) in both menus")
     let fullOld = show(rec(week: 100, age: 10 * 60, weekIn: 3 * 3600))
-    check(fullOld.display.full == nil && dockOf(e, fullOld).face.countdown == nil && !titles(dockOf(e, fullOld).menu).contains("Switch to \(u2Short)…")
-          && !titles(menuBarMenu(fullOld)).contains("Switch to \(u2Short)…"), "the same full week read 10 minutes ago: nothing full, no offer")
+    check(fullOld.display.full == nil && dockOf(e, fullOld).face.countdown == nil && !titles(dockOf(e, fullOld).menu).contains { $0.hasPrefix("Week full") }
+          && titles(menuBarMenu(fullOld)).contains(u2.email!), "the same full week read 10 minutes ago: nothing full (its standby account still listed)")
 
     // the Dock tile plug-in (DockTile/Plugin.swift) draws the Dock icon app's own face from the same value, fresh, grey and full
     func pic(_ m: TileModel) -> Data? { Painter.image(m, pixels: 128).tiffRepresentation }
@@ -2051,22 +2056,23 @@ MainActor.assumeIsolated {
     for (state, words) in [("denied", "refused"), ("unreadable", "unreadable")] {
         let s = show(rec(state))
         let dk = dockOf(e, s)
-        check(s.display.usage?.weekly == 40 && !s.display.lamp && s.display.key == nil && !dk.panel.activeLit && !lamp(dk.menu)
-              && !titles(dk.menu).contains("Sign in…") && !titles(menuBarMenu(s)).contains("Sign in…"),
-              "a sign-in \(words): the numbers as read, the lamp off on the menu bar row, the Dock panel and its menu, no Sign in")
+        check(s.display.usage?.weekly == 40 && !s.display.lamp && s.display.key == nil && !dk.panel.activeLit
+              && !signIn(dk.menu) && !signIn(menuBarMenu(s)),
+              "a sign-in \(words): the numbers as read, the lamp off on the menu bar row and the Dock panel, no Sign in in either menu")
     }
     for state in ["expired", "noLogin"] {
         let s = show(rec(state))
         let dk = dockOf(e, s)
-        check(s.display.usage == nil && !s.display.lamp && s.display.needsLogin && dk.face.stale && !dk.panel.activeLit && !lamp(dk.menu)
-              && titles(dk.menu).contains("Sign in…") && titles(menuBarMenu(s)).contains("Sign in…") && dk.face.countdown == nil,
-              "\(state): no numbers, grey, the lamp off, Sign in… in both menus")
+        check(s.display.usage == nil && !s.display.lamp && s.display.needsLogin && dk.face.stale && !dk.panel.activeLit
+              && signIn(dk.menu) && signIn(menuBarMenu(s)) && dk.face.countdown == nil
+              && titles(dk.menu).contains(state == "expired" ? "The sign-in stopped working" : "Signed out"),
+              "\(state): no numbers, grey, the lamp off, the status line says why, the sign-in in both menus")
     }
     let mixed = show(rec(login: u3.email, code: u1))
     let mixedDock = dockOf(e, mixed)
     check(mixed.display.otherAccount && mixed.display.needsLogin && !mixed.display.lamp && mixedDock.face.warn && mixedDock.panel.mismatch
-          && !lamp(mixedDock.menu) && titles(mixedDock.menu).contains("Sign in…"),
-          "the sign-in on another account than the folder's: the warning, Sign in…, the lamp off")
+          && signIn(mixedDock.menu),
+          "the sign-in on another account than the folder's: the warning, the sign-in, the lamp off")
 
     // another profile's account: the clash names that profile by its id (names needn't be unique), the lamp off
     let clash = show(rec(login: u3.email, code: u3))
@@ -2080,12 +2086,12 @@ MainActor.assumeIsolated {
     let appClashShow = show(StatusCodec.decode(Data(appClash.utf8))!)
     let settingsModel = SettingsModel(); settingsModel.accounts = [e, other]
     let appClashDock = dockOf(e, appClashShow)
-    check(AccountView.of(appClashShow.record).lit && !appClashShow.display.lamp && !appClashDock.panel.activeLit && !lamp(appClashDock.menu)
+    check(AccountView.of(appClashShow.record).lit && !appClashShow.display.lamp && !appClashDock.panel.activeLit
           && AccountSettings(entry: .constant(e), model: settingsModel).elsewhere?.owner.id == "other",
-          "an app-decided account with Claude Code on Other's: the lamp off on the menu bar row, the Dock panel and menu, as Settings' (its move is Other)")
+          "an app-decided account with Claude Code on Other's: the lamp off on the menu bar row and the Dock panel, as Settings' (its move is Other)")
     check(appClashShow.display.key == .logIn && appClashShow.loginAddress == u1.email && appClashDock.panel.needsLogin
-          && titles(appClashDock.menu).contains("Sign in…") && titles(menuBarMenu(appClashShow)).contains("Sign in…"),
-          "…and Sign in… (to the profile's own u1) on the Dock panel, the Dock menu and the menu bar menu, as on the card")
+          && titles(appClashDock.menu).contains("Sign Terminal in to \(u1.email!)…") && titles(menuBarMenu(appClashShow)).contains("Sign Terminal in to \(u1.email!)…"),
+          "…and the sign-in (to the profile's own u1) on the Dock panel, the Dock menu and the menu bar menu, as on the card")
 
     // a value made a moment before a full limit's reset: drawn after it, no countdown (the face and the icon look again)
     let beforeReset = ProfileShow.of(e, raw: rec(week: 100, weekIn: -60), now: now.addingTimeInterval(-120))
@@ -3364,7 +3370,8 @@ MainActor.assumeIsolated {
     func naming(_ m: NSMenu) -> [String] { titles(m).filter { !$0.hasPrefix("Sign-in: ") } }
     check(cardRow(e, now: now).show.inUseLabel == u1.email && clash.page.inUseRow.show.inUseLabel == u1.email && clash.settings.view.label == u3.email
           && clash.panel.accountLine?.text == u1.email && clashShow.named.inUseLine == u1Short
-          && clashDock.menu.items.first?.title == "Claude Acc · \(u1Short)" && !naming(clashDock.menu).contains { $0.contains(u3Short) }
+          && clashDock.menu.items.first?.title == "Claude Acc" && clashDock.menu.items.contains { $0.state == .on && $0.title == u1.email! }
+          && !naming(clashDock.menu).contains { $0.contains(u3Short) }
           && !titles(menuBarMenu(clashShow)).contains { $0.contains(u3Short) },
           "a clash the app didn't decide: the card, the Switch page, the Dock panel (as drawn), the Dock menu and the menu bar name u1, never the folder's u3")
     check(clash.settings.inUseKeys.signIn && clash.settings.inUseKeys.open?.id == "other", "a clash: Settings' red box has Sign in… and Open Other")
@@ -3418,17 +3425,18 @@ MainActor.assumeIsolated {
     _ = Store.writeStatus("acc", rec(login: u3.email, code: u3))
     let bothShow = ProfileShow.load(both, now: now), bothDock = dockOf(both, bothShow), bothBar = menuBarMenu(bothShow)
     let u2Short = AccountNames.short(u2.email!)
-    let backTitle = "\(u1Short) · move Claude Code back here", backKey = AccountEntry.switchKey("acc", "k1")
+    let backTitle = DockTileMenu.fit("\(u1.email!) · move Claude Code back here"), backKey = AccountEntry.switchKey("acc", "k1")
     func allItems(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(allItems) ?? []) } }
     func rowsOf(_ m: NSMenu, _ short: String) -> Int { titles(m).filter { $0.hasPrefix(short) && !$0.hasPrefix("Claude") }.count }
     func ownRow(_ m: NSMenu) -> NSMenuItem? { allItems(m).first { $0.title == backTitle } }
     check(bothShow.ownStandbyID == "k1" && bothShow.named.label == u1.email, "a clash: the own account is the ticked one and the standby id k1 (ProfileShow.ownStandbyID)")
     check(rowsOf(bothDock.menu, u1Short) == 1 && rowsOf(bothBar, u1Short) == 1 && rowsOf(bothDock.menu, u2Short) == 1 && rowsOf(bothBar, u2Short) == 1
-          && !titles(bothDock.menu).contains(u1Short + "…") && !titles(bothBar).contains(u1Short + "…"),
+          && !titles(bothDock.menu).contains(u1.email!) && !titles(bothBar).contains(u1.email!),
           "a clash, the own account also on the standby list: one row in the Dock menu and the menu bar menu, never on standby too (u2 once)")
     for (what, m) in [("Dock", bothDock.menu), ("menu bar", bothBar)] {
         let row = ownRow(m)
-        check(row?.state == .on && row?.isEnabled == true && row?.action != nil && row?.representedObject as? String == backKey,
+        check(row?.state == .on && row?.isEnabled == true && row?.action != nil
+              && row?.representedObject as? String == DockTileMenu.object(.switchTo, backKey),
               "\(what) menu: the own account's row is ticked, says it moves Claude Code back, and switches to k1 (\(row?.title ?? "none"))")
     }
     let bothPage = surfaces(rec(login: u3.email, code: u3), both).page
@@ -3510,9 +3518,10 @@ MainActor.assumeIsolated {
           "quick chat, no clash: the usual switch words: \(calmQC?.lineWords(name: "Acc") ?? "none")")
     let calmShow = ProfileShow.load(both, now: now), calmDock = dockOf(both, calmShow), calmBar = menuBarMenu(calmShow)
     check(calmShow.ownStandbyID == nil && ownRow(calmDock.menu) == nil && ownRow(calmBar) == nil
-          && rowsOf(calmDock.menu, u1Short) == 1 && rowsOf(calmBar, u1Short) == 1 && !titles(calmDock.menu).contains(u1Short + "…")
-          && titles(calmBar).contains { $0.hasPrefix(u1Short + " · week") } && !titles(calmBar).contains { $0.contains("move Claude Code") },
-          "no clash: the active account ticked once with its week, off the standby list, no move words")
+          && rowsOf(calmDock.menu, u1Short) == 1 && rowsOf(calmBar, u1Short) == 1
+          && calmDock.menu.items.contains { $0.state == .on && $0.title == u1.email! }
+          && calmBar.items.contains { $0.state == .on && $0.title == u1.email! } && !titles(calmBar).contains { $0.contains("move Claude Code") },
+          "no clash: the active account ticked once, whole, off the standby list, no move words")
     _ = Store.writeStatus("acc", rec(login: u3.email, code: u3))
     // a record from before the id: by its name (the first profile so called)
     var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
@@ -3732,7 +3741,7 @@ do {
     let staleShow = ProfileShow.load(me, now: t0)
     let (staleNote, staleMenu, staleAge) = MainActor.assumeIsolated { let d = dockOf(me, staleShow); return (d.panel.activeNote, titles(d.menu), d.panel.noNumbers) }
     let staleLine = AccountResolver.staleWords
-    check(bothOther.line == staleLine && cardRow(me, now: t0).line == staleLine && staleNote == staleLine && staleMenu.contains(staleLine)
+    check(bothOther.line == staleLine && cardRow(me, now: t0).line == staleLine && staleNote == staleLine && staleMenu.contains(DockTileMenu.fit(staleLine))
           && MenuBarRow.lineWords(MenuBarItems.Profile(show: staleShow)) == staleLine && staleLine.contains("sign in to read again") && staleLine.count <= 70
           && staleAge == "Not read for this account",
           "a stale reading: \"\(staleLine)\" on the card, in the Dock panel and menu, on the menu bar row; the age line: \(staleAge ?? "-")")
@@ -3744,7 +3753,7 @@ do {
           && lone.codeName == short8 && lone.line == words && loneWeekly == nil
           && AccountView.of(Store.status(for: me, now: t0)).label == short8,
           "folder {id, no address} + a reading with an address and no id, no app: stale, numbers shown nowhere, never labelled with the reading's address")
-    check(cardRow(me, now: t0).line == words && loneNote == words && loneMenu.contains(words)
+    check(cardRow(me, now: t0).line == words && loneNote == words && loneMenu.contains(DockTileMenu.fit(words))
           && MenuBarRow.lineWords(MenuBarItems.Profile(show: loneShow)) == words && words.contains("sign in")
           && words.count <= "Claude Code's .claude.json is too large to read: its account isn't known here.".count,
           "…and the reason shows: on the card, in the Dock panel and menu, on the menu bar row (sign in, the sweep's verb), no longer than the too-large line those rows show")
@@ -4217,30 +4226,38 @@ MainActor.assumeIsolated {
     _ = Store.writeStatus("pa", rec)
     let show = ProfileShow.load(e, now: now)
     func all(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(all) ?? []) } }
-    for (what, menu) in [("the Dock icon's menu", dockOf(e, show).menu), ("the menu bar icon's menu", menuBarMenu(show))] {
-        let rows = all(menu).compactMap { i in (i.view as? AddressMenuRow).map { (i, $0) } }
-        let keys = rows.compactMap { $0.0.representedObject as? String }
-        check(rows.count >= 3 && Set(keys).isSuperset(of: ["pa~k2", "pa~k3"]),
-              "hidden \(what): the full-limit offer and the standby accounts are AddressMenuRows, each still naming its Switch page: \(keys)")
-        check(rows.allSatisfy { clean($0.0.title) && clean($0.1.accessibilityLabel() ?? "") && $0.0.title.contains("hidden address") && $0.1.accessibilityLabel() == $0.0.title }
-              && titles(menu).allSatisfy(clean),
-              "hidden \(what): no title or accessibility label holds any part of any address: \(titles(menu))")
-        check(Set(rows.filter { $0.0.title == "hidden address…" }.map { $0.1.naturalWidth }).count == 1
-              && rows.filter { $0.0.title == "hidden address…" }.count == 2,
-              "hidden \(what): the two standby rows (a short and a long address) are the same width")
-    }
+    // the menu bar's menu (this process draws it): the account in use and the standby accounts are AddressMenuRows
+    let barMenu = menuBarMenu(show)
+    let rows = all(barMenu).compactMap { i in (i.view as? AddressMenuRow).map { (i, $0) } }
+    let keys = rows.compactMap { $0.0.representedObject as? String }
+    check(rows.count == 3 && Set(keys) == [DockTileMenu.object(.switchTo, "pa~k2"), DockTileMenu.object(.switchTo, "pa~k3")],
+          "hidden, the menu bar icon's menu: the account in use and the standby accounts are AddressMenuRows, each standby one naming its Switch page: \(keys)")
+    check(rows.allSatisfy { clean($0.0.title) && clean($0.1.accessibilityLabel() ?? "") && $0.0.title.contains("hidden address") && $0.1.accessibilityLabel() == $0.0.title }
+          && titles(barMenu).allSatisfy(clean),
+          "hidden, the menu bar icon's menu: no title or accessibility label holds any part of any address: \(titles(barMenu))")
+    check(Set(rows.filter { $0.0.title == "hidden address" }.map { $0.1.naturalWidth }).count == 1
+          && rows.filter { $0.0.title == "hidden address" }.count == 2,
+          "hidden, the menu bar icon's menu: the two standby rows (a short and a long address) are the same width")
+    // the Dock icon's menu (the Dock draws it, no item views): plain titles, "hidden address" numbered so the rows stay apart
+    let dockMenu = dockOf(e, show).menu
+    let dockAccounts = all(dockMenu).filter { $0.title.hasPrefix("hidden address") }
+    check(!all(dockMenu).contains { $0.view != nil } && titles(dockMenu).allSatisfy(clean)
+          && dockAccounts.map(\.title) == ["hidden address 1", "hidden address 2", "hidden address 3"]
+          && dockAccounts[0].state == .on
+          && Set(dockAccounts.dropFirst().compactMap { $0.representedObject as? String }) == Set(keys),
+          "hidden, the Dock icon's menu: plain titles, numbered, the account in use ticked, the standby rows naming their Switch pages: \(titles(dockMenu))")
     // picking a row sends its action with the Switch page's key (as a native item does)
     let probe = PickProbe()
-    let lines = SwitchMenu.lines(e.listed(by: show.view), now: now)
-    let best = SwitchMenu.best(lines)!
-    let bestItem = SwitchMenu.bestItem(best, target: probe, action: #selector(PickProbe.pick(_:)))
-    (bestItem.view as? AddressMenuRow)?.fire()
-    check(bestItem.view is AddressMenuRow && bestItem.title == "Switch to hidden address…" && probe.got == best.key && bestItem.representedObject as? String == best.key,
-          "hidden: \"Switch to …\" is an AddressMenuRow whose Return and click send the action with its Switch page's key: \(bestItem.title) \(probe.got ?? "nil")")
-    // shown: the usual native items with short names
+    let pickRow = DockTileMenu.AddressRow(address: a2, act: .switchTo, target: "pa~k2")
+    let pickItem = DockTileMenu.item(pickRow, number: nil, views: true, target: probe, action: #selector(PickProbe.pick(_:)))
+    (pickItem.view as? AddressMenuRow)?.fire()
+    check(pickItem.view is AddressMenuRow && pickItem.title == "hidden address" && probe.got == DockTileMenu.object(.switchTo, "pa~k2")
+          && pickItem.representedObject as? String == DockTileMenu.object(.switchTo, "pa~k2"),
+          "hidden: a standby row is an AddressMenuRow whose Return and click send the action with its Switch page's key: \(pickItem.title) \(probe.got ?? "nil")")
+    // shown: native items with the whole address
     AddressPrivacy.shared.apply(blur: false)
-    let shownItem = SwitchMenu.bestItem(SwitchMenu.lines(e.listed(by: show.view), now: now).first!, target: probe, action: #selector(PickProbe.pick(_:)))
-    check(shownItem.view == nil && shownItem.title.hasPrefix("Switch to ") && !shownItem.title.contains("@"), "shown: the usual item with the short name: \(shownItem.title)")
+    let shownItem = DockTileMenu.item(pickRow, number: nil, views: true, target: probe, action: #selector(PickProbe.pick(_:)))
+    check(shownItem.view == nil && shownItem.title == DockTileMenu.fit(a2), "shown: a native item with the whole address: \(shownItem.title)")
     AddressPrivacy.shared.apply(blur: true)
 
     // AddressMenuRow itself: words, width and picture

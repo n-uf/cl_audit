@@ -358,53 +358,36 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         view.frame.size = view.fittingSize
         let row = NSMenuItem(); row.view = view
         menu.addItem(row)
-        func info(_ s: String) { let i = NSMenuItem(title: s, action: nil, keyEquivalent: ""); i.isEnabled = false; menu.addItem(i) }
-        if let u = p.usage { info("Updated \(DetailsFormat.ago(u.fetchedAt)) · \(u.source)") }
-        if let why = p.problem { info(why) }
         menu.addItem(.separator())
-        func add(_ title: String, _ action: Selector) {
-            let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            i.target = self; i.representedObject = id
-            menu.addItem(i)
-        }
-        // the profile's other accounts (Accounts.swift; SwitchMenu.swift): while a limit is full, the one offered first,
-        // then Switch account › with every standby account. Each opens cl_audit's Switch page with that account picked
-        let listed = p.entry.listed(by: p.view)              // never the account in use on standby too
-        let lines = SwitchMenu.lines(listed, now: now, own: p.show.ownStandbyID)    // (a clash: the own account's one ticked row)
-        var switches = SwitchMenu.group(p.show.named, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
-                                        inUseWeek: p.usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
-        if p.display.full(now: now) != nil, let best = SwitchMenu.best(lines) {
-            switches.insert(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))), at: 0)
-        }
-        if !switches.isEmpty {
-            switches.forEach(menu.addItem)
-            menu.addItem(.separator())
-        }
-        add("Quick chat", #selector(quickChat(_:)))
-        if p.entry.claudeWindow { add("Open Claude window", #selector(openClaude(_:))) }
-        add("Refresh now", #selector(refreshNow(_:)))
-        // the one key: Sign in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Sign in,
-        // its address filled in; the key carries its "…")
-        if let k = p.show.keyWords(short: false) { add(k, #selector(logIn(_:))) }
+        // under the row, the Dock icon's menu (DockTileMenu) without its profile row and status line (the row says them): the
+        // accounts, the Claude window and the actions; this process draws the menu, so a hidden address is AddressMenuRow
+        let rows = DockTileMenu.rows(p.entry, p.show, windowOpen: DockTile.windowOpen(p.entry.id), header: false, now: now)
+        DockTileMenu.add(rows, to: menu, light: ProfileLED.lamp(p.entry.ownColor).color, views: true,
+                         target: self, action: #selector(picked(_:)))
         menu.addItem(.separator())
-        add("Dashboard", #selector(dashboard(_:)))
-        add("Profile settings…", #selector(settings(_:)))
-        menu.addItem(.separator())
-        add("Hide from the menu bar", #selector(hide(_:)))
+        let hide = NSMenuItem(title: "Hide from the menu bar", action: #selector(hide(_:)), keyEquivalent: "")
+        hide.target = self; hide.representedObject = id
+        menu.addItem(hide)
+        DockTileMenu.tag(menu)
     }
 
-    private func entry(_ sender: NSMenuItem) -> AccountEntry? {
-        guard let id = sender.representedObject as? String else { return nil }
-        return profiles().first(where: { $0.entry.id == id })?.entry
+    /// A row of the profile's menu (DockTileMenu.object).
+    @objc private func picked(_ sender: NSMenuItem) {
+        guard let (act, target) = DockTileMenu.parse(sender.representedObject),
+              let e = profiles().first(where: { $0.entry.id == DockTileMenu.profile(act, target) })?.entry else { return }
+        switch act {
+        case .switchTo: Installer.openSwitch(target)
+        case .signIn: ClaudeCLI.logIn(profile: e)
+        case .addAccount: ClaudeCLI.logIn(Account(e), email: nil)  // Settings ▸ Accounts' Sign in with another account…
+        case .quickChat: QuickChat.shared.open(profile: e.id)
+        case .openWindow: Launcher.openClaude(Account(e))
+        case .quitWindow: _ = ClaudeWindow.quit(Account(e))
+        case .quitKeep: break                                       // (the Dock icon app's own)
+        case .refresh: refresh(e.id)
+        case .dashboard: Installer.openDashboard()
+        case .settings: Installer.openSettings(account: e.id)
+        }
     }
-    @objc private func openClaude(_ sender: NSMenuItem) { if let e = entry(sender) { Launcher.openClaude(Account(e)) } }
-    /// The quick chat, on this profile (QuickChat.swift).
-    @objc private func quickChat(_ sender: NSMenuItem) { QuickChat.shared.open(profile: sender.representedObject as? String) }
-    @objc private func refreshNow(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { refresh(id) } }
-    @objc private func logIn(_ sender: NSMenuItem) { if let e = entry(sender) { ClaudeCLI.logIn(profile: e) } }
-    @objc private func dashboard(_ sender: NSMenuItem) { Installer.openDashboard() }
-    @objc private func switchAccount(_ sender: NSMenuItem) { if let k = sender.representedObject as? String { Installer.openSwitch(k) } }
-    @objc private func settings(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { Installer.openSettings(account: id) } }
     /// Its switch off, as in the profile's settings (saved to the profiles file; the agent then removes the icon).
     @objc private func hide(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }

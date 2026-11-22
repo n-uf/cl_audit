@@ -462,17 +462,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: menu
 
-    static func when(_ d: Date) -> String { TimeWords.when(d) }
-
-    static func ago(_ d: Date) -> String {
-        let m = Int(Date().timeIntervalSince(d) / 60)
-        return m < 1 ? "just now" : m < 60 ? "\(m) min ago" : "\(m / 60) h \(m % 60) min ago"
-    }
-
-    func info(_ title: String) -> NSMenuItem {
-        let i = NSMenuItem(title: title, action: nil, keyEquivalent: ""); i.isEnabled = false; return i
-    }
-
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         if isSettingsApp { return managerDockMenu() }
         // Experimental long press: the Dock asks for this menu both on right-click and on
@@ -489,88 +478,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return profileMenu()
     }
 
-    /// The Dock icon's own menu (right-click), all from the one value (ProfileShow): the account and its lamp, the line, the
-    /// full limit and the offer, the limits, the one key.
+    /// The Dock icon's own menu (right-click), all from the one value (ProfileShow): the profile and its light, its accounts
+    /// with the status line under the one in use, the Claude window and the actions (DockTileMenu).
     func profileMenu() -> NSMenu {
-        let d = display
-        let m = NSMenu(); m.autoenablesItems = false
-        // the active account, its lamp and the one line of state
-        let top = info(SwitchMenu.dockTitle(name: account.name, named, plan: plan.map(Account.planWords)))
-        if d.lamp, SwitchMenu.inUseShort(named) != nil { top.image = SwitchMenu.lamp() }
-        m.addItem(top)
-        if let n = show?.lineWords(short: false) { m.addItem(info(n)) }
-        m.addItem(.separator())
-        // the profile's other accounts (Accounts.swift): Switch account › with every standby account; while a limit is full,
-        // the one offered first also right under the full line. Each opens cl_audit's Switch page with that account picked
-        let listed = entry.listed(by: view)                  // never the account in use on standby too
-        let lines = SwitchMenu.lines(listed, own: show?.ownStandbyID)    // (a clash: the own account's one ticked row)
-        // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
-        if let full = d.full(now: Date()) {
-            let i = info("\(full.title) · \(full.both())")
-            i.attributedTitle = NSAttributedString(string: i.title, attributes: [
-                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: Painter.crimson])
-            m.addItem(i)
-            if let best = SwitchMenu.best(lines) {
-                m.addItem(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))))
-            }
-        }
-        func line(_ title: String, _ p: Double?, _ r: Date?) {
-            m.addItem(info("\(title): \(Painter.pct(p))" + (r.map { " · resets \(Self.when($0))" } ?? "")))
-        }
-        if usage?.noFiveHour != true { line("5-hour limit", usage?.fiveHour, usage?.fiveHourResets) }
-        line("Weekly limit", usage?.weekly, usage?.weeklyResets)
-        for s in entry.showFable ? usage?.scoped ?? [] : [] {
-            if AtLimit.isFull(s.percent), let r = s.resets {
-                m.addItem(info("\(s.name) weekly limit: full · \(TimeWords.back(r))"))
-            } else {
-                line("\(s.name) weekly limit", s.percent, s.resets)
-            }
-        }
-        if let c = usage?.credits, c.inUse(fiveHour: usage?.fiveHour, weekly: usage?.weekly) {
-            let i = info(c.line)
-            i.attributedTitle = NSAttributedString(string: i.title, attributes: [
-                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.systemOrange])
-            m.addItem(i)
-        }
-        if let usage { m.addItem(info("Updated \(Self.ago(usage.fetchedAt)) · \(usage.source)")) }
-        if let why = problem { m.addItem(info(why)) }
-        if let note = status?.renewNote { m.addItem(info(note)) }
-        if !AddressPrivacy.shared.blur || loginEmail == nil { m.addItem(info("Sign-in: \(loginEmail.map { AddressSettings.words($0) } ?? "checking…")")) }
-        if d.otherAccount, let want = expectedEmail {
-            m.addItem(info(AddressPrivacy.shared.blur ? "⚠︎ This folder is set up for a different account" : "⚠︎ This folder is set up for \(want)"))
-        }
-        // the one key: Sign in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Sign in,
-        // its address filled in)
-        if let k = show?.keyWords(short: false) {
-            let login = NSMenuItem(title: k, action: #selector(logIn), keyEquivalent: "")
-            login.target = self; m.addItem(login)
-        }
-        m.addItem(.separator())
+        // one design with the Dock tile's and the menu bar's (DockTileMenu): the Dock draws this menu itself, so its rows are
+        // plain titles (no item views)
+        let s = show ?? ProfileShow.of(entry, raw: nil)
+        let rows = DockTileMenu.rows(entry, s, windowOpen: claudeOpen, appRunning: true)
+        return DockTileMenu.menu(rows, light: ProfileLED.lamp(entry.ownColor).color, views: false,
+                                 target: self, action: #selector(menuPicked(_:)))
+    }
 
-        // Actions only; how the icon looks and behaves is set in its profile settings.
-        func add(_ title: String, _ action: Selector, enabled: Bool = true) {
-            let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; m.addItem(i)
+    /// A row of the profile's menu (DockTileMenu.object): what the Dock tile's menu asks the agent, done here.
+    @objc func menuPicked(_ sender: NSMenuItem) {
+        guard let (act, target) = DockTileMenu.parse(sender.representedObject),
+              DockTileMenu.profile(act, target) == accountID else { return }
+        switch act {
+        case .switchTo: Installer.openSwitch(target)
+        case .signIn: logIn()
+        case .addAccount: ClaudeCLI.logIn(Account(entry), email: nil)  // Settings ▸ Accounts' Sign in with another account…
+        case .quickChat: quickChat()
+        case .openWindow: openClaude()
+        case .quitWindow: quitClaudeWindow()
+        case .quitKeep: quitKeepingWindow()
+        case .refresh: refreshNow()
+        case .dashboard: showDashboard()
+        case .settings: showSettings()
         }
-        let switches = SwitchMenu.group(named, lines: lines, inUseUsed: usage?.weekly ?? usage?.fiveHour,
-                                        inUseWeek: usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
-        if !switches.isEmpty {
-            switches.forEach(m.addItem)
-            m.addItem(.separator())
-        }
-        add("Quick chat", #selector(quickChat))
-        if entry.claudeWindow {
-            add(claudeOpen ? "Show Claude window" : "Open Claude window", #selector(openClaude))
-            if claudeOpen { add("Quit Claude window", #selector(quitClaudeWindow)) }
-        }
-        add("Refresh now", #selector(refreshNow))
-        m.addItem(.separator())
-        add("Dashboard", #selector(showDashboard))
-        add("Profile settings…", #selector(showSettings))
-        if entry.runs.windowFollowsDock {
-            m.addItem(.separator())
-            add("Quit and keep Claude window", #selector(quitKeepingWindow))
-        }
-        return m
     }
 
     /// Asks the agent to read this profile now; the panel says "Updating…" until it has.
@@ -587,7 +521,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                                      deliverImmediately: true)
     }
     @objc func showSettings() { Installer.openSettings(account: accountID) }
-    @objc func switchAccount(_ sender: NSMenuItem) { if let k = sender.representedObject as? String { Installer.openSwitch(k) } }
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {
         // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)

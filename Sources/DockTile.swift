@@ -80,69 +80,7 @@ enum DockTile {
     }
 }
 
-// MARK: - the Dock tile's own right-click menu
-
-/// The right-click menu the Dock tile plug-in gives while the Dock icon app isn't running: the profile's name, its usage
-/// (as the Dock icon app's menu says it), and the actions. The plug-in starts nothing itself: Quick chat and Refresh now
-/// post the notices the Dock icon app posts; the rest ask the agent (DockTile.menuNote), which opens or quits the window
-/// and opens cl_audit. No address and no account names: only the profile's own name (until the shared address rules
-/// are in cl_audit).
-enum DockTileMenu {
-    enum Act: String, CaseIterable {
-        case quickChat, openWindow, quitWindow, refresh, dashboard, settings
-    }
-    enum Row: Equatable {
-        case info(String)
-        case full(String)               // a full limit, drawn in crimson
-        case separator
-        case action(String, Act)
-    }
-
-    /// The menu's rows for a profile and its value now; `windowOpen`: the agent's word on its Claude window. The actions
-    /// are the agent's to do: with no agent running, the menu says so instead of offering them.
-    static func rows(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, agentRuns: Bool = true, now: Date = Date()) -> [Row] {
-        let d = show.display, u = show.usage
-        var rows: [Row] = [.info(e.name.isEmpty ? Account.label(e) : e.name)]
-        if let full = d.full(now: now) { rows.append(.full("\(full.title) · \(full.both())")) }
-        func line(_ title: String, _ p: Double?, _ r: Date?) {
-            rows.append(.info("\(title): \(Painter.pct(p))" + (r.map { " · resets \(TimeWords.when($0))" } ?? "")))
-        }
-        if let u {
-            if u.noFiveHour != true { line("5-hour limit", u.fiveHour, u.fiveHourResets) }
-            line("Weekly limit", u.weekly, u.weeklyResets)
-            for s in e.showFable ? u.scoped : [] { line("\(s.name) weekly limit", s.percent, s.resets) }
-            rows.append(.info("Updated \(ago(u.fetchedAt, now: now))"))
-        } else {
-            rows.append(.info("No usage read yet"))
-        }
-        rows.append(.separator)
-        guard agentRuns else { rows.append(.info("cl_audit's agent isn't running: open cl_audit")); return rows }
-        rows.append(.action("Quick chat", .quickChat))
-        if e.claudeWindow {
-            rows.append(.action(windowOpen ? "Show Claude window" : "Open Claude window", .openWindow))
-            if windowOpen { rows.append(.action("Quit Claude window", .quitWindow)) }
-        }
-        rows.append(.action("Refresh now", .refresh))
-        rows.append(.separator)
-        rows.append(.action("Dashboard", .dashboard))
-        rows.append(.action("Profile settings…", .settings))
-        return rows
-    }
-
-    static func ago(_ d: Date, now: Date) -> String {
-        let m = max(0, Int(now.timeIntervalSince(d) / 60))
-        return m < 1 ? "just now" : m < 60 ? "\(m) min ago" : "\(m / 60) h \(m % 60) min ago"
-    }
-
-    /// The agent's notice for an action (object "<action>:<profile id>": a distributed notice carries a string only).
-    static func object(_ a: Act, _ id: String) -> String { "\(a.rawValue):\(id)" }
-    static func parse(_ object: Any?) -> (Act, String)? {
-        guard let s = object as? String, let colon = s.firstIndex(of: ":"),
-              let a = Act(rawValue: String(s[..<colon])) else { return nil }
-        let id = String(s[s.index(after: colon)...])
-        return id.isEmpty ? nil : (a, id)
-    }
-}
+// (the Dock icon's right-click menu, the app's and the tile's: DockTileMenu, Sources/DockMenu.swift)
 
 extension DockTile {
     /// The Dock tile plug-in's menu asks the agent (DockTileMenu.object).

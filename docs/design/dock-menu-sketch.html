@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dock Menu Sketch</title>
+<style>
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --desk: #1d2230; --desk2: #2b3246;
+  --menu: rgba(44,44,48,.94); --menu-edge: rgba(255,255,255,.14); --menu-shadow: 0 10px 30px rgba(0,0,0,.55), 0 0 0 .5px rgba(0,0,0,.6);
+  --text: #f2f2f4; --dim: rgba(242,242,244,.45); --rule: rgba(255,255,255,.13); --hi: #2f6fe0;
+  --theirs: rgba(255,255,255,.06);
+  --page: #14161d; --prose: #b9bcc6; --head: #eef0f5; --note: #8d91a0;
+  --green: #34c759; --crimson: #eb445b; --main: #d97757;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--prose); font: 14px/1.5 var(--font); }
+main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 48px; }
+h1 { color: var(--head); font-size: 22px; margin: 0 0 6px; }
+p.lede { margin: 0 0 22px; max-width: 780px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 22px; }
+.case { background: linear-gradient(160deg, var(--desk2), var(--desk)); border-radius: 12px; padding: 16px 16px 14px; }
+.case h2 { color: var(--head); font-size: 14px; margin: 0 0 2px; }
+.case .sub { color: var(--note); font-size: 12px; margin: 0 0 12px; }
+
+/* a macOS menu, as the Dock shows it above the tile */
+.menu { width: 292px; background: var(--menu); border-radius: 7px; padding: 5px; box-shadow: var(--menu-shadow);
+        outline: .5px solid var(--menu-edge); outline-offset: -.5px; font: 13px/1 var(--font); color: var(--text); }
+.row { display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px 0 22px; border-radius: 4px; position: relative;
+       white-space: nowrap; overflow: hidden; }
+.row.dim { color: var(--dim); }
+.row.status { color: var(--dim); padding-left: 22px; font-size: 12px; }
+.row.status.full { color: var(--crimson); font-weight: 600; }
+.row.profile { color: var(--dim); font-weight: 600; }
+.row.profile .light { position: absolute; left: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--main);
+                      box-shadow: 0 0 5px rgba(217,119,87,.8); }
+.row .tick { position: absolute; left: 7px; font-size: 12px; }
+.row.hi { background: var(--hi); color: #fff; }
+.row .more, .row .hint { margin-left: auto; opacity: .75; }
+.row .hint { font-size: 12px; }
+.row .tag { color: var(--dim); }
+.row.hi .tag { color: rgba(255,255,255,.75); }
+.sep { height: 1px; background: var(--rule); margin: 5px 9px; }
+/* the rows macOS adds, told apart for the sketch only: a lighter background and a small tag */
+.mac { background: var(--theirs); border-radius: 5px; position: relative; }
+.mac::after { content: "macOS"; position: absolute; right: 7px; top: 4px; font-size: 10px; color: var(--dim); }
+.stack { position: relative; }
+.submenu { position: absolute; left: 216px; top: 120px; width: 140px; z-index: 2; background: #2c2c30; }
+
+/* the Dock under it */
+.dock { margin-top: 12px; display: flex; gap: 8px; align-items: flex-end; padding: 7px 9px 9px; width: max-content;
+        background: rgba(255,255,255,.12); border-radius: 14px; outline: .5px solid rgba(255,255,255,.2); }
+.tile { width: 42px; height: 42px; border-radius: 10px; position: relative; background: #2a2a2e;
+        display: grid; place-items: center; color: #f3f3f3; font: 700 9px/1.1 var(--font); text-align: center; }
+.tile.main { background: linear-gradient(180deg, #3a3a3f, #222225); outline: 2px solid #d97757; outline-offset: -2px; }
+.tile.other { background: linear-gradient(180deg, #2f5bd3, #1f3d96); }
+.tile.other2 { background: linear-gradient(180deg, #6b6b70, #3f3f44); }
+.tile .num { font-size: 12px; }
+.tile .grey { opacity: .5; }
+.dot { position: absolute; left: 50%; bottom: -7px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: rgba(255,255,255,.85); }
+
+.legend { margin: 26px 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+.legend div { background: #1b1e27; border-radius: 10px; padding: 14px 16px; }
+.legend h3 { color: var(--head); font-size: 13px; margin: 0 0 6px; }
+.legend ul { margin: 0; padding-left: 18px; }
+.key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+code { font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: #d8dbe4; }
+@media (max-width: 420px) {
+  .grid, .legend { grid-template-columns: minmax(0, 1fr); }
+  .case { padding: 12px 10px; }
+  .menu { width: 100%; }
+  .submenu { left: auto; right: 0; top: 150px; }
+}
+</style>
+</head>
+<body>
+<main>
+<h1>Dock icon menu: cl_quick's shape, one small menu</h1>
+<p class="lede">The Dock icon app's menu and the Dock tile's menu (and the menu bar icon's, under its row) follow cl_quick's
+menu: the profile with its light; its accounts as rows, the one in use ticked with its status line under it, each standby
+account a click away from the Switch page; "Sign in to another account…"; then the Claude window (a submenu), Quick chat,
+Refresh now, Dashboard and Profile settings. Rows are 40 characters at most. Shown here with Show emails on; sample
+profile Main, sample addresses ann@example.com, bob@example.com and cy@example.com.</p>
+
+<div class="grid">
+
+  <!-- 1. split, the tile's own menu (the app not running) -->
+  <section class="case">
+    <h2>Split · app not running</h2>
+    <p class="sub">The Dock tile's menu. The Claude app is on ann; Terminal is signed in to bob, one of Main's accounts.</p>
+    <div class="menu">
+      <div class="ours">
+        <div class="row profile"><span class="light"></span>Claude Main</div>
+        <div class="row"><span class="tick">✓</span>ann@example.com</div>
+        <div class="row status">Usage hidden: Terminal's account differs</div>
+        <div class="row">bob@example.com <span class="tag">· Terminal</span></div>
+        <div class="row">Sign Terminal in to ann@example.com…</div>
+        <div class="row">cy@example.com</div>
+        <div class="row">Sign in to another account…</div>
+        <div class="sep"></div>
+        <div class="row">Claude window<span class="more">▸</span></div>
+        <div class="row">Quick chat</div>
+        <div class="row">Refresh now</div>
+        <div class="sep"></div>
+        <div class="row">Dashboard</div>
+        <div class="row">Profile settings…</div>
+      </div>
+      <div class="sep"></div>
+      <div class="mac">
+        <div class="row">Options<span class="more">▸</span></div>
+        <div class="row">Open</div>
+      </div>
+    </div>
+    <div class="dock"><div class="tile main"><span class="grey">MAIN<br>–</span></div><div class="tile other">W</div><div class="tile other2">F</div></div>
+  </section>
+
+  <!-- 2. split, the app's own menu (running): macOS adds its rows; bob highlighted -->
+  <section class="case">
+    <h2>Split · app running · on bob</h2>
+    <p class="sub">The Dock icon app's menu, the pointer on Terminal's account: a click switches Main to bob.</p>
+    <div class="menu">
+      <div class="ours">
+        <div class="row profile"><span class="light"></span>Claude Main</div>
+        <div class="row"><span class="tick">✓</span>ann@example.com</div>
+        <div class="row status">Usage hidden: Terminal's account differs</div>
+        <div class="row hi">bob@example.com <span class="tag">· Terminal</span><span class="hint">Switch…</span></div>
+        <div class="row">Sign Terminal in to ann@example.com…</div>
+        <div class="row">cy@example.com</div>
+        <div class="row">Sign in to another account…</div>
+        <div class="sep"></div>
+        <div class="row">Claude window<span class="more">▸</span></div>
+        <div class="row">Quick chat</div>
+        <div class="row">Refresh now</div>
+        <div class="sep"></div>
+        <div class="row">Dashboard</div>
+        <div class="row">Profile settings…</div>
+      </div>
+      <div class="sep"></div>
+      <div class="mac">
+        <div class="row">Options<span class="more">▸</span></div>
+        <div class="row">Show All Windows</div>
+        <div class="row">Hide</div>
+        <div class="row">Quit</div>
+      </div>
+    </div>
+    <div class="dock"><div class="tile main"><span class="grey">MAIN<br>–</span><span class="dot"></span></div><div class="tile other">W</div><div class="tile other2">F</div></div>
+  </section>
+
+  <!-- 3. fresh, the tile's own menu -->
+  <section class="case">
+    <h2>Fresh · app not running</h2>
+    <p class="sub">The profile's own numbers under the account in use; a standby account a click away.</p>
+    <div class="menu">
+      <div class="ours">
+        <div class="row profile"><span class="light"></span>Claude Main</div>
+        <div class="row"><span class="tick">✓</span>ann@example.com</div>
+        <div class="row status">5-hour 34% · Week 12%</div>
+        <div class="row">bob@example.com</div>
+        <div class="row">Sign in to another account…</div>
+        <div class="sep"></div>
+        <div class="row">Claude window<span class="more">▸</span></div>
+        <div class="row">Quick chat</div>
+        <div class="row">Refresh now</div>
+        <div class="sep"></div>
+        <div class="row">Dashboard</div>
+        <div class="row">Profile settings…</div>
+      </div>
+      <div class="sep"></div>
+      <div class="mac">
+        <div class="row">Options<span class="more">▸</span></div>
+        <div class="row">Open</div>
+      </div>
+    </div>
+    <div class="dock"><div class="tile main"><span>MAIN<br><span class="num">34</span></span></div><div class="tile other">W</div><div class="tile other2">F</div></div>
+  </section>
+
+  <!-- 4. fresh, the app running, the Claude window submenu open (window open) -->
+  <section class="case">
+    <h2>Fresh · app running · window open</h2>
+    <p class="sub">Claude window ▸ opened: Show, Quit and Quit and keep while it runs; only Open while it's closed.</p>
+    <div class="stack">
+      <div class="menu">
+        <div class="ours">
+          <div class="row profile"><span class="light"></span>Claude Main</div>
+          <div class="row"><span class="tick">✓</span>ann@example.com</div>
+          <div class="row status">5-hour 34% · Week 12%</div>
+          <div class="row">bob@example.com</div>
+          <div class="row">Sign in to another account…</div>
+          <div class="sep"></div>
+          <div class="row hi">Claude window<span class="more">▸</span></div>
+          <div class="row">Quick chat</div>
+          <div class="row">Refresh now</div>
+          <div class="sep"></div>
+          <div class="row">Dashboard</div>
+          <div class="row">Profile settings…</div>
+        </div>
+        <div class="sep"></div>
+        <div class="mac">
+          <div class="row">Options<span class="more">▸</span></div>
+          <div class="row">Show All Windows</div>
+          <div class="row">Hide</div>
+          <div class="row">Quit</div>
+        </div>
+      </div>
+      <div class="menu submenu">
+        <div class="row">Show</div>
+        <div class="row">Quit</div>
+        <div class="row">Quit and keep</div>
+      </div>
+    </div>
+    <div class="dock"><div class="tile main"><span>MAIN<br><span class="num">34</span></span><span class="dot"></span></div><div class="tile other">W</div><div class="tile other2">F</div></div>
+  </section>
+
+  <!-- 5. a full limit: the crimson status line; the standby account is the way back -->
+  <section class="case">
+    <h2>A full limit · app not running</h2>
+    <p class="sub">The full line is the account's status; the way back is the standby account with room.</p>
+    <div class="menu">
+      <div class="ours">
+        <div class="row profile"><span class="light"></span>Claude Main</div>
+        <div class="row"><span class="tick">✓</span>ann@example.com</div>
+        <div class="row status full">5-hour full · in 1h 42m</div>
+        <div class="row hi">bob@example.com<span class="hint">Switch…</span></div>
+        <div class="row">Sign in to another account…</div>
+        <div class="sep"></div>
+        <div class="row">Claude window<span class="more">▸</span></div>
+        <div class="row">Quick chat</div>
+        <div class="row">Refresh now</div>
+        <div class="sep"></div>
+        <div class="row">Dashboard</div>
+        <div class="row">Profile settings…</div>
+      </div>
+      <div class="sep"></div>
+      <div class="mac">
+        <div class="row">Options<span class="more">▸</span></div>
+        <div class="row">Open</div>
+      </div>
+    </div>
+    <div class="dock"><div class="tile main" style="outline-color:#eb445b"><span>1h42<br><span style="font-size:7px">5H FULL</span></span></div><div class="tile other">W</div><div class="tile other2">F</div></div>
+  </section>
+
+  <!-- 6. signed out -->
+  <section class="case">
+    <h2>Signed out · app not running</h2>
+    <p class="sub">No account in use: the status in its place, as cl_quick says it; Sign in under it.</p>
+    <div class="menu">
+      <div class="ours">
+        <div class="row profile"><span class="light"></span>Claude Main</div>
+        <div class="row status">Signed out</div>
+        <div class="row">Sign Terminal in to ann@example.com…</div>
+        <div class="row">bob@example.com</div>
+        <div class="row">Sign in to another account…</div>
+        <div class="sep"></div>
+        <div class="row">Claude window<span class="more">▸</span></div>
+        <div class="row">Quick chat</div>
+        <div class="row">Refresh now</div>
+        <div class="sep"></div>
+        <div class="row">Dashboard</div>
+        <div class="row">Profile settings…</div>
+      </div>
+      <div class="sep"></div>
+      <div class="mac">
+        <div class="row">Options<span class="more">▸</span></div>
+        <div class="row">Open</div>
+      </div>
+    </div>
+    <div class="dock"><div class="tile main"><span class="grey">MAIN<br>–</span></div><div class="tile other">W</div><div class="tile other2">F</div></div>
+  </section>
+
+</div>
+
+<div class="legend">
+  <div>
+    <h3>The spec, row by row</h3>
+    <ul>
+      <li><b>Claude Main</b> with the profile's light (its colour).</li>
+      <li><b>✓ ann@example.com</b>: the account in use, ticked; picking it does nothing.</li>
+      <li><b>Its status line</b> under it: <code>5-hour 34% · Week 12%</code>, <code>5-hour full · in 1h 42m</code>,
+        <code>Usage hidden: Terminal on …</code> (<code>Usage hidden: Terminal's account differs</code> when the
+        address wouldn't fit in 40), <code>No recent numbers</code>, <code>Signed out</code>,
+        <code>The sign-in stopped working</code>; a longer line of the record's is cut in the middle.</li>
+      <li><b>Each standby account</b>, plain: a click opens the Switch page with it (the way back while a limit is full).</li>
+      <li><b>In a split</b>, Terminal's account as its own row (<code>bob · Terminal</code>: a click switches Main to it,
+        as the card's row does), and <b>Sign Terminal in to ann@example.com…</b> as the one extra action.</li>
+      <li><b>Sign in to another account…</b>; then Claude window ▸, Quick chat, Refresh now; Dashboard, Profile settings….</li>
+    </ul>
+  </div>
+  <div>
+    <h3>cl_quick's menu, and where cl_audit differs</h3>
+    <ul>
+      <li>The same shape: the profile with its light, the accounts as rows, one grey status line under the account in use,
+        a standby row a click away from switching, a row to add an account.</li>
+      <li>The account in use is ticked, with no "· in use" (cl_audit's rule; cl_quick writes "· in use" with a green dot).</li>
+      <li>The same addresses as cl_quick: each account as its whole address through the shared address rules
+        (AddressPrivacy); never a name made from an address. While emails are hidden the menu bar's menu draws the blurred
+        stand-in (AddressMenuRow, the address while the row is highlighted). The Dock draws the Dock menus itself and leaves
+        out an item's view, so there a hidden address is the words <code>hidden address 1</code>,
+        <code>hidden address 2</code>…: numbered so the rows stay apart, nothing of any address. Rows of at most 40
+        characters.</li>
+      <li>The menu bar's menu keeps its own row on top (the profile, its bars) and then these rows without the profile row
+        and the status line, and Hide from the menu bar last.</li>
+      <li>Gone from the menus: the Switch account ▸ submenu and its "Experimental" line (the Switch page still says it),
+        and the separate "Switch to …" while a limit is full (the standby row is that way back).</li>
+      <li>"Sign in to another account…" (cl_audit's words on the card's switch menu) for cl_quick's "Add an account…".</li>
+      <li>The Terminal row and its Sign Terminal in… (cl_quick has no Terminal split); the Claude window submenu,
+        Refresh now, Dashboard and Profile settings… (cl_quick's app menu has Quick chat, Settings… and Quit instead).</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Left out (they stay in the windows and panels)</h3>
+    <ul>
+      <li>The separate 5-hour and Weekly rows, "Updated … ago", "Sign-in renewed at…", "Sign-in: address", the long
+        sentence.</li>
+    </ul>
+    <p style="margin:10px 0 0"><span class="key" style="background:rgba(255,255,255,.18)"></span>the lighter rows tagged
+      macOS are the ones macOS adds to every Dock menu; the rest are cl_audit's</p>
+  </div>
+</div>
+</main>
+</body>
+</html>

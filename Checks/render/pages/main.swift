@@ -313,7 +313,10 @@ struct AtlasMenu: View {
         var out: [Row] = []
         for i in items {
             if i.isSeparatorItem { out.append(Row(text: "", sep: true)); continue }
-            out.append(Row(text: i.title + (i.submenu == nil ? "" : "  ›"), on: i.isEnabled, bold: i.attributedTitle != nil, lamp: i.image != nil))
+            // (a full limit's crimson line drawn bold and red; the profile's light as a lamp; the account in use ticked)
+            let crimson = i.attributedTitle.map { $0.length > 0 && $0.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == Painter.crimson } ?? false
+            out.append(Row(text: i.title + (i.submenu == nil ? "" : "  ›"), on: i.isEnabled, indent: i.state == .on, bold: crimson,
+                           lamp: i.image != nil, tick: i.state == .on))
             for s in i.submenu?.items ?? [] {
                 out.append(s.isSeparatorItem ? Row(text: "", sep: true)
                            : Row(text: s.title, on: s.isEnabled, indent: true, tick: s.state == .on))
@@ -368,7 +371,6 @@ struct AtlasMenu: View {
     let r = model.runner(of: "main")
     let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
     let noop = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
-    let dummy = NSObject(), act = Selector(("atlasNoop:"))
     let face = FaceTheme.of(.std)
     func framed(_ v: some View, _ w: CGFloat) -> some View {
         v.environment(\.settingsColumnWidth, w).frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
@@ -427,24 +429,10 @@ struct AtlasMenu: View {
         let e = model.accounts[0]
         // the menu bar icon's menu (MenuBarItems: the agent's Profile, then menuNeedsUpdate's items)
         let p = MenuBarItems.Profile(show: ProfileShow.load(e, now: now), problem: Store.status(for: e)?.problem)
-        var mb: [NSMenuItem] = []
-        func info(_ s: String) -> NSMenuItem { let i = NSMenuItem(title: s, action: nil, keyEquivalent: ""); i.isEnabled = false; return i }
-        func item(_ s: String) -> NSMenuItem { let i = NSMenuItem(title: s, action: act, keyEquivalent: ""); i.target = dummy; return i }
-        if let u = p.usage { mb.append(info("Updated \(DetailsFormat.ago(u.fetchedAt)) · \(u.source)")) }
-        if let why = p.problem { mb.append(info(why)) }
-        mb.append(.separator())
-        let mbLines = SwitchMenu.lines(p.entry.listed(by: p.view), now: now, own: p.show.ownStandbyID)
-        let mbFull = p.usage.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
-                                                       weeklyResets: $0.weeklyResets, now: now) } != nil
-        var mbSwitches = SwitchMenu.group(p.show.named, lines: mbLines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
-                                          inUseWeek: p.usage?.weekly != nil, target: dummy, action: act)
-        if mbFull, let best = SwitchMenu.best(mbLines) { mbSwitches.insert(SwitchMenu.bestItem(best, target: dummy, action: act), at: 0) }
-        if !mbSwitches.isEmpty { mb += mbSwitches; mb.append(.separator()) }
-        mb.append(item("Quick chat"))
-        if e.claudeWindow { mb.append(item("Open Claude window")) }
-        mb.append(item("Refresh now"))
-        if let k = p.show.keyWords(short: false) { mb.append(item(k)) }
-        mb += [.separator(), item("Dashboard"), item("Profile settings…"), .separator(), item("Hide from the menu bar")]
+        // (the menu as menuNeedsUpdate builds it, under its row: the hosted MenuBarRow is drawn on its own above)
+        let mbMenu = NSMenu(title: e.id)
+        MenuBarItems(profiles: { [p] }, refresh: { _ in }).menuNeedsUpdate(mbMenu)
+        let mb = Array(mbMenu.items.dropFirst())
         let menuBar = VStack(alignment: .leading, spacing: 6) {
             MenuBarRow(profile: p, now: now).frame(width: 340).background(Color(white: 0.19)).clipShape(RoundedRectangle(cornerRadius: 9))
             AtlasMenu(mb)
@@ -1149,7 +1137,8 @@ MainActor.assumeIsolated {
                 MenuBarRow(profile: mp, now: now).frame(width: min(w, 320))
                 Text("Dock menu").font(.caption.bold())
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(SwitchMenu.dockTitle(name: main.name, v, plan: st?.plan)); if let l = v.line { Text(l).foregroundStyle(.secondary) }
+                    // (its top: the profile, the account in use ticked and its status line, DockTileMenu)
+                    Text(DockTileMenu.lines(DockTileMenu.rows(main, ProfileShow.load(main, now: now), windowOpen: false)).prefix(3).joined(separator: "\n"))
                 }.font(.system(size: 13))
                 Text("Dock panel").font(.caption.bold())
                 DetailsView(info: panel, actions: noop).frame(width: min(w, 340))
@@ -1339,7 +1328,7 @@ MainActor.assumeIsolated {
                         MenuBarRow(profile: mp, now: Date()).frame(width: 300)
                         Text("Dock menu").font(.caption.bold())
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(SwitchMenu.dockTitle(name: main.name, v, plan: rec.plan)); if let l = v.line { Text(l).foregroundStyle(.secondary) }
+                            Text(DockTileMenu.lines(DockTileMenu.rows(main, ProfileShow.load(main), windowOpen: false)).prefix(3).joined(separator: "\n"))
                         }.font(.system(size: 13)).frame(width: 300, alignment: .leading)
                         Text("Quick chat").font(.caption.bold())
                         Text("Claude \(main.name) · " + (QuickChatTarget(main).shownEmail ?? "no account")).font(.system(size: 12)).frame(width: 300, alignment: .leading)

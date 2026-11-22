@@ -85,9 +85,11 @@ final class AgentRules {
         // the Dock tile's own menu (its app not running): what it asks, the agent does (DockTileMenu)
         // (only for a profile with a Dock icon; the same ask twice in 2 s once; the window opened or quit only as it can be)
         observers.append(dn.addObserver(forName: DockTile.menuNote, object: nil, queue: .main) { [weak self] note in
-            guard let self, let (act, id) = DockTileMenu.parse(note.object),
-                  let e = self.accounts.first(where: { $0.id == id }), e.runs.dockIcon else { return }
-            let key = DockTileMenu.object(act, id), now = Date()
+            // (a switch names the Switch page's key, "<profile>~<standby>": its profile is the part before the ~)
+            guard let self, let (act, target) = DockTileMenu.parse(note.object) else { return }
+            let id = DockTileMenu.profile(act, target)
+            guard let e = self.accounts.first(where: { $0.id == id }), e.runs.dockIcon else { return }
+            let key = DockTileMenu.object(act, target), now = Date()
             if let last = self.menuAsked[key], case let d = now.timeIntervalSince(last), d >= 0, d < 2 { return }
             self.menuAsked[key] = now
             agentLog.log("agent: \(id, privacy: .public): Dock tile menu: \(act.rawValue, privacy: .public)")
@@ -100,9 +102,15 @@ final class AgentRules {
                 guard e.claudeWindow, self.windowOpen(e) else { return }
                 self.actions[id] = AgentAction(kind: .windowQuits, at: now)
                 _ = ClaudeWindow.quit(Account(e))
+            case .signIn: ClaudeCLI.logIn(profile: e)     // the card's and the menu bar's Sign in: the same flow
+            case .addAccount: ClaudeCLI.logIn(Account(e), email: nil)   // Settings ▸ Accounts' Sign in with another account…
+            case .switchTo:
+                // only a key of this profile's own standby accounts (the Switch page checks it again)
+                guard e.standby.contains(where: { target == AccountEntry.switchKey(id, $0.id) }) else { return }
+                Installer.openSwitch(target)
             case .dashboard: Installer.openDashboard()
             case .settings: Installer.openSettings(account: id)
-            case .quickChat, .refresh: break        // (the plug-in posts their own notices)
+            case .quickChat, .refresh, .quitKeep: break  // (the plug-in posts the first two's own notices; the last is the app's)
             }
         })
         observers.append(dn.addObserver(forName: Installer.quietQuitNote, object: nil, queue: .main) { [weak self] note in

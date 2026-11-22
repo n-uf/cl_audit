@@ -1663,33 +1663,8 @@ do {
           "a standby account with neither a sign-in nor an address can't be switched to, and is never the best")
     // (26.11.32: no "in use" text outside the card; the lamp and the menus' checkmark say it, so the lines show the account plain)
     check(SwitchMenu.inUseLine(cmView) == "\(sh(u1.email!))", "under the profile's name: 'ultra-1'")   // release A: AccountView
-    check(SwitchMenu.dockTitle(name: "Main", cmView, plan: "Ultra") == "Claude Main · \(sh(u1.email!))", "Dock menu top: 'Claude Main · ultra-1'")
-    var unlinked = cm; unlinked.seat = nil
-    check(SwitchMenu.inUseLine(noView) == nil && SwitchMenu.dockTitle(name: "Main", noView, plan: "Ultra") == "Claude Main · Ultra"   // release A: AccountView
-          && SwitchMenu.dockTitle(name: "Main", noView, plan: nil) == "Claude Main", "no account known: the usual top line")
-    check(SwitchMenu.weekWords(12.4, week: true) == "week 12%" && SwitchMenu.weekWords(8, week: false) == "5-hour 8%" && SwitchMenu.weekWords(nil, week: true) == "no numbers",
-          "the account in use's numbers in the menu: 'week 12%', '5-hour 8%', 'no numbers'")
-    let sub = SwitchMenu.submenuItem(cmView, lines: lines, inUseUsed: 40, inUseWeek: true, target: NSObject(), action: Selector(("x:")))
-    let subTitles = sub?.submenu?.items.map(\.title) ?? []
-    // (26.11.21: the submenu opens with the Experimental warning and a line; 26.11.32: the account in use ticked and enabled,
-    // choosing it does nothing, and the standby accounts by address only)
-    let subItems = Array(sub?.submenu?.items.dropFirst(2) ?? [])
-    check(sub?.title == "Switch account" && subTitles == [ExperimentalPanel.title, "", "\(sh(u1.email!)) · week 40%", "\(sh(u3.email!))…",
-                                                          "\(sh(u2.email!))…", "\(sh("new-4@example.com"))…"],
-          "Switch account ›: the Experimental warning, the account in use, then every standby account in the offer order (got \(subTitles))")
-    check(sub?.submenu?.items.first?.isEnabled == false && sub?.submenu?.items[1].isSeparatorItem == true
-          && subItems.first?.state == .on && subItems.first?.isEnabled == true && subItems.first?.action == nil
-          && subItems.dropFirst().allSatisfy({ $0.isEnabled && $0.action != nil }),
-          "Switch account ›: the warning disabled, the account in use ticked (choosing it does nothing), the standby accounts enabled")
-    check(subItems.dropFirst().map { $0.representedObject as? String } == ["cm~k3", "cm~k2", "cm~k4"], "each item names its Switch page")
-    let blankSub = SwitchMenu.submenuItem(cmView, lines: SwitchMenu.lines(blank, now: now), inUseUsed: nil, inUseWeek: true, target: NSObject(), action: Selector(("x:")))
-    check(blankSub?.submenu?.items.dropFirst(2).first?.title == "\(sh(u1.email!))" && blankSub?.submenu?.items.last?.isEnabled == false
-          && blankSub?.submenu?.items.last?.action == nil, "no numbers for the account in use: just its name; one that can't be switched to is disabled")
-    check(SwitchMenu.submenuItem(cmView, lines: [], inUseUsed: 40, inUseWeek: true, target: NSObject(), action: Selector(("x:"))) == nil
-          && SwitchMenu.group(cmView, lines: [], inUseUsed: 40, inUseWeek: true, target: NSObject(), action: Selector(("x:"))).isEmpty,
-          "a profile with one account: no Switch account ›")
-    let bi = SwitchMenu.bestItem(lines[0], target: NSObject(), action: Selector(("x:")))
-    check(bi.title == "Switch to \(lines[0].short)…" && bi.representedObject as? String == "cm~k3", "the full-limit item: 'Switch to ultra-3…', naming its page")
+    check(SwitchMenu.inUseLine(noView) == nil, "no account known: no in-use line")                    // release A: AccountView
+    // (the Dock and menu bar menus' account rows, built from these lines, are DockTileMenu's: Checks/docktile and surfaces)
 
     // the waiting alert: words, buttons, which phase
     check(SwitchWaiting.words(profile: "Main", phase: .waiting)?.title == "Claude Main: the switch is waiting for you", "waiting alert: the title")

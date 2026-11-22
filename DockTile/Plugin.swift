@@ -1,3 +1,4 @@
+import AddressPrivacy
 import AppKit
 import ProfileCore
 
@@ -76,26 +77,14 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
               let e = list.accounts.first(where: { $0.id == id }) else { return nil }
         let record = SafeRead.whole(Store.statusFolder.appendingPathComponent("\(id).json").path, max: SafeRead.recordMax)
             .flatMap(StatusCodec.decode)
-        let m = NSMenu(); m.autoenablesItems = false
-        for row in DockTileMenu.rows(e, ProfileShow.of(e, raw: record?.current()), windowOpen: DockTile.windowOpen(id),
-                                     agentRuns: DockTile.agentRuns()) {
-            switch row {
-            case .separator: m.addItem(.separator())
-            case .info(let s):
-                let i = NSMenuItem(title: s, action: nil, keyEquivalent: ""); i.isEnabled = false; m.addItem(i)
-            case .full(let s):
-                let i = NSMenuItem(title: s, action: nil, keyEquivalent: ""); i.isEnabled = false
-                i.attributedTitle = NSAttributedString(string: s, attributes: [
-                    .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: Painter.crimson])
-                m.addItem(i)
-            case .action(let s, let act):
-                let i = NSMenuItem(title: s, action: #selector(picked(_:)), keyEquivalent: "")
-                i.target = self; i.representedObject = act.rawValue; m.addItem(i)
-            }
-        }
-        // each item its own tag: the Dock hands a click back as the item's tag (_sendDockMenuCommand:withTag:), and items
-        // that all had tag 0 sent every click to the first one, the title row, which does nothing
-        for (n, i) in m.items.enumerated() { i.tag = n + 1 }
+        // the "Show emails" setting as it is now: the plug-in has no observer of its own, so it reads the store on each ask
+        AddressPrivacy.shared.store = AddressSettings.store
+        let rows = DockTileMenu.rows(e, ProfileShow.of(e, raw: record?.current()), windowOpen: DockTile.windowOpen(id),
+                                     agentRuns: DockTile.agentRuns())
+        // plain titles: the Dock draws the menu and leaves out an item's view. Each item its own tag (DockTileMenu.tag): the
+        // Dock hands a click back as the item's tag (_sendDockMenuCommand:withTag:)
+        let m = DockTileMenu.menu(rows, light: ProfileLED.lamp(e.ownColor).color, views: false,
+                                  target: self, action: #selector(picked(_:)))
         log("menu asked")
         shownMenu = m           // kept until the next ask (shownMenu)
         return m
@@ -103,12 +92,14 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
 
     /// A menu action: Quick chat and Refresh now as the Dock icon app sends them; the rest to the agent.
     @objc func picked(_ sender: NSMenuItem) {
-        guard let id, let raw = sender.representedObject as? String, let act = DockTileMenu.Act(rawValue: raw) else { return }
+        // (a switch's target is the Switch page's key, "<profile>~<standby>": only this profile's own)
+        guard let id, let (act, target) = DockTileMenu.parse(sender.representedObject),
+              DockTileMenu.profile(act, target) == id else { return }
         let center = DistributedNotificationCenter.default()
         switch act {
         case .quickChat: center.postNotificationName(QuickChat.openNote, object: id, userInfo: nil, deliverImmediately: true)
         case .refresh: center.postNotificationName(Installer.refreshAllNote, object: id, userInfo: nil, deliverImmediately: true)
-        default: center.postNotificationName(DockTile.menuNote, object: DockTileMenu.object(act, id), userInfo: nil, deliverImmediately: true)
+        default: center.postNotificationName(DockTile.menuNote, object: DockTileMenu.object(act, target), userInfo: nil, deliverImmediately: true)
         }
         log("menu: \(act.rawValue)")
     }
