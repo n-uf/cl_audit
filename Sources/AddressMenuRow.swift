@@ -3,7 +3,7 @@
 // address is in a title, a label or a sentence.
 //
 // While the address is hidden the row draws AddressPrivacy's one fixed stand-in, blurred (AddressInk), the same for every
-// account, and the real address sharp only while the menu highlights the row (the pointer or the arrow keys are on it) or the
+// account, and the real address sharp only while the pointer is on the row (a keyboard highlight lights it but never reveals) or the
 // "Show emails" setting is on. The room it gives the address is the stand-in's width and nothing else (a longer address is
 // cut while sharp), so the width of the row, and where its suffix is, never depend on the address. Its item's title (the
 // menu's type-ahead) and its accessibility label are the sentence form, "hidden address" in the address's place, for every
@@ -95,8 +95,11 @@ final class AddressMenuRow: NSView {
 
     /// Whether the menu lights the row (the address is sharp then); a dimmed row never is.
     var lit: Bool { enabled && (highlighted || enclosingMenuItem?.isHighlighted == true) }
-    /// The address is drawn sharp: the row is lit, or addresses are not hidden.
-    var sharp: Bool { lit || !blurred }
+    /// The pointer is on the row (a keyboard highlight or type-ahead lights the row too, but never reveals the address), as
+    /// cl_quick's standby row.
+    private(set) var pointerOn = false
+    /// The address is drawn sharp: the row is lit with the pointer on it (or lit for a picture), or addresses are not hidden.
+    var sharp: Bool { (lit && (pointerOn || highlighted)) || !blurred }
     /// The text of the address drawn now: its own while sharp, else the stand-in (never any part of the address).
     var drawnAddress: String { AddressText.drawn(address: address, revealed: sharp, blur: true) }
 
@@ -105,8 +108,8 @@ final class AddressMenuRow: NSView {
         trackingAreas.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
     }
-    override func mouseEntered(with e: NSEvent) { needsDisplay = true }
-    override func mouseExited(with e: NSEvent) { needsDisplay = true }
+    override func mouseEntered(with e: NSEvent) { pointerOn = true; needsDisplay = true }
+    override func mouseExited(with e: NSEvent) { pointerOn = false; needsDisplay = true }
     override func mouseUp(with e: NSEvent) {
         if bounds.contains(convert(e.locationInWindow, from: nil)) { press() }
     }
