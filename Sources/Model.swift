@@ -25,13 +25,70 @@ func tilde(_ path: String) -> String {
 /// (`claude-code-sessions/<account id>/<organisation id>`, the same in `local-agent-mode-sessions`) left out: they are ids of
 /// the account, which nothing shown may hold while addresses are hidden. "…/claude-code-sessions/…/local_x.json".
 func tildeNoIds(_ path: String) -> String {
-    var parts = tilde(path).split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-    for kind in ["claude-code-sessions", "local-agent-mode-sessions"] {
-        guard let at = parts.firstIndex(of: kind) else { continue }
-        let ids = parts[(at + 1)...].prefix(2).filter { UUID(uuidString: $0) != nil }
-        if !ids.isEmpty { parts.replaceSubrange((at + 1)..<(at + 1 + ids.count), with: ["…"]) }
+    let kinds = ["claude-code-sessions", "local-agent-mode-sessions"]
+    var out: [String] = []
+    var kindAt = Int.max                              // where the last such folder is: the two folders after it hold the ids
+    for (i, part) in tilde(path).split(separator: "/", omittingEmptySubsequences: false).map(String.init).enumerated() {
+        if kinds.contains(part) { kindAt = i }
+        if i > kindAt, i <= kindAt &+ 2, UUID(uuidString: part) != nil {
+            if out.last != "…" { out.append("…") }    // each id folder is replaced on its own; two in a row read as one
+        } else {
+            out.append(part)
+        }
     }
-    return parts.joined(separator: "/")
+    return out.joined(separator: "/")
+}
+
+/// Words for what went wrong, for every note, problem, failure line, notification and log that comes from a file operation:
+/// a thrown error as fixed words (never the system's own text, which names the path, and under a window's
+/// claude-code-sessions that path holds the account's and organisation's ids), and any text that may hold such a path with the
+/// folder named by its role. Whatever the "Show emails" setting says: the ids are never shown.
+enum PlainWords {
+    /// The role every folder under a window's sessions is named by.
+    static let sessionsFolder = "the account's sessions folder"
+
+    /// A thrown error in words that name no path. The system's errors (Cocoa, POSIX) say what happened from their code; cl_audit's
+    /// own (SwitchError, BackupError, …) keep their own words, with any path under a sessions folder named by its role.
+    static func why(_ error: Error) -> String {
+        let ns = error as NSError
+        guard ns.domain == NSCocoaErrorDomain || ns.domain == NSPOSIXErrorDomain else { return noSessionPaths("\(error)") }
+        return reason(domain: ns.domain, code: ns.code, under: ns.userInfo[NSUnderlyingErrorKey] as? NSError)
+    }
+
+    /// `text` with every path that runs through a window's sessions folder (and what follows it: the ids) named by its role.
+    static func noSessionPaths(_ text: String) -> String {
+        guard text.contains("claude-code-sessions") || text.contains("local-agent-mode-sessions") else { return text }
+        let pattern = #"[^\s"'“”‘’()<>]*(claude-code-sessions|local-agent-mode-sessions)[^\s"'“”‘’()<>]*"#
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return sessionsFolder }
+        let whole = NSRange(text.startIndex..., in: text)
+        return re.stringByReplacingMatches(in: text, range: whole, withTemplate: NSRegularExpression.escapedTemplate(for: sessionsFolder))
+    }
+
+    /// A path a backup or an archive names (it holds the account's and organisation's ids as folder names): every id (a UUID, or
+    /// its first 8 or more characters) as "…". For the words that quote what a file claims.
+    static func noIds(_ text: String) -> String {
+        guard let re = try? NSRegularExpression(pattern: "[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{1,4}){0,3}(?:-[0-9a-fA-F]{1,12})?") else { return "…" }
+        return re.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "…")
+    }
+
+    private static func reason(domain: String, code: Int, under: NSError?) -> String {
+        let posix: Int32? = domain == NSPOSIXErrorDomain ? Int32(truncatingIfNeeded: code)
+            : under.flatMap { $0.domain == NSPOSIXErrorDomain ? Int32(truncatingIfNeeded: $0.code) : nil }
+        switch (domain == NSCocoaErrorDomain ? code : nil, posix) {
+        case (257?, _), (513?, _), (_, EACCES?), (_, EPERM?): return "the system refused it (no permission)"
+        case (4?, _), (260?, _), (_, ENOENT?): return "something it needed isn't there"
+        case (516?, _), (_, EEXIST?), (_, ENOTEMPTY?): return "something is already there"
+        case (640?, _), (_, ENOSPC?), (_, EDQUOT?): return "the disk is full"
+        case (642?, _), (_, EROFS?): return "the volume is read-only"
+        case (_, ENOTDIR?): return "a file is where a folder should be"
+        case (_, EISDIR?): return "a folder is where a file should be"
+        case (_, EBUSY?): return "it is in use"
+        case (_, ELOOP?): return "a link is in the way"
+        case (_, EXDEV?): return "it can't be moved to another volume"
+        case (258?, _), (514?, _): return "a name it needed isn't valid"
+        default: return "the system couldn't do it (error \(posix.map { Int($0) } ?? code))"
+        }
+    }
 }
 
 // MARK: - Account

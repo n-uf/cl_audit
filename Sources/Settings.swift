@@ -637,7 +637,7 @@ final class SettingsModel: ObservableObject {
                     if self?.message == "Saved" { self?.message = "" }
                 }
             }
-            catch { self.message = "Couldn't save: \(error.localizedDescription)" }
+            catch { self.message = "Couldn't save: \(PlainWords.why(error))" }
         }
         saveWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
@@ -926,7 +926,7 @@ final class SettingsModel: ObservableObject {
                 done?()
             }
         } catch {
-            message = "Couldn't save: \(error.localizedDescription)"
+            message = "Couldn't save: \(PlainWords.why(error))"
         }
     }
 

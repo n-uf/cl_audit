@@ -155,7 +155,7 @@ extension SideFiles {
             return SessionsRestore.sha(fd: e) == sha ? .there : .differs
         }
         let temp: CreateOnly.Temp
-        do { temp = try CreateOnly.Temp(".side-\(UUID().uuidString.prefix(8)).tmp", in: dir) } catch { return .failed("\(error)") }
+        do { temp = try CreateOnly.Temp(".side-\(UUID().uuidString.prefix(8)).tmp", in: dir) } catch { return .failed(PlainWords.why(error)) }
         defer { temp.discard() }
         let out = temp.fd
         var buf = [UInt8](repeating: 0, count: 1 << 20)
@@ -585,7 +585,7 @@ extension SideFiles {
                 r.written.historyLines += added
                 r.written.there += lines.count - added
             } catch {
-                r.problems.append("\(error)")
+                r.problems.append(PlainWords.why(error))
             }
             try store.save(r)
         }
@@ -626,7 +626,7 @@ extension SideFiles {
                         guard let back = readPlain(cfg, limit: Int64(maxConfig)), back.0 == n else { throw SideError("\(settingsWords) didn't read back as written; Undo takes the trust back if it is still as written.") }
                     }
                 } catch {
-                    r.problems.append("\(error)")
+                    r.problems.append(PlainWords.why(error))
                 }
                 try store.save(r)
             }
@@ -666,7 +666,7 @@ extension SideFiles {
                 if !blocked { for k in r.waiting.indices where done.contains(r.waiting[k].session) { r.waiting[k].pick = pick } }
                 problems += r.problems.suffix(r.problems.count - before)
                 try store.save(r)
-            } catch { problems.append("\(error)") }
+            } catch { problems.append(PlainWords.why(error)) }
         }
         return problems
     }
@@ -738,7 +738,7 @@ extension SideFiles {
                 do {
                     let missing = try removeHistory(s.path, lines: lines)
                     if missing > 0, s.done { r.left.append("\(missing) of the prompt history \(missing == 1 ? "line" : "lines") added changed or went since; the rest were taken out.") }
-                } catch { if s.done { r.left.append("\(error)") } }
+                } catch { if s.done { r.left.append(PlainWords.why(error)) } }
             case .trust:
                 guard s.done, let key = s.key, let value = s.value else { continue }
                 do {
@@ -747,7 +747,7 @@ extension SideFiles {
                         guard let out = unspliced([UInt8](got.0), key: key, value: value) else { r.left.append("The trust for \(tilde(key)) changed since (or went); it stays."); return }
                         try replaceFile(s.path, with: out, was: got.1)
                     }
-                } catch { r.left.append("\(error)") }
+                } catch { r.left.append(PlainWords.why(error)) }
             }
         }
     }

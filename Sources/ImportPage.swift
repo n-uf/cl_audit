@@ -157,7 +157,7 @@ final class ImportRunner: ObservableObject {
                                                           progress: { s in DispatchQueue.main.async { if self?.isOpening == true { self?.phase = .opening(s) } } }) }
             switch result {
             case .failure(let err):
-                DispatchQueue.main.async { self?.failed("\(err)", g) }
+                DispatchQueue.main.async { self?.failed(PlainWords.why(err), g) }
             case .success(let o):
                 // the part the target's name matches, else the first
                 let idx = o.parts.firstIndex { $0.profile == target } ?? o.parts.firstIndex { $0.name == self?.intoEntry?.name } ?? 0
@@ -203,7 +203,7 @@ final class ImportRunner: ObservableObject {
             DispatchQueue.main.async {
                 guard let self, self.isCurrent(g) else { return }
                 switch result {
-                case .failure(let err): self.phase = .refused("\(err)")
+                case .failure(let err): self.phase = .refused(PlainWords.why(err))
                 case .success(let s): self.staged = s; self.recount()
                 }
             }
@@ -272,7 +272,7 @@ final class ImportRunner: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 switch result {
-                case .failure(let err): self.phase = .refused("\(err)")
+                case .failure(let err): self.phase = .refused(PlainWords.why(err))
                 case .success(let n): self.staged = n; self.recount()
                 }
             }
@@ -308,7 +308,7 @@ final class ImportRunner: ObservableObject {
                 guard let self else { return }
                 self.moveBusy = false
                 switch result {
-                case .failure(let err): self.moveNote = "\(err)"
+                case .failure(let err): self.moveNote = PlainWords.why(err)
                 case .success(let r):
                     self.moved = r
                     if !r.problems.isEmpty { self.moveNote = r.problems.prefix(3).joined(separator: " ") }
@@ -331,7 +331,7 @@ final class ImportRunner: ObservableObject {
                 guard let self else { return }
                 self.moveBusy = false
                 switch result {
-                case .failure(let err): self.moveNote = "\(err)"
+                case .failure(let err): self.moveNote = PlainWords.why(err)
                 case .success(let u):
                     self.moved = u
                     if !u.left.isEmpty { self.moveNote = "Left as it is: " + u.left.prefix(3).joined(separator: "; ") + "." }
@@ -404,7 +404,7 @@ final class ImportRunner: ObservableObject {
             model.restoring = key
             model.restoreRunner(key).importNow()
         } catch {
-            note = "\(error)"
+            note = PlainWords.why(error)
         }
     }
 

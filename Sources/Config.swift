@@ -915,7 +915,7 @@ enum Installer {
                 let yours = running(e).contains { !DockTile.agentStarted(Processes.arguments(of: $0.processIdentifier)) }
                 stop(dst)
                 do { try install(e, at: dst, source: source); log.append("installed \(dst.deletingPathExtension().lastPathComponent)") }
-                catch { log.append("couldn't install \(e.name): \(error.localizedDescription)"); continue }
+                catch { log.append("couldn't install \(e.name): \(PlainWords.why(error))"); continue }
                 if lookChanged { restyled.append(dst) }
                 // as it was: running again if it ran (in the background, its window left as it is); nothing else is
                 // started here, the agent runs the opening rules
@@ -1101,7 +1101,7 @@ enum Installer {
             let dst = appURL(e)
             guard lookDiffers(e, at: dst), !isRunning(e) else { continue }
             do { try install(e, at: dst, source: source); log.append("redrew \(dst.deletingPathExtension().lastPathComponent)") }
-            catch { log.append("couldn't redraw \(e.name): \(error.localizedDescription)"); continue }
+            catch { log.append("couldn't redraw \(e.name): \(PlainWords.why(error))"); continue }
             restyled.append(dst)
         }
         return log

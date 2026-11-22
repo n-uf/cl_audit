@@ -164,7 +164,7 @@ struct SessionsCard: View {
             do {
                 // read again: the number, and a skip note that the new value may have ended
                 retention = try await Task.detached(priority: .utility) { try CodeCleanup.set(d, codeDir: dir); return Retention.read(codeDir: dir) }.value
-            } catch { keepProblem = "\(error)" }               // the file was left as it was: the menu keeps what it showed
+            } catch { keepProblem = PlainWords.why(error) }               // the file was left as it was: the menu keeps what it showed
         }
     }
 
@@ -335,7 +335,7 @@ struct SessionsCard: View {
                 // only partly undone: it stays on the card, saying what was left (Undo it again)
                 oldSwitch = done.undone == nil ? done : nil
                 if !done.problems.isEmpty { problem = done.problems.joined(separator: " ") }
-            case .failure(let err): problem = "\(err)"
+            case .failure(let err): problem = PlainWords.why(err)
             }
         }
     }
@@ -369,7 +369,7 @@ struct SessionsCard: View {
                 Result { try SessionsBackup.manual(src, window: !open, windowClosed: { !ClaudeWindow.isOpen(Account(e)) }) }
             }.value
             if case .failure(let err) = result {
-                var why = "\(err)"
+                var why = PlainWords.why(err)
                 while why.hasSuffix(".") { why.removeLast() }
                 problem = why.hasPrefix("The ") ? why : "The backup couldn't be made: " + why.prefix(1).lowercased() + why.dropFirst() + "."
             }
@@ -383,7 +383,7 @@ struct SessionsCard: View {
         deleting = nil; problem = nil
         Task {
             let result = await Task.detached(priority: .utility) { Result { try SessionsBackup.delete(profile: profile, id: id, place: place) } }.value
-            if case .failure(let err) = result { problem = "\(err)" }
+            if case .failure(let err) = result { problem = PlainWords.why(err) }
             await load()
         }
     }

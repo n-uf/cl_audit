@@ -184,7 +184,7 @@ extension SettingsModel {
         var d = NewAccountDraft()
         d.name = name; d.color = firstRun.color; d.share = []
         d.source = .existing; d.existingDir = folder
-        do { try NewAccountSetup.createOrConnect(&d) } catch { return error.localizedDescription }
+        do { try NewAccountSetup.createOrConnect(&d) } catch { return PlainWords.why(error) }
         var e = d.entry
         if var s = Account.signedInSeat(configDir: e.configDir) { s.linkedAt = Date(); e.seat = s }
         // an older version's own "main", exactly as made: nothing in it, and it goes (even when ~/.claude got signed in

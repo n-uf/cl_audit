@@ -603,7 +603,7 @@ enum SessionsMove {
             r.problems.append("cl_audit's profiles file couldn't be written; no profile was made.")
             r.finished = now
             try? store.save(r)
-            throw BackupError("cl_audit's profiles file couldn't be written (\(error.localizedDescription)); no profile was made.")
+            throw BackupError("cl_audit's profiles file couldn't be written (\(PlainWords.why(error))); no profile was made.")
         }
         for i in r.made.indices {
             r.made[i].written = wrote.contains(r.made[i].id)

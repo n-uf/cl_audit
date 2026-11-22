@@ -343,7 +343,7 @@ final class SwitchRunner: ObservableObject {
                     self.windowDone()
                     // the backup, or (once it was made) the move itself
                     let backup: Bool = { if case .backup = err as? SwitchError { return true }; return false }()
-                    self.fail(backup ? .backup : .move, "\(err)")
+                    self.fail(backup ? .backup : .move, PlainWords.why(err))
                 }
             }
         }
@@ -384,7 +384,7 @@ final class SwitchRunner: ObservableObject {
                         self.phase = .undone
                         self.windowSettled(back)                   // (undone: its settle opens the window it closed)
                     } else { self.fail(.move, Self.partlyWords(back)) }
-                case .failure(let err): self.fail(.move, "\(err)")
+                case .failure(let err): self.fail(.move, PlainWords.why(err))
                 }
             }
         }

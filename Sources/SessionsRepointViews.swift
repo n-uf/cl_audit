@@ -185,7 +185,7 @@ final class RepointRunner: ObservableObject {
             busy = false
             switch result {
             case .success(let r): note = r.problems.isEmpty ? nil : r.problems.prefix(3).joined(separator: " ")
-            case .failure(let err): note = "\(err)"
+            case .failure(let err): note = PlainWords.why(err)
             }
             load(e)
         }

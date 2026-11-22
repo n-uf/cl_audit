@@ -823,7 +823,7 @@ struct NewAccountView: View {
                 }
                 return
             }
-            do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = error.localizedDescription; return }
+            do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = PlainWords.why(error); return }
         }
         guard let claude = model.requireClaude() else { addressProblem = model.noClaudeWhy; return }
         // Claude Code's sign-in in Terminal with the address filled in, followed to its end (SignInWindow): the sign-in
@@ -1106,7 +1106,7 @@ struct NewAccountView: View {
                 gate.look(monitor) { fresh in
                     if let why = NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) { self.error = why; return }
                     do { try NewAccountSetup.createOrConnect(&draft); error = NewAccountSetup.notReadyWhy(draft); model.tick += 1 }
-                    catch { self.error = error.localizedDescription }
+                    catch { self.error = PlainWords.why(error) }
                 }
             }
             .buttonStyle(.primaryKey(compact: true)).disabled(blocked || gate.busy || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)

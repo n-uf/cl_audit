@@ -1067,7 +1067,7 @@ enum SessionsBackup {
         guard let m = load(profile: profile, id: id, place: place) else { throw BackupError("That backup isn't there any more.") }
         if let why = isKept(m, keeps(profile: profile, place: place)) { throw BackupError(why) }
         do { try FileManager.default.removeItem(at: folder(profile: profile, place: place).appendingPathComponent(id)) }
-        catch { throw BackupError("The backup couldn't be deleted (\(error.localizedDescription)).") }
+        catch { throw BackupError("The backup couldn't be deleted (\(PlainWords.why(error))).") }
         SessionsRestore.prune(profile: profile)             // the receipts of restores from it go too
     }
 

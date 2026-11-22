@@ -292,7 +292,7 @@ enum SwitchEngine {
                                         id: id, kind: .beforeSwitch(r.id), window: true, transcripts: p.backupTranscripts,
                                         receipt: r, place: place, now: now)
             } catch {
-                throw SwitchError.backup("The backup of the sessions couldn't be made (\(error)). Nothing moved. Backups go to \(tilde(place.path)); General ▸ Backups changes that.")
+                throw SwitchError.backup("The backup of the sessions couldn't be made (\(PlainWords.why(error))). Nothing moved. Backups go to \(tilde(place.path)); General ▸ Backups changes that.")
             }
             // still closed? a window that opened meanwhile may have changed what was copied: the backup is taken away
             guard windowClosed() else {
@@ -317,7 +317,7 @@ enum SwitchEngine {
         do {
             try moveAll(p, &r, dir: dir, windowClosed: windowClosed)
         } catch {
-            r.problems.append("\(error)")
+            r.problems.append(PlainWords.why(error))
             try? store.save(r)
             throw error
         }

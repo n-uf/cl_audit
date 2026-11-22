@@ -1026,7 +1026,7 @@ enum SessionsExport {
                 defer { lock.release() }
                 let m: SessionsBackup.Manifest
                 do { m = try SessionsBackup.make(src, kind: .manual, window: !part.windowOpen, transcripts: true, setup: job.setup, place: work.appendingPathComponent("backups"), now: job.now, forExport: true) }
-                catch { throw ArchiveError("\(error)") }
+                catch { throw ArchiveError(PlainWords.why(error)) }
                 if !part.windowOpen, !part.windowClosed() { throw ArchiveError("\(part.name)'s Claude window opened during the export; try again.") }
                 backup = SessionsRestore.Backup(profile: src.profile, id: m.id, place: work.appendingPathComponent("backups"))
             }

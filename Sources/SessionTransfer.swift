@@ -167,7 +167,9 @@ enum SessionTransfer {
     /// `windowClosed` is asked before every step: the window must stay closed. `save` writes the record down.
     static func move<R: TransferRecord>(_ s: Scopes, entries: [String], tasks: Int, record r: inout R, work: URL,
                                         windowClosed: () -> Bool, save: (R) throws -> Void) throws {
-        try FileManager.default.createDirectory(atPath: s.targetDir, withIntermediateDirectories: true)
+        // (the system's own words for a folder that can't be made name its path, which holds the account's ids)
+        do { try FileManager.default.createDirectory(atPath: s.targetDir, withIntermediateDirectories: true) }
+        catch { throw SwitchError.failed("Couldn't make the new account's folder in the sessions (\(PlainWords.why(error))). Nothing moved.") }
         // the scheduled tasks, also when there's no session to move
         guard windowClosed() else { throw SwitchError.windowOpen }
         var stayed: Set<String> = []                 // the ids of tasks that stayed: their sessions stay with them
@@ -191,7 +193,7 @@ enum SessionTransfer {
             guard windowClosed() else { throw SwitchError.windowOpen }
             if holdAllTasks || !stayed.isEmpty, let task = taskID(of: name, s), holdAllTasks || stayed.contains(task) { continue }    // held with its task
             do { try moveEntry(name, s, parked: work.appendingPathComponent("parked"), &r, save: save) }
-            catch { r.problems.append("\(name) didn't move: \(error)."); try save(r) }
+            catch { r.problems.append("\(name) didn't move: \(PlainWords.why(error))."); try save(r) }
         }
         let placedPaths = r.steps.filter { $0.kind == .entry && $0.done }.map(\.path)
         for path in placedPaths {
@@ -316,7 +318,7 @@ enum SessionTransfer {
                 try? fm.removeItem(atPath: backup); try? fm.removeItem(atPath: backup + ".tmp")
             }
             r.steps.removeSubrange(first...)
-            let why = (error as? SwitchError).map { "\($0)" } ?? "scheduled-tasks.json couldn't be written out (\(error.localizedDescription))"
+            let why = (error as? SwitchError).map { "\($0)" } ?? "scheduled-tasks.json couldn't be written out (\(PlainWords.why(error)))"
             throw TasksStayed(why: why, ids: moving)
         }
         r.tasksMoved = joined.moved.count
@@ -468,7 +470,10 @@ enum SessionTransfer {
                 r.problems.append("\(name) changed since; left as it is"); return name
             }
             guard let parked = step.parked, let original = step.original, fm.fileExists(atPath: parked) else { return nil }
-            if !fm.fileExists(atPath: original) { try fm.moveItem(atPath: parked, toPath: original) }
+            if !fm.fileExists(atPath: original) {
+                do { try fm.moveItem(atPath: parked, toPath: original) }
+                catch { throw SwitchError.failed("\(name) couldn't be put back in the old account's sessions folder (\(PlainWords.why(error))); it stays parked. Undo again once that is fixed.") }
+            }
             else { r.problems.append("\(name) is back already") }
         case .tasks:
             // (through TaskRegistry: put back, or taken away, only while the file is still exactly as this transfer wrote it)
@@ -531,7 +536,11 @@ enum SessionTransfer {
             guard !named.contains(p), f.hasPrefix("local_"), f.hasSuffix(".json") else { continue }
             guard windowClosed() else { try? save(r); throw SwitchError.windowOpen }
             let back = (source as NSString).appendingPathComponent(f)
-            if fm.fileExists(atPath: back) { r.problems.append("\(f) is back already") } else { try fm.moveItem(atPath: p, toPath: back) }
+            if fm.fileExists(atPath: back) { r.problems.append("\(f) is back already") }
+            else {
+                do { try fm.moveItem(atPath: p, toPath: back) }
+                catch { throw SwitchError.failed("\(f) couldn't be put back in the old account's sessions folder (\(PlainWords.why(error))); it stays parked. Undo again once that is fixed.") }
+            }
         }
     }
 }

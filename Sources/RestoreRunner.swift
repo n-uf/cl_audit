@@ -360,12 +360,12 @@ final class RestoreRunner: ObservableObject {
                 guard let self else { return }
                 switch sided {
                 case .success(let s)?: self.sided = s; self.sideNote = s.flatMap { $0.problems.isEmpty ? nil : $0.problems.prefix(3).joined(separator: " ") }
-                case .failure(let err)?: self.sideNote = "The side files weren't written: \(err)."
+                case .failure(let err)?: self.sideNote = "The side files weren't written: \(PlainWords.why(err))."
                 case nil: break
                 }
                 switch moved {
                 case .success(let m)?: self.repointed = m; self.repointNote = m.problems.isEmpty ? nil : m.problems.prefix(3).joined(separator: " ")
-                case .failure(let err)?: self.repointNote = "The picked folders weren't applied: \(err). Pick them again under \(e.name)'s Sessions."
+                case .failure(let err)?: self.repointNote = "The picked folders weren't applied: \(PlainWords.why(err)). Pick them again under \(e.name)'s Sessions."
                 case nil: break
                 }
                 switch result {
@@ -377,9 +377,9 @@ final class RestoreRunner: ObservableObject {
                     let unfinished = SessionsRestore.unfinished(profile: self.key.profile).first
                     self.receipt = unfinished
                     self.hold?.finish()
-                    if let u = unfinished { self.phase = .stopped(u.stopped ?? "\(err)"); self.refresh() }       // what is still missing
-                    else { self.phase = .failed("\(err)") }
-                    self.note = "\(err)"
+                    if let u = unfinished { self.phase = .stopped(u.stopped ?? PlainWords.why(err)); self.refresh() }       // what is still missing
+                    else { self.phase = .failed(PlainWords.why(err)) }
+                    self.note = PlainWords.why(err)
                 }
             }
         }
@@ -472,7 +472,7 @@ final class RestoreRunner: ObservableObject {
                     }
                 case .failure(let err):
                     self.phase = self.priorPhase
-                    self.note = "Undo didn't finish: \(err). The receipt is in cl_audit's folder (restores/\(id)); Undo again to take back the rest."
+                    self.note = "Undo didn't finish: \(PlainWords.why(err)). The receipt is in cl_audit's folder (restores/\(id)); Undo again to take back the rest."
                 }
             }
         }
@@ -501,7 +501,7 @@ final class RestoreRunner: ObservableObject {
             // (nothing open to close: it was finished, undone or left meanwhile, elsewhere)
             phase = now.undone != nil ? .undone : now.leftAsIs != nil ? .left : now.finished != nil ? .done : phase
             note = words.isEmpty ? nil : words
-        } catch { note = "\(error)" }
+        } catch { note = PlainWords.why(error) }
     }
 
     /// Its receipt was left as it is from elsewhere (the move to the default profile's card, DefaultProfile.leaveAsIs): a
@@ -523,7 +523,7 @@ final class RestoreRunner: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let result = Result { try CodeCleanup.set(days, codeDir: dir) }
             DispatchQueue.main.async {
-                if case .failure(let err) = result { self?.keepFailed = "\(err)" }
+                if case .failure(let err) = result { self?.keepFailed = PlainWords.why(err) }
                 self?.refresh()
             }
         }

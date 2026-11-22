@@ -76,7 +76,7 @@ extension SettingsModel {
         // nothing saved yet (the first setup, before Apply): the order goes with the rest when Apply saves
         guard !saved.isEmpty else { accounts = ProfileOrder.apply(ids, to: accounts); return false }
         do { try Store.edit { ProfileOrder.apply(ids, to: $0) } }
-        catch { message = "Couldn't save: \(error.localizedDescription)"; return false }
+        catch { message = "Couldn't save: \(PlainWords.why(error))"; return false }
         takeInOutsideChanges()                       // the file as saved, with any change made here kept on top
         accounts = ProfileOrder.apply(ids, to: accounts)
         showSaved("order")

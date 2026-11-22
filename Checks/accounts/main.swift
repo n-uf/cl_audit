@@ -768,6 +768,70 @@ do {
           "the real table reads, cl_audit's own process with its arguments; hidden: \(real?.filter(\.hidden).map(\.name) ?? [])")
 }
 
+// ============ 8a. a file operation that fails: no path, no folder under claude-code-sessions, no id in any note or failure ============
+// (a folder under claude-code-sessions is named by the account's id and the organisation's: the system's own words for a failed
+// move or a folder that can't be made name it, so every note, problem and failure line says it in fixed words instead)
+do {
+    func hexRun(_ s: String) -> Bool { s.range(of: "[0-9a-fA-F]{8,}", options: .regularExpression) != nil }
+    func plain(_ s: String) -> Bool { !s.isEmpty && !hexRun(s) && !s.contains("claude-code-sessions") && !s.contains("/") && !s.contains(home) }
+    let fa = seat(981, "fail-a@example.com"), fb = seat(982, "fail-b@example.com")
+    let wd = home + "/wd-fail"
+    let src = SwitchEngine.scopeDir(wd, SeatID(fa)), dst = SwitchEngine.scopeDir(wd, SeatID(fb))
+    let work = URL(fileURLWithPath: home + "/work-fail")
+    try? fm.createDirectory(at: work.appendingPathComponent("parked"), withIntermediateDirectories: true)
+    let scopes = SessionTransfer.Scopes(dataDir: wd, codeDir: home + "/.claude-fail", from: SeatID(fa), to: SeatID(fb))
+    func receipt(_ id: String) -> SwitchReceipt { SwitchReceipt(id: id, profile: "fl", standby: "k", dataDir: wd, from: SeatID(fa), to: SeatID(fb), started: t0) }
+    func lock(_ dir: String, _ on: Bool) { try? fm.setAttributes([.posixPermissions: on ? 0o500 : 0o700], ofItemAtPath: dir) }
+    let runner = SwitchRunner(profile: "fl", model: SettingsModel())
+
+    // a session that can't be moved (its folder takes nothing away): the problem the receipt keeps and the page draws
+    put("\(src)/local_x1.json", #"{"sessionId":"local_x1"}"#)
+    var raw = ""
+    lock(src, true)
+    do { try fm.moveItem(atPath: "\(src)/local_x1.json", toPath: work.path + "/parked/local_x1.json") } catch { raw = "\(error)" }
+    var r1 = receipt("fail1")
+    var thrown1 = ""
+    do { try SessionTransfer.move(scopes, entries: ["local_x1.json"], tasks: 0, record: &r1, work: work, windowClosed: { true }, save: { _ in }) } catch { thrown1 = "\(error)" }
+    lock(src, false)
+    check(raw.contains(src) && raw.contains(uuid(981)), "8a: the system's own words for the failed move name the folder, with the account's id (what a note used to say): \(raw.prefix(80))")
+    check(thrown1.isEmpty && r1.problems.count == 1 && r1.problems[0].hasPrefix("local_x1.json didn't move: ") && plain(r1.problems[0])
+          && fm.fileExists(atPath: "\(src)/local_x1.json") && !fm.fileExists(atPath: "\(dst)/local_x1.json"),
+          "8a: a session that doesn't move says so in fixed words, no path, no claude-code-sessions, no id, and nothing is left placed: \(r1.problems)")
+    runner.preview(.failed(thrown1), goal: nil, note: r1.problems.joined(separator: " "))
+    check(runner.moveText.map(plain) == true, "8a: the page's note for it names no folder: \(runner.moveText ?? "nil")")
+
+    // the new account's folder can't be made (a file is where its parent folder should be): the switch stops, nothing moved
+    try? fm.removeItem(atPath: "\(wd)/claude-code-sessions/\(fb.account)")
+    put("\(wd)/claude-code-sessions/\(fb.account)", "a file")
+    var r2 = receipt("fail2")
+    var thrown2 = "", why2 = ""
+    do { try SessionTransfer.move(scopes, entries: ["local_x1.json"], tasks: 0, record: &r2, work: work, windowClosed: { true }, save: { _ in }) } catch { thrown2 = "\(error)"; why2 = PlainWords.why(error) }
+    check(thrown2.hasPrefix("Couldn't make the new account's folder") && thrown2.hasSuffix("Nothing moved.") && plain(thrown2) && plain(why2),
+          "8a: a folder that can't be made says so in fixed words, no path, no id: \(thrown2)")
+    runner.preview(.failed(why2), goal: nil)
+    if case .failed(let shown) = runner.phase { check(plain(runner.said(shown)), "8a: and the page draws it without a folder: \(runner.said(shown))") }
+    try? fm.removeItem(atPath: "\(wd)/claude-code-sessions/\(fb.account)")
+
+    // Undo that can't put an original back (the old account's folder takes nothing): fixed words, the original stays parked
+    var r3 = receipt("fail3")
+    do { try SessionTransfer.move(scopes, entries: ["local_x1.json"], tasks: 0, record: &r3, work: work, windowClosed: { true }, save: { _ in }) } catch { check(false, "8a: the move for the Undo check: \(error)") }
+    var thrown3 = ""
+    if let step = r3.steps.first {
+        lock(src, true)
+        do { _ = try SessionTransfer.undo(step, record: &r3) } catch { thrown3 = "\(error)" }
+        lock(src, false)
+    }
+    check(thrown3.contains("couldn't be put back") && plain(thrown3) && fm.fileExists(atPath: work.path + "/parked/local_x1.json"),
+          "8a: Undo that can't put a session back says so in fixed words and keeps it parked: \(thrown3)")
+    runner.preview(.failed(PlainWords.why(NSError(domain: NSCocoaErrorDomain, code: 513, userInfo: [NSFilePathErrorKey: src]))), goal: nil)
+    check({ if case .failed(let w) = runner.phase { return plain(w) && w == "the system refused it (no permission)" }; return false }(),
+          "8a: the system's errors become words by their code, whatever path they carry")
+    // the words for what a file claims (a backup's or an archive's paths hold the ids as folder names)
+    check(PlainWords.noIds("window/\(uuid(981))/\(uuid(982))/local_x.json") == "window/…/…/local_x.json"
+          && PlainWords.noSessionPaths("couldn't write \(src)/local_x.json (disk)") == "couldn't write the account's sessions folder (disk)",
+          "8a: ids in a quoted path and a path under claude-code-sessions are left out")
+}
+
 // ============ 8b. the move inside the one folder: backup, held sessions, tasks with their state, Undo ============
 do {
     let wdE = expand("~/Library/Application Support/Claude-move8")

@@ -326,7 +326,7 @@ final class ExportRunner: ObservableObject {
                     self.phase = .done(o)
                     self.model?.forgetRestore()
                 case .failure(let err):
-                    var why = "\(err)"
+                    var why = PlainWords.why(err)
                     while why.hasSuffix(".") { why.removeLast() }
                     self.phase = why == "Stopped" ? .preview : .failed(why + ". Nothing was left behind.")
                     if why == "Stopped" { self.note = "Stopped. Nothing was left behind." }

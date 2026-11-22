@@ -142,7 +142,7 @@ final class DefaultProfileRunner: ObservableObject {
         } else {
             switch Self.makeDefaultProfile(from: old, among: m.accounts, seat: seat) {
             case .success(let e): m.accounts.append(e); targetID = e.id; pendingCreated = true; pendingLinked = true
-            case .failure(let err): phase = .failed("\(err)"); return
+            case .failure(let err): phase = .failed(PlainWords.why(err)); return
             }
         }
         closeWindows()
@@ -268,7 +268,7 @@ final class DefaultProfileRunner: ObservableObject {
                 case .success(let (oldID, usualID)): self.move(backup: oldID, usualBackup: usualID, place: place)
                 case .failure(let err):
                     self.endHolds(); self.rollbackPrepared()
-                    self.phase = .failed("The backup couldn't be made (\(err)). Nothing moved. Backups go to \(tilde(place.path)); General ▸ Backups changes that.")
+                    self.phase = .failed("The backup couldn't be made (\(PlainWords.why(err))). Nothing moved. Backups go to \(tilde(place.path)); General ▸ Backups changes that.")
                 }
             }
         }
@@ -494,7 +494,7 @@ extension SettingsModel {
             let words = try DefaultProfile.leaveAsIs(recordID)
             if let rc { restoreLeft(rc) }
             if !words.isEmpty { message = words }
-        } catch { message = "\(error)" }
+        } catch { message = PlainWords.why(error) }
         objectWillChange.send()
     }
 }

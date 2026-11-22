@@ -209,25 +209,25 @@ enum SessionsRestore {
         for it in m.windowExtra ?? [] {
             guard let c = components(it.path), seen.insert(it.path).inserted, it.role == .window, SessionsBackup.isFolderFile(c), !imported,
                   ClaudeFiles.isUUID(c[1]), ClaudeFiles.isUUID(c[2]), !c.dropFirst().contains(where: SessionsBackup.isSignIn) else {
-                return refuse("backup.json names a window file in a place it doesn't keep them (\(it.path.prefix(80))).")
+                return refuse("backup.json names a window file in a place it doesn't keep them (\(PlainWords.noIds(String(it.path.prefix(80))))).")
             }
             folderItems.append((it, c))
         }
         for it in m.items {
             guard let c = components(it.path), seen.insert(it.path).inserted else {
-                return refuse("backup.json names a path that isn't a plain one (\(it.path.prefix(80))); nothing is restored from it.")
+                return refuse("backup.json names a path that isn't a plain one (\(PlainWords.noIds(String(it.path.prefix(80))))); nothing is restored from it.")
             }
             switch it.role {
             case .window:
                 // (an export keeps its accounts as fingerprints, never their ids)
                 guard c.count == 4, c[0] == "window", ClaudeFiles.isUUID(c[1]) || (imported && !move && Fingerprint.isValid(c[1])),
                       ClaudeFiles.isUUID(c[2]) || (imported && !move && Fingerprint.isValid(c[2])) else {
-                    return refuse("backup.json names a window file in a place it doesn't keep them (\(it.path.prefix(80))).")
+                    return refuse("backup.json names a window file in a place it doesn't keep them (\(PlainWords.noIds(String(it.path.prefix(80))))).")
                 }
                 windowItems.append((it, c))
             case .transcript:
                 guard c.count >= 3, c[0] == "transcripts" else {
-                    return refuse("backup.json names a transcript in a place it doesn't keep them (\(it.path.prefix(80))).")
+                    return refuse("backup.json names a transcript in a place it doesn't keep them (\(PlainWords.noIds(String(it.path.prefix(80))))).")
                 }
                 codeItems.append((it, c))
             case .sidebar:
@@ -239,11 +239,11 @@ enum SessionsRestore {
                 // (a version 1 backup has none; the names are the ones a backup carries, no more: a name like settings.local.json or a
                 // path under plugins/ is never one of them)
                 guard m.version >= 2, c.count >= 2, c[0] == "setup", Setup.pathProblem(Array(c.dropFirst())) == nil, it.sha != nil else {
-                    return refuse("backup.json names a setup file in a place, or with a name, a backup doesn't keep them (\(it.path.prefix(80))); nothing is restored from it.")
+                    return refuse("backup.json names a setup file in a place, or with a name, a backup doesn't keep them (\(PlainWords.noIds(String(it.path.prefix(80))))); nothing is restored from it.")
                 }
                 if it.exec == true, !Setup.execAllowed(c.dropFirst().joined(separator: "/")) { return refuse("backup.json marks a file executable that can't be one; nothing is restored from it.") }
                 if Setup.unit(of: c.dropFirst().joined(separator: "/")).kind == .task, m.version < 3 {
-                    return refuse("backup.json names a setup file in a place, or with a name, a backup doesn't keep them (\(it.path.prefix(80))); nothing is restored from it.")
+                    return refuse("backup.json names a setup file in a place, or with a name, a backup doesn't keep them (\(PlainWords.noIds(String(it.path.prefix(80))))); nothing is restored from it.")
                 }
                 setupItems.append(it)
             case .config:
@@ -1261,13 +1261,13 @@ enum SessionsRestore {
         // sessions were pointed at
         if !SideFiles.linked(restore: id).isEmpty {
             do { r.problems += try SideFiles.undoLinked(restore: id, windowClosed: windowClosed) }
-            catch { throw RestoreError("\(error)") }
+            catch { throw RestoreError(PlainWords.why(error)) }
         }
         // the folders an import's sessions were pointed at (SessionsRepoint.swift) are taken back first, so what this restore wrote is
         // where it wrote it again; a session resumed since stays re-pointed (said)
         if !SessionsRepoint.linked(restore: id).isEmpty {
             do { r.problems += try SessionsRepoint.undoLinked(restore: id, windowClosed: windowClosed) }
-            catch { throw RestoreError("\(error)") }
+            catch { throw RestoreError(PlainWords.why(error)) }
         }
         // which Claude Code sessions run: one `ps`, only when transcripts are among what is taken back. If it can't be read,
         // nothing is taken back (a failed look must not turn the undo into a no-op recorded as done).

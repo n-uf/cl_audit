@@ -488,7 +488,7 @@ enum SessionsRepoint {
                 try repointOne(s, label: label, picked: pick.folder, t: t, projects: projects, running: running, memoryDone: &memoryDone, mark: mark,
                                windowClosed: windowClosed, now: now, r: &r)
             } catch {
-                r.problems.append("\(error)")
+                r.problems.append(PlainWords.why(error))
                 try? store.save(r)
             }
         }
@@ -763,7 +763,7 @@ enum SessionsRepoint {
         let leaf = dst.last!
         let temp: CreateOnly.Temp
         do { temp = try CreateOnly.Temp(".repoint-\(tag)-\(UUID().uuidString.prefix(8)).tmp", in: pfd) }
-        catch { throw RepointError("\(leaf) couldn't be written (\(error)); what was written stays until Undo.") }
+        catch { throw RepointError("\(leaf) couldn't be written (\(PlainWords.why(error))); what was written stays until Undo.") }
         defer { temp.discard() }
         let out = temp.fd
         var hash = SHA256()
@@ -911,7 +911,7 @@ enum SessionsRepoint {
         }
         // the prompt history and trust this Pick wrote for a moved session (SessionsSideApply.swift) go first; the session waits for its
         // folder again
-        do { r.problems += try SideFiles.undoPick(id, windowClosed: windowClosed) } catch { throw RepointError("\(error)") }
+        do { r.problems += try SideFiles.undoPick(id, windowClosed: windowClosed) } catch { throw RepointError(PlainWords.why(error)) }
         for k in r.sessions.indices { r.sessions[k].sideWritten = nil }
         let sessions = r.steps.map(\.session).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
         for sid in sessions.reversed() {

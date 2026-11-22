@@ -536,7 +536,7 @@ final class QuickChatModel: ObservableObject {
                     self.exited(status, tail)
                 }
                 do { try p.start() } catch {
-                    self.fail(.stopped(detail: "Claude Code couldn't start: \(error.localizedDescription)")); return
+                    self.fail(.stopped(detail: "Claude Code couldn't start: \(PlainWords.why(error))")); return
                 }
                 self.process = p
                 self.processKey = key

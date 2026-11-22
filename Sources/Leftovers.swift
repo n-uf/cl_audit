@@ -153,7 +153,7 @@ enum Leftovers {
         guard now.known else { return "\(tilde(expand(f.path)))'s sessions couldn't be counted, so it stays: open it in Finder to look." }
         guard now.sessions == 0 else { return "\(tilde(expand(f.path))) holds sessions now, so it stays: open it in Finder to look." }
         do { try toTrash(URL(fileURLWithPath: expand(f.path))); return nil }
-        catch { return "\(tilde(expand(f.path))) couldn't be moved to the Trash: \(error.localizedDescription)" }
+        catch { return "\(tilde(expand(f.path))) couldn't be moved to the Trash: \(PlainWords.why(error))" }
     }
 
     /// The profile without that folder on its list (after Move to Trash or Keep it).

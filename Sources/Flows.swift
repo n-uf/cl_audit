@@ -45,6 +45,8 @@ enum Flows {
             case .otherUnopenable: throw SwitchError.busy("Couldn't check claude-transplant's lock.")
             case .otherHeld: throw SwitchError.busy("claude-transplant is moving sessions; wait for it to finish.")
             }
+        } catch {
+            throw SwitchError.busy("Couldn't take cl_audit's lock.")       // (never the system's own words: they name a path)
         }
     }
 
@@ -52,7 +54,7 @@ enum Flows {
     /// sessions (its lock): the words, or nil. Takes the locks and lets go at once. Taking claude-transplant's flock for
     /// that instant can make a `lockf -t 0` caller that starts in that very moment fail once; it is only a look.
     static func busy() -> String? {
-        do { try takeLock().release(); return nil } catch { return "\(error)" }
+        do { try takeLock().release(); return nil } catch { return PlainWords.why(error) }
     }
 
     // MARK: what stopped half way

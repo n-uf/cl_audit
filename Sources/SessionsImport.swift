@@ -1005,7 +1005,7 @@ enum SessionsImport {
             var seen = Set<String>(), sum: Int64 = 0
             var setupRels: [String] = []
             for it in m.items {
-                guard let c = SessionsRestore.components(it.path), seen.insert(it.path).inserted else { throw ArchiveError("A backup.json names a path that isn't a plain one (\(it.path.prefix(60))); refused.") }
+                guard let c = SessionsRestore.components(it.path), seen.insert(it.path).inserted else { throw ArchiveError("A backup.json names a path that isn't a plain one (\(PlainWords.noIds(String(it.path.prefix(60))))); refused.") }
                 switch it.role {
                 case .window:
                     let named = movePart ? ClaudeFiles.isUUID(c.count == 4 ? c[1] : "") && ClaudeFiles.isUUID(c.count == 4 ? c[2] : "")
@@ -1018,14 +1018,14 @@ enum SessionsImport {
                     // Claude Code's setup: only the places and names an export carries (SessionsSetup.swift), a SHA-256 for every file,
                     // the execute flag only on a skill's own files and on scripts, and the sensitive part only from an encrypted image
                     guard m.version >= 2, c.count >= 2, c[0] == "setup", Setup.pathProblem(Array(c.dropFirst())) == nil else {
-                        throw ArchiveError("A backup.json names a setup file in a place, or with a name, an export doesn't carry (\(it.path.prefix(60))); refused.")
+                        throw ArchiveError("A backup.json names a setup file in a place, or with a name, an export doesn't carry (\(PlainWords.noIds(String(it.path.prefix(60))))); refused.")
                     }
                     let rel = c.dropFirst().joined(separator: "/")
                     guard let h = it.sha, h.count == 64, h.allSatisfy({ "0123456789abcdef".contains($0) }) else { throw ArchiveError("A setup file has no valid hash in backup.json (\((c.last ?? "").prefix(40))); refused.") }
                     if it.exec == true, !Setup.execAllowed(rel) { throw ArchiveError("backup.json marks a file executable that is neither a skill's own file nor a script settings.json points to (\((c.last ?? "").prefix(40))); refused.") }
                     if Setup.sensitive(rel), container != "image" { throw ArchiveError("A zip carries no settings.json, hook scripts or plugin marketplaces (only the encrypted disk image does); refused.") }
                     // a scheduled task's prompt came with format 3
-                    if Setup.unit(of: rel).kind == .task, m.version < 3 { throw ArchiveError("A backup.json names a setup file in a place, or with a name, an export doesn't carry (\(it.path.prefix(60))); refused.") }
+                    if Setup.unit(of: rel).kind == .task, m.version < 3 { throw ArchiveError("A backup.json names a setup file in a place, or with a name, an export doesn't carry (\(PlainWords.noIds(String(it.path.prefix(60))))); refused.") }
                     setupRels.append(rel)
                 case .config:
                     // the window's claude_desktop_config.json (format 3): one file, in one place, only from an encrypted image, at most 8 MB, a

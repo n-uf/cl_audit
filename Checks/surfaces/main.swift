@@ -4528,6 +4528,13 @@ MainActor.assumeIsolated {
               "S5/F3: the thrown texts of a failed write name no folder and no id: \(thrown) | \(swapped)")
         let said = tildeNoIds(gone + "/local_x.json")
         check(!hexRun(said) && said.hasSuffix("/claude-code-sessions/…/never-made/local_x.json"), "S5/F3: a path in a sentence leaves the account and organisation folders out: \(said)")
+        // each id folder on its own: a folder that is no id before it (the account's name, x) stays, an id after it goes
+        let oneId = tildeNoIds("/data/claude-code-sessions/x/\(uuid(92))/local_x.json")
+        let twoIds = tildeNoIds("/data/local-agent-mode-sessions/\(uuid(93))/\(uuid(94))/local_x.json")
+        let noId = tildeNoIds("/data/claude-code-sessions/x/y/local_x.json")
+        check(oneId == "/data/claude-code-sessions/x/…/local_x.json" && twoIds == "/data/local-agent-mode-sessions/…/local_x.json"
+              && noId == "/data/claude-code-sessions/x/y/local_x.json" && ![oneId, twoIds].contains(where: hexRun),
+              "S5/F3: tildeNoIds replaces each id folder on its own (x/<id> keeps x): \(oneId) | \(twoIds) | \(noId)")
     }
 
     // no first-letter-and-dots mask left anywhere in the app's sources
