@@ -667,7 +667,7 @@ MainActor.assumeIsolated {
     // the title read again after Show emails goes off holds nothing of the address, and back on it names the account again
     let held = SessionsCard.targets([kb], for: entry)
     check(held[kb.id] == b.email, "the card keeps the account's address, not a short name: \(held)")
-    func cardTitle() -> String { SessionsCard.title(kb, address: held[kb.id]) }
+    func cardTitle() -> String { SessionsCard.title(kb, held: held[kb.id]) }
     let shownTitle = cardTitle()
     AddressPrivacy.shared.apply(blur: true)
     let hiddenTitle = cardTitle()
