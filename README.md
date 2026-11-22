@@ -118,8 +118,7 @@ Privacy ▸ **Usage history** turns that off.
 **Where it goes: only to Anthropic.** cl_audit uses the token for two requests to Anthropic's own server:
 `api.anthropic.com/api/oauth/usage` (your 5-hour and weekly figures) and `api.anthropic.com/api/oauth/profile`
 (which account a profile is signed in to). There is no cl_audit server, no analytics and no sign-up, and
-nothing else goes over the network, with one exception: what you type in [Quick chat](#quick-chat) goes to
-Anthropic through Claude Code, as any Claude Code prompt does. **Renew sign-in** (off by default) runs Claude Code once with a tiny prompt
+nothing else goes over the network. **Renew sign-in** (off by default) runs Claude Code once with a tiny prompt
 when the saved access key has run out, so Claude Code fetches a fresh one itself; cl_audit never writes it.
 
 **What it doesn't change.** Any app running under your macOS user can read Claude Code's saved login the
@@ -189,8 +188,7 @@ works: it refreshes, starts the agent first, or (paused) starts it now.
 ### Which account is in use
 
 Each profile has one **active account**, shown with a green lamp and "in use" on every screen: the menu bar icon's
-menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the profile ▸ Accounts, the Switch page and
-the quick chat.
+menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the profile ▸ Accounts and the Switch page.
 
 - **The Claude app's signed-in account comes first.** The app's settings file names the account
   (`lastKnownAccountUuid` in its `config.json`); its log gives the organisation and whether it signed out. The log is the
@@ -384,36 +382,13 @@ press-and-hold, and the icon checks which mouse button is down at that moment.
 
 ## Quick chat
 
-A floating chat over any app, in Claude's own colours: a bar first ("Ask anything"), and after the first message a
-chat window that stays floating, on every Space, until Esc hides it. It never brings cl_audit or the Claude app forward.
-Your own Claude Code answers it, signed in to the account a profile has in use, so it counts against that account's limits
-and follows a switch.
+cl_audit has no chat of its own: the quick chat is [cl_quick](https://cl-quick.n-uf.com). **Quick chat** in a
+profile's menu bar or Dock icon menu opens cl_quick on that profile's Claude Code folder. Without cl_quick on the Mac
+the item reads **Get cl_quick…** and opens its site.
 
-- **Opening it:** the shortcut (off until you turn it on in General ▸ Quick chat; ⌥Space by default), or **Quick
-  chat** in a profile's menu bar or Dock icon menu, which chats on that profile. Esc or ⌘W hides it and keeps the chat;
-  opening it again brings it back as it was.
-- **Asking:** Return sends, Shift-Return adds a line. Answers stream in as Markdown, code blocks have Copy, and under
-  each answer are Copy, Ask again and "answered by Haiku 5.5 · 2.4 s". Follow-ups go on in the same Claude Code
-  session; the pencil (⌘N) starts a new chat and shrinks the window back to the bar. Stop ends an answer where it is.
-- **Model and thinking:** a picker for each under the field. Haiku with thinking off by default; a pick holds for that
-  chat, and New chat goes back to the defaults in General. With thinking on, "Thought for 5 s" sits above the answer;
-  it opens to show the thinking when Claude Code passes it on (for Haiku 5.5 it reports only that it thought).
-  A model may still answer at once when it judges the question needs no thinking.
-- **The account line:** the profile, the address of its account in use ("hidden address" unless Show emails is on) and its
-  week, in the level colours; the bar shows the profile and the week. When a limit is full, it says so before you
-  send and offers **Switch account…** for the standby account offered first (not known to be full, the least used by
-  the week it left with), through the Switch page; what you
-  typed goes once the switch is done.
-- **When something goes wrong:** if Claude Code stops mid-answer, the window keeps what arrived, says what happened and
-  offers Retry. Claude Code not installed, or the profile not signed in, says so with a way to fix it.
-
-How it runs: the agent hosts it. Each chat is one `claude` process kept open between messages (closed after 10 minutes
-idle; the next message goes on with the session), in print mode with stream-json in and out, on the profile's own
-folder (`CLAUDE_CONFIG_DIR`) and in quick chat's work folder. It runs with no tools, no MCP servers, no settings files
-and no slash commands, and it gets only an allowlisted part of the Mac's environment (home, user, language, proxies
-and certificates), never a key, a token or another provider's settings, with Claude Code's non-essential traffic
-(telemetry, error reports, update checks) off. Nothing of yours is sent but your messages, and only through Claude
-Code; cl_audit adds a short system prompt of its own (answer briefly, no tools).
+Chats from cl_audit's earlier quick chat stay where they were until you move them: Settings ▸ General ▸ Backups shows
+"Old quick chats from cl_audit" with **Show in Finder** and **Move to Trash…** while any are left. Empty ones went to
+the Trash on their own.
 
 ## Settings
 
@@ -516,7 +491,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     deletes a folder by itself. A folder that holds sessions is never offered for the Trash: it says how many and offers
     **Show in Finder** instead. Keep it stops this list asking.
   - A folder that isn't there is never read, and cl_audit never starts Claude Code for it (not Renew sign-in, logout,
-    quick chat, Terminal or the Claude window), so a folder you deleted isn't made again; a sign-in you start makes its
+    Terminal or the Claude window), so a folder you deleted isn't made again; a sign-in you start makes its
     new folder first, and never goes through a link.
 
   As on every card, the pop-ups and fields fill their width, so their right edges line up; the
@@ -627,7 +602,7 @@ beside them; in one column everything follows in that order.
 ### General settings
 
 Three columns, each with its subject printed at the top: **cl_audit** (Usage in the background, Privacy, Backups,
-Quick chat, About),
+About),
 **How usage looks** (Face, Dashboard cards, Widget) and **The Dock** (App icon, Dock). In two columns the Dock goes
 under cl_audit; one column keeps the same order, top to bottom. Every row is one line.
 
@@ -654,19 +629,6 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
   hides it for that folder, and a folder you pick later shows it again (remembered per folder, since where the copies sit is
   what the line is about; cl_audit's own folder never shows it). See
   [Backups of a profile's sessions](#backups-of-a-profiles-sessions).
-- **Quick chat:** see [Quick chat](#quick-chat).
-  - **Shortcut:** off by default. On, it opens the chat from any app: ⌥Space, ⌃⌥Space, ⌥⇧Space, ⌃Space or ⌘Space.
-    It's checked against macOS's own Space shortcuts (Spotlight, Finder's search, the input sources, as this Mac has
-    them set) and the Claude app's Quick Entry, and a line says which it clashes with, or that another app already
-    holds it. It's registered the way macOS's own app shortcuts are, so there's no Accessibility permission to give.
-  - **Profile** the shortcut chats on (the first by default), **Model** (Haiku) and **Thinking** (off) for a new chat.
-  - **Where it keeps things:** each profile's chats, which Claude Code keeps in that profile's folder under
-    `projects/<the work folder's name>/` and deletes after 30 days by default, with their count and size; the work
-    folders and the settings in `~/Library/Application Support/usage-n-uf/quick-chat/`. Each has **Show in Finder**.
-    Nothing goes into macOS preferences.
-  - **Counting:** off by default: quick chats are left out of a profile's Sessions card and backups.
-  - **Remove quick chat data…** moves every profile's quick chats, the work folders and the settings to the Trash,
-    after the chat closes; the shortcut turns off. A profile's other sessions stay as they are.
 - **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
