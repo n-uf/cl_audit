@@ -3111,8 +3111,50 @@ do {
           "window off, Claude Code folder made: ready without a window folder")
     check(NewAccountSetup.linksReady(dN) && NewAccountSetup.signedInEmail(dN) == nil && !NewAccountSetup.checks(dN, accounts: [], runs: [], checked: true).contains { $0.blocks },
           "…the next step is signing in (folders done, not signed in, nothing blocks), not Create again")
-    check(NewAccountSetup.lockedNote(dN).contains("Cancel and clean up"), "…its locked switches say Cancel and clean up starts over")
+    check(NewAccountSetup.lockedNote(dN).contains("Cancel and clean up"), "…Name and Folder say Cancel and clean up starts over (the Claude window switch isn't locked)")
+    check(!NewAccountSetup.needsDesktop(dN) && !NewAccountSetup.quitStep(dN) && NewAccountSetup.desktopSignIn(dN) == .notChecked,
+          "…window off: no window sign-in step and no desktop-app step")
+    // the Claude window turned on after Create: step b's own look comes before its folder (step 1 isn't asked again)
+    NewAccountSetup.windowOn(&dN)
+    check(dN.claudeWindow && NewAccountSetup.windowStepDue(dN) && !NewAccountSetup.foldersReady(dN) && NewAccountSetup.needsDesktop(dN) && !NewAccountSetup.quitStep(dN)
+          && dN.createdDataDir == nil && !fm.fileExists(atPath: expand(dN.dataDir)),
+          "window on after Create: step b due, the folders follow the switch (not ready), the window sign-in is a step again, and turning it on made no folder")
+    check(NewAccountSetup.checks(dN, accounts: [], runs: [], checked: false).contains { $0.section == .running && $0.blocks },
+          "…its desktop-app line waits for a look (never taken for closed before one)")
+    let openApp = [ClaudeRun(id: 9901, kind: .desktop, folder: FolderKey.standardDataDir)]
+    let heldOpen = NewAccountSetup.windowStepLook(&dN, accounts: [], runs: openApp)
+    let heldNone = NewAccountSetup.windowStepLook(&dN, accounts: [], runs: nil)
+    check(heldOpen?.hasPrefix("The desktop app is open") == true && heldNone == NewAccountSetup.failedWords && dN.createdDataDir == nil && !fm.fileExists(atPath: expand(dN.dataDir)),
+          "…a look finding the desktop app open, or one that couldn't check, holds its folder: \(heldOpen ?? "nil") / \(heldNone ?? "nil")")
+    check(NewAccountSetup.windowStepLook(&dN, accounts: [], runs: []) == nil && dN.createdDataDir == dN.dataDir && fm.fileExists(atPath: expand(dN.dataDir))
+          && NewAccountSetup.foldersReady(dN) && !NewAccountSetup.windowStepDue(dN),
+          "…a look finding it closed: the folder is made by Create's own code and recorded, and the folders are ready")
+    // turned off again: the window this setup started on the folder it made quits first, then only that folder goes
+    if let ownN = NewAccountSetup.ownWindow(dN) {
+        stand[Launcher.dataDirKey(of: ownN)] = [standIn()]
+        let offN = NewAccountSetup.windowOff(dN)
+        check(offN == .off(quit: true) && !ClaudeWindow.isOpen(ownN) && !fm.fileExists(atPath: expand(dN.dataDir)) && fm.fileExists(atPath: expand(dN.configDir))
+              && ClaudeWindow.isOpen(Account(usualProbe)),
+              "window off after it was set up: its window quit first, the folder it made gone, the Claude Code folder and the usual window left: \(offN)")
+        NewAccountSetup.turnedOff(&dN)
+        check(!dN.claudeWindow && dN.createdDataDir == nil && !dN.windowLate && NewAccountSetup.foldersReady(dN) && !NewAccountSetup.needsDesktop(dN)
+              && NewAccountSetup.ownWindow(dN) == nil, "…the draft: no window, nothing of the window left for Cancel, the folders ready without it")
+    } else { check(false, "window on after Create: its folder is this setup's own window folder") }
     NewAccountSetup.discard(dN, claude: nil)
+    // a window this setup didn't start (its folder was there before) is never quit: the switch stays on, its folder kept
+    var dX = NewAccountDraft(); dX.name = "Notours"
+    try? fm.createDirectory(atPath: expand(dX.dataDir), withIntermediateDirectories: true)
+    try! NewAccountSetup.createOrConnect(&dX)
+    let theirs = Account(dX.entry), keyX = Launcher.dataDirKey(of: theirs)
+    stand[keyX] = [standIn()]
+    check(dX.createdDataDir == nil && NewAccountSetup.windowOff(dX) == .kept(NewAccountSetup.notOurWindow) && ClaudeWindow.isOpen(theirs) && fm.fileExists(atPath: expand(dX.dataDir)),
+          "window off with a window this setup didn't start open: the switch stays on, that window not quit, its folder kept")
+    stand[keyX]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(2) { !ClaudeWindow.isOpen(theirs) }
+    check(NewAccountSetup.windowOff(dX) == .off(quit: false) && fm.fileExists(atPath: expand(dX.dataDir)),
+          "…closed meanwhile: it goes off, and the folder this setup didn't make stays")
+    NewAccountSetup.discard(dX, claude: nil)
+    try? fm.removeItem(atPath: expand(dX.dataDir))
     // the same with the window on: the window folder is still needed
     var dW = NewAccountDraft(); dW.name = "Winready"
     try! NewAccountSetup.createOrConnect(&dW)
