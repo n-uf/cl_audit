@@ -167,11 +167,11 @@ struct DetailsView: View {
                                 Circle().fill(Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)).frame(width: 6, height: 6)
                                     .shadow(color: Color(nsColor: .systemGreen).opacity(info.activeLit ? 0.7 : 0), radius: 2)
                                 // no label: the address with its lamp says it's in use
-                                Text(line.text).font(.caption).foregroundStyle(.secondary).lineLimit(1).hidesEmail(true)
+                                AccountValue(text: line.text, size: 10).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                         } else {
-                            Text(line.text).font(.caption).foregroundStyle(.secondary)
-                                .hidesEmail(info.login != nil)
+                            // the sign-in's address (blurred while hidden), or "No Claude Code sign-in"
+                            AccountValue(text: line.text, size: 10).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     if let n = info.activeNote {

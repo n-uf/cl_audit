@@ -9,8 +9,8 @@
 // first profile is made. A key that is there (the new one or the legacy `blurEmails`) is never touched.
 //
 // With it off, no address is shown anywhere in clear: not its first letter, its length or its domain. A view draws one fixed
-// blurred stand-in (the address itself only while the pointer is on it; the launcher's rows and the dashboard's cards too,
-// AccountValue), a sentence says "hidden address", and the Dock panels leave an address out (`hidesEmail`).
+// blurred stand-in (the address itself only while the pointer is on it; the launcher's rows, the dashboard's cards and the
+// Dock panels too, AccountValue), and a sentence says "hidden address".
 //
 // Every process that shows an address calls `AddressSettings.start()` at launch (Sources/main.swift: the settings app, the
 // icon apps and the agent all start there); the Dock tile plug-in shows none and has no observable object: if it ever
@@ -131,20 +131,4 @@ struct AccountValue: View {
     var body: some View {
         if AddressSettings.hides(text) { BlurredAddress(address: text, size: size, reserve: reserve, blur: blur) } else { Text(text) }
     }
-}
-
-/// Outside Settings: leaves an email address out while emails are hidden.
-struct HiddenEmail: ViewModifier {
-    @ObservedObject private var privacy = AddressPrivacy.shared
-    let isEmail: Bool
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if isEmail && privacy.blur { EmptyView() } else { content }
-    }
-}
-
-extension View {
-    /// Left out entirely while emails are hidden (`isEmail`: the text holds an address or an account id,
-    /// AddressText.needsHiding).
-    func hidesEmail(_ isEmail: Bool = true) -> some View { modifier(HiddenEmail(isEmail: isEmail)) }
 }

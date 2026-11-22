@@ -3674,12 +3674,13 @@ MainActor.assumeIsolated {
         check(menuBarMenu(pmShow).items.first?.view is NSHostingView<MenuBarRow> && barRow[0] == "hidden address" && barRow.allSatisfy(clean),
               "N3: the menu bar's top row (a hosted view): its in-use line says \"hidden address\", it and its other lines hold nothing of any address: \(barRow)")
         let panel = dockPanelOf(pm, pmShow)
-        // (the panel's account line holds the address itself: its view leaves the line out entirely while addresses are hidden
-        // (`hidesEmail`, which asks AddressText.needsHiding about this very text), so the check is that the text is one it hides)
+        // (the panel's account line holds the address itself: its view draws it as AccountValue, the blurred stand-in while
+        // addresses are hidden (AddressSettings.hides asks AddressText.needsHiding about this very text), so the check is that
+        // the text is one it hides)
         let panelWords = [panel.activeNote ?? "", panel.splitKey ?? ""]
         let panelLine = panel.accountLine?.text ?? ""
         check(panelWords.allSatisfy(clean) && (clean(panelLine) || AddressText.needsHiding(panelLine)),
-              "M1: the Dock panel's note and key hold nothing of any address, and its account line is one its view leaves out: \(panelWords) \(panel.accountLine?.text ?? "nil")")
+              "M1: the Dock panel's note and key hold nothing of any address, and its account line is one its view draws as the stand-in: \(panelWords) \(panel.accountLine?.text ?? "nil")")
 
         // the dashboard card: its notice, line, terminal and sign-in words, and the Switch account menu
         let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
