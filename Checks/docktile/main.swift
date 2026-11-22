@@ -401,6 +401,16 @@ do {
     check(DockTileMenu.splitDiffers.count <= DockTileMenu.rowCharacters
           && ("Usage hidden: Terminal on " + AddressText.hidden).count <= DockTileMenu.rowCharacters,
           "the split's status line fits whole: its fallback, and the address form while hidden")
+    // the problem (why the numbers aren't fresh) and credits being spent: status lines of their own under the account
+    var troubled = record(); troubled.problem = "Couldn't read the usage: no network"
+    troubled.credits = Credits(enabled: true, used: 4.2, cap: nil, currency: "USD", out: false, spentAt: now.addingTimeInterval(-60))
+    let troubledLines = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: troubled, now: now), windowOpen: false, now: now), blur: false)
+    check(Array(troubledLines.prefix(5)) == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "Using usage credits · $4.20 spent",
+                                            "Couldn't read the usage: no network"],
+          "credits being spent and the problem: grey status lines under the account's (got \(troubledLines))")
+    check(DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: false, problem: "5-hour 12% · Week 40%", now: now), blur: false)
+            .filter { $0 == "5-hour 12% · Week 40%" }.count == 1,
+          "a problem that says what the status line says: not twice")
     let back = DockTileMenu.AddressRow(address: "ann@example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
     let longBack = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
     check(DockTileMenu.words(back, blur: true) == "hidden address · move back here" && DockTileMenu.words(back, blur: false) == "ann@example.com · move back here"

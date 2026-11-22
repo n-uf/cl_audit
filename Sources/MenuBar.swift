@@ -360,8 +360,10 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         menu.addItem(row)
         menu.addItem(.separator())
         // under the row, the Dock icon's menu (DockTileMenu) without its profile row and status line (the row says them): the
-        // accounts, the Claude window and the actions; this process draws the menu, so a hidden address is AddressMenuRow
-        let rows = DockTileMenu.rows(p.entry, p.show, windowOpen: DockTile.windowOpen(p.entry.id), header: false, now: now)
+        // accounts with the problem line, the Claude window and the actions; this process draws the menu, so a hidden address
+        // is AddressMenuRow
+        let rows = DockTileMenu.rows(p.entry, p.show, windowOpen: DockTile.windowOpen(p.entry.id), header: false,
+                                     problem: p.problem, now: now)
         DockTileMenu.add(rows, to: menu, light: ProfileLED.lamp(p.entry.ownColor).color, views: true,
                          target: self, action: #selector(picked(_:)))
         menu.addItem(.separator())

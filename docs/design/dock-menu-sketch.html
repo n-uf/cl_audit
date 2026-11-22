@@ -278,7 +278,10 @@ profile Main, sample addresses ann@example.com, bob@example.com and cy@example.c
       <li><b>Its status line</b> under it: <code>5-hour 34% · Week 12%</code>, <code>5-hour full · in 1h 42m</code>,
         <code>Usage hidden: Terminal on …</code> (<code>Usage hidden: Terminal's account differs</code> when the
         address wouldn't fit in 40), <code>No recent numbers</code>, <code>Signed out</code>,
-        <code>The sign-in stopped working</code>; a longer line of the record's is cut in the middle.</li>
+        <code>The sign-in stopped working</code>; a longer line of the record's is cut in the middle. Under it, each a grey
+        line of its own when there is one: <code>Using usage credits · $4.20 spent</code> while credits are being spent, and
+        the problem (why the numbers aren't fresh) when it says something the status line doesn't. The full line keeps only
+        the countdown (<code>5-hour full · in 1h 42m</code>), no clock time.</li>
       <li><b>Each standby account</b>, plain: a click opens the Switch page with it (the way back while a limit is full).</li>
       <li><b>In a split</b>, Terminal's account as its own row (<code>bob · Terminal</code>: a click switches Main to it,
         as the card's row does), and <b>Sign Terminal in to ann@example.com…</b> as the one extra action.</li>
@@ -299,8 +302,9 @@ profile Main, sample addresses ann@example.com, bob@example.com and cy@example.c
         characters.</li>
       <li>The menu bar's menu keeps its own row on top (the profile, its bars) and then these rows without the profile row
         and the status line, and Hide from the menu bar last.</li>
-      <li>Gone from the menus: the Switch account ▸ submenu and its "Experimental" line (the Switch page still says it),
-        and the separate "Switch to …" while a limit is full (the standby row is that way back).</li>
+      <li>Left out on purpose: the Switch account ▸ submenu and its "Experimental: may lose data" line (no submenu carries
+        it now; the Switch page warns before anything happens), and the separate "Switch to …" while a limit is full (the
+        standby row is that way back).</li>
       <li>"Sign in to another account…" (cl_audit's words on the card's switch menu) for cl_quick's "Add an account…".</li>
       <li>The Terminal row and its Sign Terminal in… (cl_quick has no Terminal split); the Claude window submenu,
         Refresh now, Dashboard and Profile settings… (cl_quick's app menu has Quick chat, Settings… and Quit instead).</li>

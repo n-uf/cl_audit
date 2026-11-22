@@ -72,12 +72,13 @@ enum DockTileMenu {
     /// The menu's rows for a profile and its value now. `windowOpen`: its Claude window runs; `appRunning`: the Dock icon
     /// app's own menu (Quit and keep is its own); `header` false: the menu bar's, under its row, which already says the
     /// profile and its numbers (no profile row, no status line). Without the agent (`agentRuns` false: the Dock tile's) the
-    /// actions, the agent's to do, are left out and the menu says so.
+    /// actions, the agent's to do, are left out and the menu says so. `problem`: why the numbers aren't fresh, when the
+    /// caller knows more than the record (the Dock icon app: the agent not running); nil: the record's own.
     static func rows(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, agentRuns: Bool = true, appRunning: Bool = false,
-                     header: Bool = true, now: Date = Date()) -> [Row] {
+                     header: Bool = true, problem: String? = nil, now: Date = Date()) -> [Row] {
         var rows: [Row] = []
         if header { rows.append(.profile(title(e.name.isEmpty ? Account.label(e) : e.name))) }
-        rows += accounts(e, show, header: header, actions: agentRuns, now: now)
+        rows += accounts(e, show, header: header, actions: agentRuns, problem: problem, now: now)
         guard agentRuns else {
             rows.append(.separator)
             rows.append(.info("cl_audit's agent isn't running"))
@@ -102,7 +103,8 @@ enum DockTileMenu {
     /// The accounts: the one in use ticked with its status line under it (`header`), in the split Terminal's account and the
     /// sign-in to the app's, each standby account, Sign in to another account…. `actions` false (no agent to do them): the
     /// account in use and its status only.
-    static func accounts(_ e: AccountEntry, _ show: ProfileShow, header: Bool, actions: Bool = true, now: Date = Date()) -> [Row] {
+    static func accounts(_ e: AccountEntry, _ show: ProfileShow, header: Bool, actions: Bool = true, problem: String? = nil,
+                         now: Date = Date()) -> [Row] {
         let d = show.display
         let listed = e.listed(by: show.view)                    // never the account in use on standby too
         let lines = SwitchMenu.lines(listed, now: now, own: show.ownStandbyID)
@@ -117,7 +119,7 @@ enum DockTileMenu {
                 out.append(.address(AddressRow(address: inUse, ticked: true)))
             }
         }
-        if header { out.append(status(show, now: now)) }
+        out += statusLines(show, header: header, problem: problem, now: now)
         guard actions else { return out }
         // the split by hand: Terminal's account is its own row (a click switches to it, as the card's row does)
         var terminal: String?
@@ -141,6 +143,26 @@ enum DockTileMenu {
             out.append(.address(AddressRow(address: l.address, act: .switchTo, target: l.key, enabled: l.canSwitch)))
         }
         out.append(.action("Sign in to another account…", .addAccount, e.id))
+        return out
+    }
+
+    /// The grey lines under the account in use: its status line (`header`: the menu bar's row says it already), then, each as
+    /// a status line of its own, usage credits while they're being spent (`header` too: the row shows them) and the problem
+    /// (why the numbers aren't fresh) when it says something the status line doesn't.
+    static func statusLines(_ show: ProfileShow, header: Bool, problem: String? = nil, now: Date = Date()) -> [Row] {
+        var out: [Row] = []
+        let first = status(show, now: now)
+        if header {
+            out.append(first)
+            if let u = show.usage, let c = u.credits, c.inUse(fiveHour: u.fiveHour, weekly: u.weekly) {
+                out.append(.status(c.line, full: false))
+            }
+        }
+        let shown: String? = { if case .status(let s, _) = first { return s }; return nil }()
+        if let why = (problem ?? show.record?.problem)?.trimmingCharacters(in: .whitespacesAndNewlines), !why.isEmpty,
+           why != shown, fit(why) != shown {
+            out.append(.status(why, full: false))
+        }
         return out
     }
 
