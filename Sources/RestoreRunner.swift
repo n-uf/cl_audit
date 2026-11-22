@@ -359,12 +359,12 @@ final class RestoreRunner: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch sided {
-                case .success(let s)?: self.sided = s; self.sideNote = s.flatMap { $0.problems.isEmpty ? nil : $0.problems.prefix(3).joined(separator: " ") }
+                case .success(let s)?: self.sided = s; self.sideNote = s.flatMap { $0.problems.isEmpty ? nil : PlainWords.stored($0.problems.prefix(3)) }
                 case .failure(let err)?: self.sideNote = "The side files weren't written: \(PlainWords.why(err))."
                 case nil: break
                 }
                 switch moved {
-                case .success(let m)?: self.repointed = m; self.repointNote = m.problems.isEmpty ? nil : m.problems.prefix(3).joined(separator: " ")
+                case .success(let m)?: self.repointed = m; self.repointNote = m.problems.isEmpty ? nil : PlainWords.stored(m.problems.prefix(3))
                 case .failure(let err)?: self.repointNote = "The picked folders weren't applied: \(PlainWords.why(err)). Pick them again under \(e.name)'s Sessions."
                 case nil: break
                 }
@@ -465,7 +465,7 @@ final class RestoreRunner: ObservableObject {
                         self.note = "\(u.undoLeft) restored \(u.undoLeft == 1 ? "transcript is" : "transcripts are") held by a running Claude Code session, so \(u.undoLeft == 1 ? "it was" : "they were") left in place and this restore stays open. Undo again once the session has ended takes the rest."
                         self.phase = self.priorPhase
                     } else {
-                        self.note = u.problems.isEmpty ? nil : u.problems.suffix(3).joined(separator: " ")
+                        self.note = u.problems.isEmpty ? nil : PlainWords.stored(u.problems.suffix(3))
                         self.phase = .undone
                         // an undo of the default-profile move's restore also puts the window kind back (DefaultProfileRunner.swift)
                         if let rec = DefaultProfile.record(forReceipt: u.id) { self.model?.defaultMoveUndone(rec.id) }

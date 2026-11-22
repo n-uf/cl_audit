@@ -312,7 +312,7 @@ final class ImportRunner: ObservableObject {
                 case .failure(let err): self.moveNote = PlainWords.why(err)
                 case .success(let r):
                     self.moved = r
-                    if !r.problems.isEmpty { self.moveNote = r.problems.prefix(3).joined(separator: " ") }
+                    if !r.problems.isEmpty { self.moveNote = PlainWords.stored(r.problems.prefix(3)) }
                     if !r.settings.isEmpty { MoveLive.reload() }
                     self.followMove()
                 }

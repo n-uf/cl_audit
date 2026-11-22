@@ -830,6 +830,18 @@ do {
     check(PlainWords.noIds("window/\(uuid(981))/\(uuid(982))/local_x.json") == "window/…/…/local_x.json"
           && PlainWords.noSessionPaths("couldn't write \(src)/local_x.json (disk)") == "couldn't write the account's sessions folder (disk)",
           "8a: ids in a quoted path and a path under claude-code-sessions are left out")
+    // a system error of another domain (OSStatus, URL) is said by its code too; cl_audit's own keep their words
+    check(PlainWords.why(NSError(domain: NSOSStatusErrorDomain, code: -50, userInfo: [NSFilePathErrorKey: src])) == "the system couldn't do it (error -50)"
+          && PlainWords.why(URLError(.notConnectedToInternet, userInfo: [NSURLErrorFailingURLStringErrorKey: "file://" + src])) == "the system couldn't do it (error -1009)"
+          && PlainWords.why(SwitchError.windowOpen) == "\(SwitchError.windowOpen)",
+          "8a: an error of another domain is said by its code, never its text; the app's own keep their words")
+    // a receipt saved by 26.11.86 and before keeps the system's raw words (path and ids): said in fixed words when shown
+    let oldRaw = "local_x1.json didn't move: \(NSError(domain: NSCocoaErrorDomain, code: 516, userInfo: [NSFilePathErrorKey: src + "/local_x1.json"]))."
+    let oldSaid = "The task file wasn't written: You don't have permission to save the file “t.json” in the folder “\(uuid(982))”."
+    let shown = PlainWords.stored([oldRaw, oldSaid, "1 session stayed."])
+    check(!plain(oldRaw) && plain(shown)
+          && shown == "local_x1.json didn't move: the system couldn't do it. The task file wasn't written: You don't have permission to save the file “t.json” in the folder “…”. 1 session stayed.",
+          "8a: an older receipt's raw error and a folder named by its id are said without them; a problem this build wrote stays as it is: \(shown)")
 }
 
 // ============ 8b. the move inside the one folder: backup, held sessions, tasks with their state, Undo ============

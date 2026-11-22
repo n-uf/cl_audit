@@ -338,7 +338,7 @@ final class SwitchRunner: ObservableObject {
                     self.receipt = r
                     self.oldAccount = p.from.email
                     let notes = (Self.stayWords(p).map { [$0] } ?? []) + r.problems
-                    self.moveNote = notes.isEmpty ? nil : notes.joined(separator: " ")
+                    self.moveNote = notes.isEmpty ? nil : PlainWords.stored(notes)
                     self.leftNote = Self.leftBehind(p)
                     self.begin(e, g)
                 case .failure(let err):
@@ -381,7 +381,7 @@ final class SwitchRunner: ObservableObject {
                 switch result {
                 case .success(let back):
                     self.receipt = back
-                    self.moveNote = back.problems.isEmpty ? nil : back.problems.joined(separator: " ")
+                    self.moveNote = back.problems.isEmpty ? nil : PlainWords.stored(back.problems)
                     self.leftNote = nil
                     // only partly: it stays open, and says what was left
                     if back.undone != nil {

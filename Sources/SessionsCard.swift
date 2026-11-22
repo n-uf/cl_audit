@@ -336,7 +336,7 @@ struct SessionsCard: View {
             case .success(let done):
                 // only partly undone: it stays on the card, saying what was left (Undo it again)
                 oldSwitch = done.undone == nil ? done : nil
-                if !done.problems.isEmpty { problem = done.problems.joined(separator: " ") }
+                if !done.problems.isEmpty { problem = PlainWords.stored(done.problems) }
             case .failure(let err): problem = PlainWords.why(err)
             }
         }

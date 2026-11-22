@@ -51,8 +51,35 @@ enum PlainWords {
     /// own (SwitchError, BackupError, …) keep their own words, with any path under a sessions folder named by its role.
     static func why(_ error: Error) -> String {
         let ns = error as NSError
-        guard ns.domain == NSCocoaErrorDomain || ns.domain == NSPOSIXErrorDomain else { return noSessionPaths("\(error)") }
-        return reason(domain: ns.domain, code: ns.code, under: ns.userInfo[NSUnderlyingErrorKey] as? NSError)
+        if ns.domain == NSCocoaErrorDomain || ns.domain == NSPOSIXErrorDomain {
+            return reason(domain: ns.domain, code: ns.code, under: ns.userInfo[NSUnderlyingErrorKey] as? NSError)
+        }
+        // any other system error (an NSError of another domain, or one of Foundation's own, URLError say): its code only, never
+        // its text, which can carry the path in its user info
+        if type(of: error) is NSError.Type || String(reflecting: type(of: error)).hasPrefix("Foundation.") {
+            return "the system couldn't do it (error \(ns.code))"
+        }
+        return noSessionPaths("\(error)")
+    }
+
+    /// The problems a receipt keeps, as one note: each said through `stored(_:)`, then joined.
+    static func stored<S: Sequence>(_ problems: S) -> String where S.Element == String {
+        problems.map { stored($0) }.joined(separator: " ")
+    }
+
+    /// One problem a receipt keeps, as it is shown. A receipt saved by an earlier build (26.11.86 and before) can hold a raw
+    /// system error ("x.json didn't move: Error Domain=… UserInfo={NSFilePath=…/claude-code-sessions/<id>/<id>/…}") or a
+    /// system sentence naming a folder by its id ("… in the folder “<id>”"): the raw error is said in fixed words, a path
+    /// through a sessions folder by its role, a folder named by an id as "…". A problem this build wrote is said as it is.
+    static func stored(_ line: String) -> String {
+        var t = line
+        if let r = t.range(of: "Error Domain=") {
+            t = String(t[..<r.lowerBound]) + "the system couldn't do it" + (line.hasSuffix(".") ? "." : "")
+        }
+        t = noSessionPaths(t)
+        let quotedID = #"[“"'‘][0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}[”"'’]"#
+        guard let re = try? NSRegularExpression(pattern: quotedID) else { return t }
+        return re.stringByReplacingMatches(in: t, range: NSRange(t.startIndex..., in: t), withTemplate: "“…”")
     }
 
     /// `text` with every path that runs through a window's sessions folder (and what follows it: the ids) named by its role.
