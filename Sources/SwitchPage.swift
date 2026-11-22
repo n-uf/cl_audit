@@ -6,7 +6,7 @@
 //   Ready        the account in use (lit) and the one picked; Switch to ultra-2
 //   Waiting      Terminal shows Claude Code's sign-in; the folder is looked at every 2 s, for 10 minutes
 //   Reached      Main works on ultra-2 · ultra-1 on standby
-//   Other        signed in as ultra-3, not ultra-2: the profile is on ultra-3 now (unless another profile works on it)
+//   Other        signed in as ultra-3, not ultra-2: the profile is on ultra-3 now (another profile's too: shared seats)
 //   Timed out    no sign-in in 10 minutes: nothing changed
 //
 // Display colours, one meaning each: green = in use; mint = switching and the account switched to; amber = waiting for
@@ -634,6 +634,11 @@ struct SwitchPage: View {
             }
             // the keys, then the line under them: one under the other, never side by side
             VStack(alignment: .leading, spacing: 8) {
+                // the account picked is another profile's too (shared seats): said before the switch runs, amber, never a block
+                if runner.phase == .ready, let note = sharedNote {
+                    Text(note).font(.system(size: 10.5)).foregroundStyle(face.caution)
+                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                }
                 keys
                 if let line = statusLine {
                     Text(line).font(.system(size: 10.5)).foregroundStyle(isBad ? face.danger : face.muted)
@@ -642,6 +647,21 @@ struct SwitchPage: View {
             }
             .padding(.top, 8)
         }
+    }
+
+    /// Before a switch to an account another profile has (shared seats): FolderRules.sharedNote, and when both profiles have a
+    /// Claude window and the other one is on it, that claude.ai keeps one sidebar per account, so its window shows the
+    /// sessions moved here too. nil: no other profile has it.
+    private var sharedNote: String? {
+        Self.sharedNote(entry: entry, standby: standby, among: model.accounts)
+    }
+
+    static func sharedNote(entry: AccountEntry, standby: StandbyAccount, among accounts: [AccountEntry]) -> String? {
+        let owners = FolderRules.seatSharers(standby.identity, among: accounts, except: entry.id)
+        guard let note = FolderRules.sharedNote(owners) else { return nil }
+        let windows = owners.filter { !$0.standby && $0.profile.claudeWindow }
+        guard entry.claudeWindow, !windows.isEmpty else { return note }
+        return note + " Claude windows on one account share one sidebar, so these sessions also show in \(windows.count == 1 ? "the Claude window" : "the Claude windows") of \(FolderRules.names(windows))."
     }
 
     private var isBad: Bool {
@@ -674,9 +694,7 @@ struct SwitchPage: View {
             if again { return "Claude Code's sign-in on \(entry.configDir) works again." }
             return entry.claudeWindow ? "Open \(name)'s Claude window and sign it in to \(to): cl_audit doesn't sign the app in or out." : nil
         case .other(let e):
-            if let c = clash {
-                return "\(AddressSettings.words(e)) is \(c.owner)'s account, so \(name) doesn't take it: its numbers wait until you sign in as \(to) (or another of \(name)'s accounts)."
-            }
+            // (another profile's account too: taken all the same, shared seats)
             return "\(name) works on \(AccountNames.short(e)) now, and \(from) is on standby. To get \(to), switch the browser's claude.ai account first, then sign in again."
         case .timedOut:
             return runner.canUndo ? "No sign-in came in 10 minutes: Claude Code is still on \(from)." : "Nothing changed: \(name) is still on \(from)."
