@@ -459,16 +459,18 @@ enum NewAccountSetup {
         guard d.claudeWindow, d.window == .separate, d.createdDataDir == nil, exists(d.dataDir), isOpen(Account(d.entry)) else { return nil }
         return notOurWindow
     }
-    static let notOurWindow = "A Claude window this setup didn't start is open on its folder, so the switch stays on."
-    static let windowQuitFirst = "Its Claude window was quit first."
-    static let windowDidntQuit = "Its Claude window didn't quit in time, so the switch stays on."
+    static let notOurWindow = "A Claude window this setup didn't start is open on its folder.\nThe switch stays on."
+    static let windowQuitFirst = "The Claude window this setup started was quit first."
+    static let windowDidntQuit = "The Claude window didn't quit in time.\nThe switch stays on. Quit the window, then turn the switch off again."
+    static let windowFolderKept = "The window's folder couldn't be removed.\nThe switch stays on."
 
     enum WindowOff: Equatable { case off(quit: Bool), kept(String) }
 
-    /// Turning the Claude window off after the folder is made: the window this setup started on the window folder it made
-    /// quits first, confirmed by identity (pid and start time) as Cancel's clean-up does (ownWindow), then that folder goes.
-    /// A folder it didn't make stays, and a window it didn't start is never quit (windowOffBlock). `kept`: nothing changed.
-    /// Blocks; call off the main thread, then `turnedOff` on the draft.
+    /// Turning the Claude window off after the folder is made: the window this setup started quits first, then that folder
+    /// goes. Which window is this setup's goes by the folder it made (ownWindow: createdDataDir), as Cancel's clean-up does;
+    /// pid plus start time only confirm that the instances asked to quit are gone (ClaudeWindow.quitAndWait).
+    /// A folder it didn't make stays, and a window it didn't start is never quit (windowOffBlock). `kept`: the switch stays
+    /// on and the draft is unchanged (its window may have quit). Blocks; call off the main thread, then `turnedOff` on the draft.
     static func windowOff(_ d: NewAccountDraft) -> WindowOff {
         if let why = windowOffBlock(d) { return .kept(why) }
         var quit = false
@@ -477,7 +479,11 @@ enum NewAccountSetup {
             quit = true
         }
         if let a = ownWindow(d), ClaudeWindow.isOpen(a) { return .kept(windowDidntQuit) }     // opened again meanwhile
-        if let dir = ownWindow(d).flatMap({ _ in d.createdDataDir }) { try? FileManager.default.removeItem(at: URL(fileURLWithPath: expand(dir))) }
+        if let dir = ownWindow(d).flatMap({ _ in d.createdDataDir }) {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: expand(dir)))
+            // still there: the switch stays on and createdDataDir stays, so Cancel or the switch can try again
+            if exists(dir) { return .kept(windowFolderKept) }
+        }
         return .off(quit: quit)
     }
 
