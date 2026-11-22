@@ -23,8 +23,13 @@ final class AddressMenuRow: NSView {
     let pick: () -> Void
     /// For pictures: drawn as if the menu highlighted the row.
     var highlighted = false
-    /// The account in use: a checkmark in the left margin (the address keeps the standby rows' column).
-    var ticked = false
+    /// The account in use: a checkmark in the left margin (the address keeps the standby rows' column); VoiceOver says it is
+    /// selected.
+    var ticked = false { didSet { setAccessibilitySelected(ticked) } }
+    /// The checkmark's font: a little smaller than the row's, so it sits in the margin with room before the address.
+    static let tickFont = NSFont.menuFont(ofSize: 11)
+    /// The room between the checkmark and the address.
+    static let tickGap: CGFloat = 3
     /// A test override of the setting (nil: the app's, AddressPrivacy.shared); it reaches what is drawn and what is spoken.
     var blur: Bool?
 
@@ -77,6 +82,8 @@ final class AddressMenuRow: NSView {
     var title: String { Self.words(prefix: prefix, address: address, suffix: suffix, blur: blurred) }
     /// What VoiceOver reads, worked out on each call (so a change of the setting reaches it): the same words for every account.
     override func accessibilityLabel() -> String? { title }
+    /// The account in use says so to VoiceOver, as a native ticked item does.
+    override func accessibilityValue() -> Any? { ticked ? "selected" : nil }
 
     private let ink = AddressInk(font: AddressMenuRow.font)
     private func w(_ s: String) -> CGFloat { ceil((s as NSString).size(withAttributes: [.font: Self.font]).width) }
@@ -133,7 +140,11 @@ final class AddressMenuRow: NSView {
         func text(_ s: String, x: CGFloat) {
             (s as NSString).draw(at: NSPoint(x: x, y: mid - h / 2), withAttributes: [.font: Self.font, .foregroundColor: color])
         }
-        if ticked { text("✓", x: max(2, Self.padX - w("✓") - 2)) }
+        if ticked {
+            let tw = ceil(("✓" as NSString).size(withAttributes: [.font: Self.tickFont]).width)
+            ("✓" as NSString).draw(at: NSPoint(x: max(1, Self.padX - tw - Self.tickGap), y: mid - h / 2),
+                                   withAttributes: [.font: Self.tickFont, .foregroundColor: color])
+        }
         var x = Self.padX
         if !prefix.isEmpty { text(prefix, x: x); x += w(prefix) }
         ink.draw(address: address, readable: sharp, color: color, x: x, midY: mid, blur: blurred)

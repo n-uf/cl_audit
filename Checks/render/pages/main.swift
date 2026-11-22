@@ -428,7 +428,7 @@ struct AtlasMenu: View {
         let now = Date()
         let e = model.accounts[0]
         // the menu bar icon's menu (MenuBarItems: the agent's Profile, then menuNeedsUpdate's items)
-        let p = MenuBarItems.Profile(show: ProfileShow.load(e, now: now), problem: Store.status(for: e)?.problem)
+        let p = MenuBarItems.Profile(show: ProfileShow.load(e, now: now))
         // (the menu as menuNeedsUpdate builds it, under its row: the hosted MenuBarRow is drawn on its own above)
         let mbMenu = NSMenu(title: e.id)
         MenuBarItems(profiles: { [p] }, refresh: { _ in }).menuNeedsUpdate(mbMenu)
@@ -641,7 +641,7 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     let show = ProfileShow.load(e, now: now)
     let dockApp = AppDelegate(); dockApp.entry = e; dockApp.show = show
     let tile = dockApp.model(), panel = dockApp.detailsInfo()
-    let profileItem = MenuBarItems.Profile(show: show, problem: head?.problem)
+    let profileItem = MenuBarItems.Profile(show: show)
     let glyph = MenuBarGlyph(look: e.menuBarLook, item: MenuBarItems.item(profileItem, now: now)).image(dark: true)
     for w in [CGFloat(340), 460, 708] {
         snapshot(framed(AccountCard(row: cardRow(e, now: now), actions: acts).frame(width: min(w, 460))
@@ -809,7 +809,7 @@ if ProcessInfo.processInfo.environment["DOCKPREVIEW_ONLY"] != nil {
         _ = Store.writeStatus(e.id, r)
         // as the agent and the Dock app build them (Agent's MenuBarItems.Profile, IconApp's face, menu and panel)
         let show = ProfileShow.load(e, now: now)
-        let profile = MenuBarItems.Profile(show: show, problem: show.record?.problem)
+        let profile = MenuBarItems.Profile(show: show)
         let items = MenuBarItems(profiles: { [profile] }, refresh: { _ in })
         let barMenu = NSMenu(title: e.id); items.menuNeedsUpdate(barMenu)
         let dockApp = AppDelegate(); dockApp.entry = e; dockApp.show = show
@@ -1020,7 +1020,7 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
         // the menu bar row and the Dock icon's menu, as the agent and the Dock app build them from the same value
         let show = ProfileShow.load(p, now: now)
         let dockApp = AppDelegate(); dockApp.entry = p; dockApp.show = show
-        let barProfile = MenuBarItems.Profile(show: show, problem: show.record?.problem)
+        let barProfile = MenuBarItems.Profile(show: show)
         let barMenu = NSMenu(title: p.id); MenuBarItems(profiles: { [barProfile] }, refresh: { _ in }).menuNeedsUpdate(barMenu)
         let menus = VStack(alignment: .leading, spacing: 8) {
             Text("Menu bar row").font(.caption.bold()).foregroundColor(.white)

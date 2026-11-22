@@ -484,7 +484,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // one design with the Dock tile's and the menu bar's (DockTileMenu): the Dock draws this menu itself, so its rows are
         // plain titles (no item views)
         let s = show ?? ProfileShow.of(entry, raw: nil)
-        let rows = DockTileMenu.rows(entry, s, windowOpen: claudeOpen, appRunning: true, problem: problem)
+        let rows = DockTileMenu.rows(entry, s, windowOpen: claudeOpen, appRunning: true, agentDown: !Agent.isAlive(Agent.readMark()))
         return DockTileMenu.menu(rows, light: ProfileLED.lamp(entry.ownColor).color, views: false,
                                  target: self, action: #selector(menuPicked(_:)))
     }

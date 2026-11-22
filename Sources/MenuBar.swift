@@ -247,8 +247,6 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         /// The profile as its headline surfaces show it (ProfileShow: ProfileCore's one value and its words): the icon, the
         /// row and the menu draw this and decide nothing.
         let show: ProfileShow
-        /// Why it couldn't update, in words (the record's, else the reader's state).
-        var problem: String? = nil
 
         var entry: AccountEntry { show.entry }
         var display: ProfileDisplay { show.display }
@@ -362,8 +360,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         // under the row, the Dock icon's menu (DockTileMenu) without its profile row and status line (the row says them): the
         // accounts with the problem line, the Claude window and the actions; this process draws the menu, so a hidden address
         // is AddressMenuRow
-        let rows = DockTileMenu.rows(p.entry, p.show, windowOpen: DockTile.windowOpen(p.entry.id), header: false,
-                                     problem: p.problem, now: now)
+        let rows = DockTileMenu.rows(p.entry, p.show, windowOpen: DockTile.windowOpen(p.entry.id), header: false, now: now)
         DockTileMenu.add(rows, to: menu, light: ProfileLED.lamp(p.entry.ownColor).color, views: true,
                          target: self, action: #selector(picked(_:)))
         menu.addItem(.separator())

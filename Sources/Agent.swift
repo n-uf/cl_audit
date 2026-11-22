@@ -243,7 +243,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                     // (ProfileShow): the reader's own copy can hold numbers no screen may show (past a reset, an expired
                     // sign-in's old ones)
                     let show = ProfileShow.load(r.entry)
-                    return MenuBarItems.Profile(show: show, problem: show.record?.problem ?? r.state.menuText)
+                    return MenuBarItems.Profile(show: show)
                 }
             }
         }, refresh: { [weak self] id in self?.refresh(id) })

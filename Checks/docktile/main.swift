@@ -401,16 +401,25 @@ do {
     check(DockTileMenu.splitDiffers.count <= DockTileMenu.rowCharacters
           && ("Usage hidden: Terminal on " + AddressText.hidden).count <= DockTileMenu.rowCharacters,
           "the split's status line fits whole: its fallback, and the address form while hidden")
-    // the problem (why the numbers aren't fresh) and credits being spent: status lines of their own under the account
-    var troubled = record(); troubled.problem = "Couldn't read the usage: no network"
-    troubled.credits = Credits(enabled: true, used: 4.2, cap: nil, currency: "USD", out: false, spentAt: now.addingTimeInterval(-60))
+    // credits being spent and why the numbers aren't fresh: short fixed status lines of their own under the account
+    var troubled = record(); troubled.state = "rateLimited"; troubled.problem = "Usage service busy, retrying later"
+    troubled.credits = Credits(enabled: true, used: 4.2, cap: 50, currency: "USD", out: false, spentAt: now.addingTimeInterval(-60))
     let troubledLines = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: troubled, now: now), windowOpen: false, now: now), blur: false)
-    check(Array(troubledLines.prefix(5)) == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "Using usage credits · $4.20 spent",
-                                            "Couldn't read the usage: no network"],
-          "credits being spent and the problem: grey status lines under the account's (got \(troubledLines))")
-    check(DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: false, problem: "5-hour 12% · Week 40%", now: now), blur: false)
-            .filter { $0 == "5-hour 12% · Week 40%" }.count == 1,
-          "a problem that says what the status line says: not twice")
+    check(Array(troubledLines.prefix(5)) == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "Credits · $4.20 of $50.00 spent",
+                                            "Usage service busy · retrying later"],
+          "credits being spent and the busy service: short grey status lines under the account's, never cut (got \(troubledLines))")
+    check(DockTileMenu.problemLine(state: "failed(\"The network connection was lost.\")", agentDown: false) == "Couldn't update · retrying"
+          && DockTileMenu.problemLine(state: "ok", agentDown: true) == DockTileMenu.agentDownWords
+          && ["expired", "noLogin", "denied", "unreadable", "ok", "idle"].allSatisfy { DockTileMenu.problemLine(state: $0, agentDown: false) == nil }
+          && [DockTileMenu.agentDownWords, "Couldn't update · retrying", "Usage service busy · retrying later"].allSatisfy { $0.count <= DockTileMenu.rowCharacters },
+          "the problem line: a few fixed words for a failed read, a busy service or no agent, none of the system's own; none where "
+          + "the status line says it (expired, signed out, refused, unreadable)")
+    var expiredRec = record(); expiredRec.state = "expired"; expiredRec.problem = FetchState.expired.menuText
+    let expiredLines = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: expiredRec, now: now), windowOpen: false, now: now), blur: false)
+    check(expiredLines.contains("The sign-in stopped working") && !expiredLines.contains { $0.hasPrefix("Sign-in expired") },
+          "an expired sign-in: one line says it (got \(expiredLines))")
+    check(DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: false, agentDown: true, now: now), blur: false).contains(DockTileMenu.agentDownWords),
+          "the Dock icon app's word that the agent isn't running: its own line")
     let back = DockTileMenu.AddressRow(address: "ann@example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
     let longBack = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
     check(DockTileMenu.words(back, blur: true) == "hidden address · move back here" && DockTileMenu.words(back, blur: false) == "ann@example.com · move back here"

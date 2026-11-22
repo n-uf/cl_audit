@@ -72,13 +72,13 @@ enum DockTileMenu {
     /// The menu's rows for a profile and its value now. `windowOpen`: its Claude window runs; `appRunning`: the Dock icon
     /// app's own menu (Quit and keep is its own); `header` false: the menu bar's, under its row, which already says the
     /// profile and its numbers (no profile row, no status line). Without the agent (`agentRuns` false: the Dock tile's) the
-    /// actions, the agent's to do, are left out and the menu says so. `problem`: why the numbers aren't fresh, when the
-    /// caller knows more than the record (the Dock icon app: the agent not running); nil: the record's own.
+    /// actions, the agent's to do, are left out and the menu says so. `agentDown`: the Dock icon app's word that the agent
+    /// isn't running, so its numbers aren't updating (problemLine).
     static func rows(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, agentRuns: Bool = true, appRunning: Bool = false,
-                     header: Bool = true, problem: String? = nil, now: Date = Date()) -> [Row] {
+                     header: Bool = true, agentDown: Bool = false, now: Date = Date()) -> [Row] {
         var rows: [Row] = []
         if header { rows.append(.profile(title(e.name.isEmpty ? Account.label(e) : e.name))) }
-        rows += accounts(e, show, header: header, actions: agentRuns, problem: problem, now: now)
+        rows += accounts(e, show, header: header, actions: agentRuns, agentDown: agentDown, now: now)
         guard agentRuns else {
             rows.append(.separator)
             rows.append(.info("cl_audit's agent isn't running"))
@@ -103,7 +103,7 @@ enum DockTileMenu {
     /// The accounts: the one in use ticked with its status line under it (`header`), in the split Terminal's account and the
     /// sign-in to the app's, each standby account, Sign in to another account…. `actions` false (no agent to do them): the
     /// account in use and its status only.
-    static func accounts(_ e: AccountEntry, _ show: ProfileShow, header: Bool, actions: Bool = true, problem: String? = nil,
+    static func accounts(_ e: AccountEntry, _ show: ProfileShow, header: Bool, actions: Bool = true, agentDown: Bool = false,
                          now: Date = Date()) -> [Row] {
         let d = show.display
         let listed = e.listed(by: show.view)                    // never the account in use on standby too
@@ -119,7 +119,7 @@ enum DockTileMenu {
                 out.append(.address(AddressRow(address: inUse, ticked: true)))
             }
         }
-        out += statusLines(show, header: header, problem: problem, now: now)
+        out += statusLines(show, header: header, agentDown: agentDown, now: now)
         guard actions else { return out }
         // the split by hand: Terminal's account is its own row (a click switches to it, as the card's row does)
         var terminal: String?
@@ -147,24 +147,37 @@ enum DockTileMenu {
     }
 
     /// The grey lines under the account in use: its status line (`header`: the menu bar's row says it already), then, each as
-    /// a status line of its own, usage credits while they're being spent (`header` too: the row shows them) and the problem
-    /// (why the numbers aren't fresh) when it says something the status line doesn't.
-    static func statusLines(_ show: ProfileShow, header: Bool, problem: String? = nil, now: Date = Date()) -> [Row] {
+    /// a status line of its own in a short fixed form (never cut, never a system's own words), usage credits while they're
+    /// being spent (`header` too: the row shows them) and why the numbers aren't fresh when the status line doesn't say it.
+    static func statusLines(_ show: ProfileShow, header: Bool, agentDown: Bool = false, now: Date = Date()) -> [Row] {
         var out: [Row] = []
-        let first = status(show, now: now)
         if header {
-            out.append(first)
-            if let u = show.usage, let c = u.credits, c.inUse(fiveHour: u.fiveHour, weekly: u.weekly) {
-                out.append(.status(c.line, full: false))
+            out.append(status(show, now: now))
+            if let u = show.usage, let c = u.credits, c.inUse(fiveHour: u.fiveHour, weekly: u.weekly, now: now) {
+                out.append(.status(creditsLine(c), full: false))
             }
         }
-        let shown: String? = { if case .status(let s, _) = first { return s }; return nil }()
-        if let why = (problem ?? show.record?.problem)?.trimmingCharacters(in: .whitespacesAndNewlines), !why.isEmpty,
-           why != shown, fit(why) != shown {
-            out.append(.status(why, full: false))
-        }
+        if let why = problemLine(state: show.record?.state, agentDown: agentDown) { out.append(.status(why, full: false)) }
         return out
     }
+
+    /// "Credits · $4.20 of $50.00 spent": the menus' short form of Credits.line (at most 40 characters).
+    static func creditsLine(_ c: Credits) -> String {
+        let s = c.spentWords.map { "Credits · " + $0 } ?? "Using usage credits"
+        return s.count <= rowCharacters ? s : "Using usage credits"
+    }
+
+    /// Why the numbers aren't fresh, in a few words, only where the status line doesn't say it already: the agent not
+    /// running (the Dock icon app's word: `agentDown`), a read that failed, the usage service busy. A sign-in that expired,
+    /// is signed out, refused or unreadable is the status line's (The sign-in stopped working, Signed out, Can't read…).
+    static func problemLine(state: String?, agentDown: Bool) -> String? {
+        if agentDown { return agentDownWords }
+        guard let state else { return nil }
+        if state.hasPrefix("failed") { return "Couldn't update · retrying" }
+        if state == "rateLimited" { return "Usage service busy · retrying later" }
+        return nil
+    }
+    static let agentDownWords = "Agent not running · open cl_audit"
 
     /// The account's one status line: a full limit (crimson), why the numbers aren't shown, the numbers, or why there are none.
     static func status(_ show: ProfileShow, now: Date = Date()) -> Row {

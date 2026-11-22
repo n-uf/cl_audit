@@ -716,7 +716,7 @@ do {
         check(rec?.state == "expired" && rec?.weekly == nil && rec?.fiveHour == nil && rec?.weeklyResets == nil && rec?.fiveHourResets == nil,
               "\(what): the record as every screen reads it has no numbers, state expired")
         let show = ProfileShow.load(p, now: now)
-        let mb = MenuBarItems.Profile(show: show, problem: rec?.problem)
+        let mb = MenuBarItems.Profile(show: show)
         let glyph = MenuBarItems.item(mb, now: now)
         check(mb.usage == nil && glyph.week == nil && glyph.five == nil && glyph.countdown == nil && show.needsLogin
               && show.keyWords(short: false) == "Sign in…" && !show.display.lamp && show.display.grey,
@@ -798,7 +798,7 @@ do {
         check(rec?.state == "noLogin" && rec?.weekly == nil && rec?.fiveHour == nil && (!keepsWhen || rec?.updatedAt != nil),
               "\(what): the record as every screen reads it has no numbers\(keepsWhen ? ", when they were read kept" : "")")
         let show = ProfileShow.load(p, now: now)
-        let mb = MenuBarItems.Profile(show: show, problem: rec?.problem)
+        let mb = MenuBarItems.Profile(show: show)
         let glyph = MenuBarItems.item(mb, now: now)
         check(mb.usage == nil && glyph.week == nil && glyph.five == nil && show.needsLogin && !show.display.lamp,
               "\(what): the menu bar has no bars, Sign in…, the lamp off")
@@ -1566,7 +1566,7 @@ do {
           && splitShow.loginAddress == pat.email && splitShow.numbersHint == split?.numbersHint,
           "the value in the split: no numbers (the split), nothing full, grey, lit, the key to pat, pat's address for Sign in")
     // the menu bar row's line: the short form in the split, the record's line otherwise (MenuBarRow.lineWords)
-    let barProfile = MenuBarItems.Profile(show: splitShow, problem: head?.problem)
+    let barProfile = MenuBarItems.Profile(show: splitShow)
     var notSplit = record(app: appPat, code: mo, reading: mo.email, weekly: 40)
     notSplit.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: mo, loginEmail: mo.email, names: [:], now: now)
     let notSplitShow = ProfileShow.of(e, raw: notSplit, now: now)
