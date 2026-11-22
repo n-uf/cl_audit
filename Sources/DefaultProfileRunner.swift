@@ -394,23 +394,25 @@ final class DefaultProfileRunner: ObservableObject {
         return Self.mayKeep(s, on: t)
     }
 
-    /// The old profile's account may stand by on `t`: `t` doesn't have it, by the one owner rule (in use or standing by,
-    /// one remembered by its address included), nor by its id in another organisation (StandbyTidy keeps one entry per
-    /// id, never the account in use).
+    /// The old profile's account may stand by on `t`: `t` doesn't have that seat, by the one owner rule (in use or standing
+    /// by, one remembered by its address included), and joining it to `t`'s list as StandbyTidy keeps it (one entry per
+    /// seat, never the account in use: StandbyTidy.merge) adds an entry. The same account id in another organisation is
+    /// another seat, so it may.
     static func mayKeep(_ s: Seat, on t: AccountEntry) -> Bool {
-        !t.has(s) && !t.seats.contains { AccountID.same($0.account, s.account) }
+        guard !t.has(s) else { return false }
+        let before = StandbyTidy.merge([], into: t.standby, inUse: t.seat)
+        let after = StandbyTidy.merge([StandbyAccount(email: s.email ?? "", seat: s, id: "keep")], into: t.standby, inUse: t.seat)
+        return after.count > before.count
     }
 
-    /// `e`'s standby list once the old profile's own standby accounts join it: each once, as StandbyTidy keeps them (its id
-    /// in any organisation, else its address) and by the one owner rule, never `e`'s account in use (by either), so the
-    /// next tidy changes nothing.
+    /// `e`'s standby list once the old profile's own standby accounts join it: StandbyTidy.merge (each seat once, never `e`'s
+    /// account in use), after leaving out one the one owner rule says `e` has already (an entry remembered by its address,
+    /// or `e`'s account in use known by its address), so the next tidy changes nothing.
     static func merged(_ old: [StandbyAccount], into e: AccountEntry) -> [StandbyAccount] {
-        var out = e.standby
-        for q in old where !(e.seat.map { s in q.identity.sameAccount(AccountIdentity(s)) || AccountID.same(q.seat?.account, s.account) } ?? false)
-            && !out.contains(where: { StandbyTidy.key($0) == StandbyTidy.key(q) || $0.identity.sameAccount(q.identity) }) {
-            out.append(q)
+        let incoming = old.filter { q in
+            !(e.seat.map { q.identity.sameAccount(AccountIdentity($0)) } ?? false) && !e.standby.contains { $0.identity.sameAccount(q.identity) }
         }
-        return out
+        return StandbyTidy.merge(incoming, into: e.standby, inUse: e.seat)
     }
 
     /// Keep it: the default profile remembers the old one's account as a standby account (signed out there: switching to it
