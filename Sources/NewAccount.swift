@@ -622,7 +622,7 @@ struct NewAccountView: View {
     /// after its path, so moving one would lose it.
     private func folderCard(stacked: Bool) -> some View {
         SCard(title: "Claude Code", info: "Where this profile's Claude Code sign-in, settings and history live: one folder, signed in to one claude.ai account. Folders are used where they are; Claude Code names a folder's Keychain sign-in after its path, so a moved folder would lose it.") {
-            SRow(label: "Account", info: "The claude.ai account this profile is for. Accounts signed in in Claude Code folders on this Mac that no profile uses come with their folder. Another profile's account can be this profile's too, and both profiles then show the same numbers. Sign in to another account… opens Claude Code's own sign-in in Terminal with the address filled in; the browser's claude.ai account decides which account it is, checked afterwards by its account and organisation ids.", first: true, stacked: stacked) {
+            SRow(label: "Account", info: "The claude.ai account this profile is for.\nAn account that a Claude Code folder on this Mac is signed in to, and that no profile uses, comes with its folder.\nAn account another profile has can be this profile's too. Picking it signs in to it in this profile's own folder, and both profiles then show the same numbers.\nSign in to another account… opens Claude Code's own sign-in in Terminal with the address filled in.\nThe browser's claude.ai account decides which account it is. It is checked afterwards by its account and organisation ids.", first: true, stacked: stacked) {
                 accountValue
             }
             accountLine

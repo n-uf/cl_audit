@@ -88,24 +88,28 @@ enum FolderRules {
         seatSharers(seat.map { AccountIdentity($0) }, among: accounts, except: id, signedIn: signedIn)
     }
 
-    /// The one amber line a shared account gets wherever it is picked, signed in or shown (never red, never a block): in
-    /// use in another profile, "This account is also in use in “Main”. Both profiles show the same numbers."; else on
-    /// standby there, "This account is also a standby account in “Main”."; several: "“Main” and 2 others". No address in
-    /// it: the field or row above shows the address, or its stand-in. nil: no other profile has it.
+    /// The one amber note a shared account gets wherever it is picked, signed in or shown (never red, never a block), one
+    /// thought per line: in use in another profile, "This account is also in use in “Main”.\nBoth profiles show the same
+    /// numbers." (several: "All of these profiles show the same numbers."); else on standby there, "This account also
+    /// stands by in “Main”.". No address in it: the field or row above shows the address, or its stand-in. nil: no other
+    /// profile has it.
     static func sharedNote(_ owners: [SeatOwner]) -> String? {
         let inUse = owners.filter { !$0.standby }, standby = owners.filter(\.standby)
         if !inUse.isEmpty {
-            return "This account is also in use in \(names(inUse)). " + (inUse.count == 1 ? "Both profiles show the same numbers." : "All of them show the same numbers.")
+            return "This account is also in use in \(names(inUse))." + "\n"
+                + (inUse.count == 1 ? "Both profiles show the same numbers." : "All of these profiles show the same numbers.")
         }
-        if !standby.isEmpty { return "This account is also a standby account in \(names(standby))." }
+        if !standby.isEmpty { return "This account also stands by in \(names(standby))." }
         return nil
     }
 
-    /// “Main”, or “Main” and 1 other, “Main” and 2 others: the first profile's name as it is, the rest counted.
+    /// “Main”, or “Main” and one other profile, “Main” and 2 other profiles: the first profile's name as the setting names
+    /// it (AddressSettings.words: a name that is an address is hidden like one), the rest counted.
     static func names(_ owners: [SeatOwner]) -> String {
         guard let first = owners.first else { return "" }
         let more = owners.count - 1
-        return "“\(first.profile.name)”" + (more == 0 ? "" : " and \(more) \(more == 1 ? "other" : "others")")
+        return "“\(AddressSettings.words(first.profile.name))”"
+            + (more == 0 ? "" : more == 1 ? " and one other profile" : " and \(more) other profiles")
     }
 
 

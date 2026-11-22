@@ -161,7 +161,7 @@ do {
     check(sharedSeat[0].seat.map { $0.same(u3) } == true && sharedSeat[1] == work && sharedSeat[0].standby.map { $0.seat?.account } == [u1.account],
           "shared seats: an account another profile works on is taken here too, the other profile unchanged")
     check(FolderRules.sharedNote(FolderRules.seatSharers(u3, among: sharedSeat, except: "main", signedIn: { dirs[$0] }))
-          == "This account is also in use in “Work”. Both profiles show the same numbers.", "…with the amber note, no address in it")
+          == "This account is also in use in “Work”.\nBoth profiles show the same numbers.", "…with the amber note, no address in it")
     // the same seat twice in one profile: still never (noted again, it's in use once and not on its own standby)
     check(note(sharedSeat) == sharedSeat && !sharedSeat[0].standby.contains { $0.seat.map { $0.same(u3) } == true },
           "the same seat twice in one profile: never")
@@ -2265,12 +2265,22 @@ do {
     // several profiles: each once, in the file's order; the note names the first and counts the rest
     let third = profile("third", "~/.claude-nthird", u4)
     let both = FolderRules.seatSharers(u4, among: [main, work, third], signedIn: none)
-    check(both.map(\.profile.id) == ["main", "third"] && FolderRules.sharedNote(both) == "This account is also in use in “Main” and 1 other. All of them show the same numbers.",
+    check(both.map(\.profile.id) == ["main", "third"] && FolderRules.sharedNote(both) == "This account is also in use in “Main” and one other profile.\nAll of these profiles show the same numbers.",
           "two other profiles on one account: both found, the note short: \(FolderRules.sharedNote(both) ?? "none")")
+    // the Switch page, before a switch to an account another profile's Claude window is on: the note, then the sidebar
+    var winMain = main; winMain.claudeWindow = true
+    var mover = profile("mover", "~/.claude-nmover", u5, standby: [StandbyAccount(email: u4.email!, seat: u4, id: "m4")]); mover.claudeWindow = true
+    check(SwitchPage.sharedNote(entry: mover, standby: mover.standby[0], among: [winMain, work, mover])
+          == "This account is also in use in “Main”.\nBoth profiles show the same numbers.\nThe Claude window of “Main” is on this account too.\nIt shows the same sidebar, so these sessions show there as well.",
+          "the Switch page: a switch to Main's account, both with a Claude window: the note and the one sidebar, one thought per line")
+    mover.claudeWindow = false
+    check(SwitchPage.sharedNote(entry: mover, standby: mover.standby[0], among: [winMain, work, mover]) == "This account is also in use in “Main”.\nBoth profiles show the same numbers."
+          && SwitchPage.sharedNote(entry: mover, standby: StandbyAccount(email: u5.email!, seat: seat(9, "ultra-9@example.com"), id: "m9"), among: [winMain, work, mover]) == nil,
+          "…without a Claude window of its own: the note alone; an account no other profile has: nothing")
     // the address route: never refused for another profile's account, the amber note instead (no address in it)
-    check(NewAccountSetup.addressNote("ULTRA-2@example.com", among: list, signedIn: none) == "This account is also a standby account in “Work”.",
+    check(NewAccountSetup.addressNote("ULTRA-2@example.com", among: list, signedIn: none) == "This account also stands by in “Work”.",
           "an address typed that is another profile's standby account: the standby note")
-    check(NewAccountSetup.addressNote(u4.email!, among: list, signedIn: none) == "This account is also in use in “Main”. Both profiles show the same numbers."
+    check(NewAccountSetup.addressNote(u4.email!, among: list, signedIn: none) == "This account is also in use in “Main”.\nBoth profiles show the same numbers."
           && NewAccountSetup.addressNote(u5.email!, among: list, signedIn: none) == nil
           && NewAccountSetup.addressProblem(u4.email!) == nil
           && NewAccountSetup.addressProblem("nope") == "Type the account's email address.", "an account in use: the in-use note, not refused; a free one: nothing")
@@ -2285,9 +2295,9 @@ do {
         return NewAccountSetup.checks(d, accounts: list, runs: [], checked: true).filter { $0.section == .signIn }
     }
     let standbyLines = signInLines(u2), inUseLines = signInLines(u4), freeLines = signInLines(u5)
-    check(standbyLines.map(\.state) == [.ok, .warn] && standbyLines.last?.text == "This account is also a standby account in “Work”." && !standbyLines.contains { $0.blocks },
+    check(standbyLines.map(\.state) == [.ok, .warn] && standbyLines.last?.text == "This account also stands by in “Work”." && !standbyLines.contains { $0.blocks },
           "signed in to another profile's standby account: signed in, and the amber standby note, nothing blocks: \(standbyLines.map(\.text))")
-    check(inUseLines.map(\.state) == [.ok, .warn] && inUseLines.last?.text == "This account is also in use in “Main”. Both profiles show the same numbers."
+    check(inUseLines.map(\.state) == [.ok, .warn] && inUseLines.last?.text == "This account is also in use in “Main”.\nBoth profiles show the same numbers."
           && freeLines.map(\.state) == [.ok], "another profile's account in use: the amber in-use note, no red; a free one: fine")
     // Finish links the folder's account whoever else has it (shared seats), in use or standing by
     let installs = SettingsModel.applyInstalls
@@ -2314,9 +2324,9 @@ do {
     sign(noEmail.configDir, u5)
     put(expand(idless.configDir) + "/.claude.json", #"{"oauthAccount":{"emailAddress":"ultra-7@example.com"}}"#)
     let folders = [unlinked, noEmail, idless]
-    check(NewAccountSetup.addressNote("ULTRA-6@example.com", among: folders) == "This account is also in use in “Unlinked”. Both profiles show the same numbers."
-          && NewAccountSetup.addressNote(u5.email!, among: folders) == "This account is also in use in “Noemail”. Both profiles show the same numbers."
-          && NewAccountSetup.addressNote("ultra-7@example.com", among: folders) == "This account is also in use in “Idless”. Both profiles show the same numbers.",
+    check(NewAccountSetup.addressNote("ULTRA-6@example.com", among: folders) == "This account is also in use in “Unlinked”.\nBoth profiles show the same numbers."
+          && NewAccountSetup.addressNote(u5.email!, among: folders) == "This account is also in use in “Noemail”.\nBoth profiles show the same numbers."
+          && NewAccountSetup.addressNote("ultra-7@example.com", among: folders) == "This account is also in use in “Idless”.\nBoth profiles show the same numbers.",
           "an address typed: an unlinked profile's signed-in folder, a linked account with no address, a record with no id: found as before, a note")
     check(NewAccountSetup.addressNote("ultra-8@example.com", among: folders) == nil, "…another address: nothing to say")
     for f in folders { try? fm.removeItem(atPath: expand(f.configDir)) }
