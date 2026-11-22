@@ -4,7 +4,7 @@
 //                     this Mac…"; the picks are re-pointed right after the import. Once it ran: what each re-point did.
 //   CodeCard          Import of a move: the code checklist per project (clone source, path, branch, what wasn't pushed or committed on the
 //                     old Mac) with the commands as text to copy. cl_audit never runs git on this Mac.
-//   MissingFoldersRow Settings ▸ a profile ▸ Sessions: imported sessions whose folder isn't on this Mac, each with "Pick its folder…", so the
+//   MissingFoldersRow Settings ▸ a profile ▸ Sessions: imported sessions whose folder isn't on this Mac, each with "Pick folder…", so the
 //                     code can be cloned first and the session pointed at it afterwards. The Code-tab entry is written with the window
 //                     closed: the same quit (only that window) and reopen as a restore, through RepointRunner. Undo takes back the last.
 
@@ -237,7 +237,8 @@ struct MissingFoldersRow: View {
                             .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Pick its folder…") { runner.pick(s, entry: entry) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.busy)
+                    Button("Pick folder…") { runner.pick(s, entry: entry) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.busy)
+                        .help("Pick its folder on this Mac")
                 }
                 .padding(8).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 8).fill(face.text.opacity(0.05)))
