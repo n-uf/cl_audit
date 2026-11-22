@@ -50,51 +50,75 @@ enum FolderRules {
         return accounts.first { $0.id != id && windowKey($0.desktop, $0.desktopDataDir) == key }
     }
 
-    /// The profile that has an account (`seatOwner`): as its account in use (or, not linked yet, its folder signed in to
-    /// it), or on its standby list.
+    /// Another profile that has an account too (`seatSharers`): as its account in use (or, not linked yet, its folder
+    /// signed in to it), or on its standby list.
     struct SeatOwner {
         var profile: AccountEntry
         var standby: Bool
     }
 
-    /// The one owner rule (New profile's address and its sign-in, and Finish): the profile (other than `id`) that has this
-    /// account, in use or standing by (a standby account is still that profile's: one profile per account), else, not
-    /// linked yet, the one whose folder is signed in to it. Compared by the one owner rule (ProfileCore's
+    /// Shared seats (operator, 2026-11-22): one account (a seat: account id and organisation) may be in use or standing by
+    /// in several profiles; each shows that seat's numbers. Only the same seat twice in one profile is refused, and nothing
+    /// a person picks can add one (a profile's accounts come from its own sign-ins and what is found for it): noteAccounts
+    /// takes an account off the profile's own standby list as it comes into use, AccountList.adding never adds one a
+    /// profile has, and StandbyTidy keeps one entry per account.
+    /// The other profiles (than `id`) that have this account, in the profiles file's order, each once: in use (else, not
+    /// linked yet, its folder signed in to it) or standing by. Compared by the one owner rule (ProfileCore's
     /// AccountIdentity.sameAccount: the ids when both have one, any case; else the address and organisation; one known by
     /// its address only by the address). An address alone (typed) also matches a profile whose account in use has no
     /// address recorded, or that isn't linked yet, by the address its folder's .claude.json names (`recordEmail`, through
-    /// ClaudeFiles; also a record with no account id), as the address check always did.
-    static func seatOwner(_ who: AccountIdentity?, among accounts: [AccountEntry], except id: String? = nil,
-                          signedIn: (String) -> Seat? = Account.signedInSeat,
-                          recordEmail: (String) -> String? = { Account.expectedEmail(configDir: $0) }) -> SeatOwner? {
-        guard let who else { return nil }
-        let others = accounts.filter { $0.id != id }
-        if let e = others.first(where: { $0.seat.map { who.sameAccount(AccountIdentity($0)) } ?? false }) { return SeatOwner(profile: e, standby: false) }
-        if let e = others.first(where: { $0.standby.contains { who.sameAccount($0.identity) } }) { return SeatOwner(profile: e, standby: true) }
-        if let e = others.first(where: { $0.seat == nil && (signedIn($0.configDir).map { who.sameAccount(AccountIdentity($0)) } ?? false) }) {
-            return SeatOwner(profile: e, standby: false)
+    /// ClaudeFiles; also a record with no account id), as the address check always did. Never a refusal: what a page says
+    /// of them is `sharedNote`.
+    static func seatSharers(_ who: AccountIdentity?, among accounts: [AccountEntry], except id: String? = nil,
+                            signedIn: (String) -> Seat? = Account.signedInSeat,
+                            recordEmail: (String) -> String? = { Account.expectedEmail(configDir: $0) }) -> [SeatOwner] {
+        guard let who else { return [] }
+        return accounts.filter { $0.id != id }.compactMap { e -> SeatOwner? in
+            if e.seat.map({ who.sameAccount(AccountIdentity($0)) }) == true { return SeatOwner(profile: e, standby: false) }
+            if e.seat == nil, signedIn(e.configDir).map({ who.sameAccount(AccountIdentity($0)) }) == true { return SeatOwner(profile: e, standby: false) }
+            if who.addressOnly, (e.seat?.email ?? "").isEmpty, who.sameAccount(.address(recordEmail(e.configDir))) { return SeatOwner(profile: e, standby: false) }
+            if e.standby.contains(where: { who.sameAccount($0.identity) }) { return SeatOwner(profile: e, standby: true) }
+            return nil
         }
-        if who.addressOnly, let e = others.first(where: { ($0.seat?.email ?? "").isEmpty && who.sameAccount(.address(recordEmail($0.configDir))) }) {
-            return SeatOwner(profile: e, standby: false)
-        }
-        return nil
     }
 
     /// The same for a folder's sign-in.
-    static func seatOwner(_ seat: Seat?, among accounts: [AccountEntry], except id: String? = nil,
-                          signedIn: (String) -> Seat? = Account.signedInSeat) -> SeatOwner? {
-        seatOwner(seat.map { AccountIdentity($0) }, among: accounts, except: id, signedIn: signedIn)
+    static func seatSharers(_ seat: Seat?, among accounts: [AccountEntry], except id: String? = nil,
+                            signedIn: (String) -> Seat? = Account.signedInSeat) -> [SeatOwner] {
+        seatSharers(seat.map { AccountIdentity($0) }, among: accounts, except: id, signedIn: signedIn)
     }
+
+    /// The one amber line a shared account gets wherever it is picked, signed in or shown (never red, never a block): in
+    /// use in another profile, "This account is also in use in “Main”. Both profiles show the same numbers."; else on
+    /// standby there, "This account is also a standby account in “Main”."; several: "“Main” and 2 others". No address in
+    /// it: the field or row above shows the address, or its stand-in. nil: no other profile has it.
+    static func sharedNote(_ owners: [SeatOwner]) -> String? {
+        let inUse = owners.filter { !$0.standby }, standby = owners.filter(\.standby)
+        if !inUse.isEmpty {
+            return "This account is also in use in \(names(inUse)). " + (inUse.count == 1 ? "Both profiles show the same numbers." : "All of them show the same numbers.")
+        }
+        if !standby.isEmpty { return "This account is also a standby account in \(names(standby))." }
+        return nil
+    }
+
+    /// “Main”, or “Main” and 1 other, “Main” and 2 others: the first profile's name as it is, the rest counted.
+    static func names(_ owners: [SeatOwner]) -> String {
+        guard let first = owners.first else { return "" }
+        let more = owners.count - 1
+        return "“\(first.profile.name)”" + (more == 0 ? "" : " and \(more) \(more == 1 ? "other" : "others")")
+    }
+
 
     /// cl_quick's noteAccount, for every profile: the account Claude Code in a profile's folder is signed in to is the
     /// one it works on, whoever signed it in (the Switch page, `claude auth login` in Terminal, another app on the same
     /// folder). When it changes, the profile follows by itself: the new account is in use, the one before joins its
     /// standby accounts (its plan, when it left and its last week remembered, never its sign-in), and nothing else
-    /// moves. One account, one profile:
-    /// - an account another profile works on (its account in use) is refused: the profile stays as it is, and its numbers
-    ///   wait (Reader.swift: the resolver's clash) until its folder is on an account of its own again;
-    /// - an account on another profile's standby list moves here: it leaves that list, with a note on both profiles;
-    /// - a profile not linked yet takes the account only when no earlier profile not linked yet is signed in to it too.
+    /// moves. Shared seats (operator, 2026-11-22): an account may be in use in several profiles, so
+    /// - an account another profile works on (its account in use) is taken here too: both show its numbers (the agent
+    ///   reads a shared seat once, SharedReads);
+    /// - an account on another profile's standby list comes here and leaves that list, with a note on both profiles
+    ///   (ProfileCore's StandbyTidy keeps no other profile's account in use on a standby list: Vendor's rule);
+    /// - the account it was on stays on any other profile's standby list too (one account may stand by in several).
     /// A folder signed out changes nothing (the account stays the profile's; it signs in again). Every "the same account"
     /// here is the one owner rule (Seat.sameAccount, `isThat`): ids in any case. `status`: the numbers of the account a
     /// profile was on, as last saved (only its own).
@@ -106,9 +130,7 @@ enum FolderRules {
             guard var s = signedIn(out[i].configDir) else { continue }
             let old = out[i].seat
             if let old, s.sameAccount(old) { continue }
-            // another profile works on it: refused
-            if out.indices.contains(where: { $0 != i && out[$0].seat.map { s.sameAccount($0) } == true }) { continue }
-            if old == nil, out.indices.contains(where: { $0 < i && out[$0].seat == nil && s.sameAccount(signedIn(out[$0].configDir)) }) { continue }
+            // (another profile works on it too: taken all the same, a shared seat)
             // on another profile's standby list: it comes here, said on both
             let email = s.email ?? ""
             for j in out.indices where j != i && out[j].standby.contains(where: { Self.isThat(s, $0) }) {
@@ -121,15 +143,11 @@ enum FolderRules {
             s.linkedAt = now
             s.was = old?.email
             out[i].seat = s
-            // the account it was on stands by: never a sign-in, only what's known of it. One account is on one standby
-            // list only: a stale entry for it on another profile's list goes (this profile just had it in use).
+            // the account it was on stands by: never a sign-in, only what's known of it. Once here (never twice in one
+            // profile); another profile's entry for it stays (one account may stand by in several profiles).
             if let old {
                 let st = status(accounts[i])
                 let oldSeat = Seat(account: old.account, organization: old.organization, email: old.email)
-                for j in out.indices where j != i && out[j].standby.contains(where: { Self.isThat(oldSeat, $0) }) {
-                    out[j].standby.removeAll { Self.isThat(oldSeat, $0) }
-                    out[j].accountNote = AccountNote(kind: .standsBy, email: old.email ?? "", profile: out[i].name, at: now)
-                }
                 out[i].standby.removeAll { Self.isThat(oldSeat, $0) }
                 out[i].standby.append(StandbyAccount(email: old.email ?? "", seat: oldSeat,
                                                      addedAt: now, plan: st?.plan, lastInUse: now, lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
@@ -141,17 +159,6 @@ enum FolderRules {
     /// A standby entry for the account signed in, by the one owner rule: by its seat, or, for one remembered by its address
     /// only (from an older build's Another address…, not signed in yet), by the address (cl_quick's placeholder rule).
     static func isThat(_ s: Seat, _ q: StandbyAccount) -> Bool { AccountIdentity(s).sameAccount(q.identity) }
-
-    /// A profile that can't be linked because another profile has the seat its folder is signed in to.
-    static func seatTaken(_ e: AccountEntry, among accounts: [AccountEntry],
-                          signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
-        guard e.seat == nil, let s = signedIn(e.configDir) else { return nil }
-        // the first profile signed in to it gets it: only later ones are the ones left out (a profile keeping it as a
-        // standby account has it too, one remembered by its address included: AccountEntry.has, the one owner rule)
-        if let linked = accounts.first(where: { $0.id != e.id && $0.has(s) }) { return linked }
-        guard let i = accounts.firstIndex(where: { $0.id == e.id }) else { return nil }
-        return accounts[..<i].first { $0.seat == nil && s.sameAccount(signedIn($0.configDir)) }
-    }
 
     /// Clashes between saved accounts, as one message for the Settings bar (nil when all is well).
     static func clash(in accounts: [AccountEntry]) -> String? {

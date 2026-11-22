@@ -12,8 +12,9 @@
 // - the numbers are Claude Code's (they are read through its sign-in), and say whose when that isn't the active account
 //   ("Usage: Claude Code on <account>": the record keeps only the fact and the account, `codeUsageLine` and `codeName`, and
 //   ResolvedAccount.lineText builds the sentence when a surface shows it, so it follows Show emails);
-// - Claude Code's folder on another profile's account in use: that profile has those numbers (one profile per account);
-//   the line says so and the lamp is off.
+// - Claude Code's folder on an account another profile uses too (shared seats, operator 2026-11-22): the numbers are that
+//   seat's, shown on every profile that has it, never "another profile has them" (no clash: `clash` stays nil now; a record
+//   from an older build may still carry one until its next save).
 // - The numbers are labelled with the address they were read for (`loginEmail`), and "differs" compares that reading's
 //   account with the active one (by the ids where both are known, else the addresses), so a read from just before a
 //   sign-in changed and the resolver always agree.
@@ -66,13 +67,13 @@ enum AccountResolver {
         let ownerUnknown = stale && readID == nil && (code?.email ?? "").isEmpty && !(loginEmail ?? "").isEmpty
         let readName = stale ? nil : loginEmail
         let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
-        let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.sameAccount($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
         // (ids as AccountID keeps them: one normal form, one comparison)
         var r = ResolvedAccount(account: code.map { AccountID.normal($0.account) }, email: code?.email ?? readName, fromApp: false,
-                                numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
+                                numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: nil, at: now,
                                 codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
-                                clashID: owner?.id)
+                                clashID: nil)
+        // (another profile on the same account: a shared seat, its numbers shown here too; never a clash)
         // the folder's organisation in three states, so a reader of the record knows the seat in full: its id; "" when the
         // record names the seat with none (no organizationUuid, null or empty: ClaudeFiles.Record keeps each as nil or "");
         // nil only with no seat (and in a record from before this field): not known
@@ -91,11 +92,7 @@ enum AccountResolver {
         else if stale, let c = code, !c.account.isEmpty, let a = r.account { r.differs = !byID(a).sameAccount(known(c)) }
         else if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !sameAddress(n, a) }
         else if r.fromApp, let id = r.account { r.differs = code.map { !byID(id).sameAccount(known($0)) } ?? false }
-        if let o = owner {
-            // ("is on": true signed in or signed out, when the folder's record still names the account it was last on)
-            r.line = "Claude Code's folder is on \(o.name)'s account: its numbers show on \(o.name)."
-            r.lit = r.fromApp
-        } else if ownerUnknown {
+        if ownerUnknown {
             // the numbers are hidden (stale) and nothing else says why: the one line, on every surface that shows it
             r.line = ownerUnknownWords
         } else if r.differs, codeLabel != nil {

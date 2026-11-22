@@ -14,8 +14,10 @@
 // enterprise is "Personal") and from the agent sessions' emailAddress; an account with none shows as "account <first 8>"
 // until it is seen signed in. Only ids, dates and those named fields are read; never a token.
 //
-// A pair goes on a profile's standby list when no profile has it (in use or on standby: one account, one profile) and
-// the profile didn't forget it (Forget…).
+// A pair goes on a profile's standby list when no profile has it (in use or on standby) and the profile didn't forget it
+// (Forget…). An account may be several profiles' (shared seats), but only by a sign-in in that profile: what is found here
+// never adds another profile's account by itself (the ~/.claude profile reads every ~/.claude* record, so it would collect
+// every profile's account).
 //
 // Adapted from claude-transplant, Copyright (c) 2026 Vitaliy Hayda, under the MIT License:
 //   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
@@ -190,7 +192,8 @@ enum AccountList {
     /// one account under several organisations (folders a move left behind, not memberships). Its organisation is the one
     /// its own oauthAccount record names (any .claude.json or backup read), else that of its newest-used
     /// claude-code-sessions/<account>/<org> folder; other pairs of it are ignored. An account any profile has, in use or
-    /// on standby, in any organisation, is never added (one account, one profile); nor one forgotten here.
+    /// on standby, in any organisation, is never added by itself (never twice in one profile, and another profile's only by
+    /// a sign-in: shared seats); nor one forgotten here.
     static func adding(_ found: Found, to accounts: [AccountEntry], now: Date = Date()) -> [AccountEntry] {
         var out = accounts
         func taken(_ account: String) -> Bool { out.contains { $0.seats.contains { $0.account.lowercased() == account } } }
