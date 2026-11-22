@@ -4074,7 +4074,7 @@ final class PickProbe: NSObject {
 MainActor.assumeIsolated {
     let now = Date()
     let a1 = "zedekiah@example.com", a2 = "orla-quinn@example.com"
-    let a3 = "a-much-longer-address-than-the-stand-in@subdomain.example.com"
+    let a3 = "a-much-longer-address-than-the-stand-in@subdomain.example.test"
     let addrs = [a1, a2, a3]
     func leaks(_ s: String, of a: String) -> Bool {
         let local = String(a.split(separator: "@")[0]), domain = String(a.split(separator: "@")[1])

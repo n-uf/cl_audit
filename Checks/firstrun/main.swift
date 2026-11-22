@@ -308,7 +308,7 @@ do {
     // "Personal": shown so on the page, never proposed as the profile's name, and no part of a hidden address is proposed either
     let selfNamed = "jane.doe@example.invalid's Organization"
     check(AccountFacts.orgWords(type: nil, name: selfNamed) == "Personal" && AccountFacts.orgWords(type: "team", name: selfNamed) == "Personal"
-          && AccountFacts.orgWords(type: "team", name: "Acme Test") == "Acme Test" && AccountFacts.orgWords(type: nil, name: "1a2b3c4d-1111-4222-8333-444455556666's Organization") == "Personal",
+          && AccountFacts.orgWords(type: "team", name: "Acme Test") == "Acme Test" && AccountFacts.orgWords(type: nil, name: "aaaaaaaa-1111-4222-8333-444444444444's Organization") == "Personal",
           "S5: an organisation named after an address or an id is Personal, a team's own name stays")
     for type in ["", "team"] {
         fakeAccount(dir: "~/.claude-me", uuid: "00000000-0000-4000-8000-000000000002", email: "jane.doe@example.invalid", orgType: type, orgName: selfNamed)

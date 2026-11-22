@@ -61,7 +61,7 @@ MainActor.assumeIsolated {
         return [local, domain, String(domain.split(separator: ".")[0])]
     }
     let short = "wu@example.com", usual = "zedekiah@example.com"
-    let long = "a-much-longer-address-than-the-stand-in@subdomain.example.com"
+    let long = "a-much-longer-address-than-the-stand-in@subdomain.example.test"
     var bad: [String] = []
     var treeExposed = false
     func title(_ a: String) -> some View { AccountBoxTitle(text: a) }
