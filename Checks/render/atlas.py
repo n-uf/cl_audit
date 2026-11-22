@@ -33,7 +33,7 @@ COLUMNS = [('menubar', 'Menu bar menu'), ('dock', 'Dock icon, menu and panel'), 
 # each state: its row id, its name, what every surface should show (account in use, whose numbers, which keys), the rules
 ROWS = [
     ('01', 'Before', 'ann in use (the Claude app and Claude Code on ann); ann\'s numbers (week 40%); ben on standby, '
-           '"last in use 3 days ago", no numbers. Keys: Switch account › ben…; no Sign in…', 'A, B2'),
+           '"last used 3 days ago", no numbers. Keys: Switch account › ben…; no Sign in…', 'A, B2'),
     ('02', 'ann\'s week full', 'ann in use, ann\'s week full with when it\'s back; ben offered first everywhere: "Switch to '
            'ben…" in both menus, ben picked in the card\'s tray, the alert\'s Switch account… button; the Switch page with ben '
            'picked', 'A, B'),
@@ -49,7 +49,7 @@ ROWS = [
     ('05', 'Done, the Claude app still on ann', 'Claude Code on ben, the app on ann: ann is in use (the app\'s account, A); '
            'the numbers are Claude Code\'s on ben and say so; the page: "Claude Code on ben · the Claude app still on ann"; '
            'the switch is linked (no Undo); ben not shown on standby and in use at once', 'A, B, B2'),
-    ('06', 'Done, the app on ben', 'ben in use everywhere with ben\'s numbers; ann on standby ("last in use just now", her '
+    ('06', 'Done, the app on ben', 'ben in use everywhere with ben\'s numbers; ann on standby ("last used just now", her '
            'last week remembered); Switch account › ann…; nothing on standby twice', 'A, B2'),
     ('07', 'The sign-in landed on another account', 'Claude Code on dan (no profile\'s): the profile follows its folder, ann '
            'goes to standby, ben stays on standby; the app still on ann, so ann is in use by A\'s rule and the numbers say '
