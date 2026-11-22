@@ -741,7 +741,8 @@ final class SettingsModel: ObservableObject {
 
     /// Adds the new account and installs its Dock icon.
     func finishNew() {
-        guard let d = draft else { return }
+        // never a profile whose folders aren't there for the switches as they are now (its window's folder included)
+        guard let d = draft, NewAccountSetup.foldersReady(d) else { return }
         var e = d.entry
         e.seat = Self.seatToLink(d, among: accounts)
         accounts.append(e)

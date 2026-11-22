@@ -2307,6 +2307,7 @@ do {
     SettingsModel.applyInstalls = false
     func finished(_ s: Seat, _ name: String) -> AccountEntry? {
         var f = d; f.name = name
+        f.connected = true; f.claudeWindow = false          // folders ready: Finish adds only a profile whose folders are there
         sign(f.configDir, nil); sign(f.configDir, s)
         let m = SettingsModel(); m.accounts = list; m.draft = f
         m.finishNew()
