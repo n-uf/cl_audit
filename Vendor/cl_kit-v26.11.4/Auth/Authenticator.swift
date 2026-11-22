@@ -21,6 +21,9 @@ public struct AuthTools {
     public var mayLaunch: (_ what: String, _ folder: AuthFolder) -> Bool
     /// Reads a record file's oauthAccount block (bounded; never blocking on a FIFO).
     public var readRecord: (_ path: String) -> [String: Any]?
+    /// The one folder reader the app shares (FolderRecordReader): when set, the record is read through it (one parse per
+    /// write for every part of the app), and `readRecord` isn't asked.
+    public var reader: FolderRecordReader?
     /// The environment `claude` runs are made from (AuthFolder.environment cleans it).
     public var environment: () -> [String: String]
     /// The user's account name, which Claude Code stores the Keychain item under.
@@ -53,13 +56,19 @@ public struct Authenticator {
     // MARK: who
 
     /// The account the folder's record names now (guessed), or nil when it names nobody.
-    public func record() -> SignedInAccount? { SignedInAccount.record(tools.readRecord(folder.recordPath)) }
+    public func record() -> SignedInAccount? {
+        if let reader = tools.reader { return reader.look(folder).account }
+        return SignedInAccount.record(tools.readRecord(folder.recordPath))
+    }
 
     /// The one answer: the record, with a verified word where the caller has one (a running claude's `initialize`
     /// account, or Anthropic's reply about the folder's sign-in).
     public func signIn(verified: SignedInAccount? = nil) -> FolderSignIn {
         FolderSignIn.answer(record: record(), verified: verified)
     }
+
+    /// The one answer with a running claude's trail: its word over the record, and whose its numbers are.
+    public func signIn(trail: ProcessTrail) -> FolderSignIn { FolderSignIn.answer(record: record(), trail: trail) }
 
     /// The record's stamp, for SignInChangeWatch.look.
     public func recordStamp() -> RecordStamp { RecordStamp.of(folder.recordPath) }

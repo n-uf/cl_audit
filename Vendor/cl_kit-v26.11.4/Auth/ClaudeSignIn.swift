@@ -329,7 +329,8 @@ public final class ClaudeSignIn {
         guard loginEnded else {
             // a login still running is never ended on a guess, nor on two sources that disagree (Claude Code writes the
             // record before its sign-in): only on the word and the record agreeing on another account than the one wanted
-            if case .wrong(let a) = judged, answer.verdict == .verified, answer.record != nil, let wanted {
+            if case .wrong(let a) = judged, answer.verdict == .verified || answer.verdict == .seatNotKnown, answer.record != nil,
+               let wanted {
                 finish(.wrongAccount(signedIn: a, wanted: wanted))
             }
             return
@@ -359,9 +360,15 @@ public final class ClaudeSignIn {
     /// An account wanted by its id is compared by ids only: a word that names no id (a running claude's) takes the record's,
     /// and only when the record is the same seat or address as the word.
     static func judge(_ answer: FolderSignIn, wanted: SignedInAccount?, record: SignedInAccount?) -> Judged {
-        guard answer.verdict == .verified, var account = answer.account else { return .unsure(answer.account ?? record) }
+        // a seat not known is the verified word on the record's account: judged by the word, as a verified one (another
+        // account is the wrong one either way); only when it is the account wanted and the account wanted names its
+        // organisation (its seat) is it unsure: which seat the sign-in landed on isn't known
+        guard answer.verdict == .verified || answer.verdict == .seatNotKnown, var account = answer.account else {
+            return .unsure(answer.account ?? record)
+        }
         guard let wanted else { return .match(account) }
-        if wanted.organizationID == nil && wanted.organizationName == nil { account.organizationID = nil; account.organizationName = nil }
+        let seatWanted = wanted.organizationID != nil || wanted.organizationName != nil
+        if !seatWanted { account.organizationID = nil; account.organizationName = nil }
         if wanted.accountID != nil && account.accountID == nil {
             guard let r = record, r.accountID != nil, r.match(answer.account!) != .different else { return .unsure(answer.account) }
             account.accountID = r.accountID
@@ -369,7 +376,8 @@ public final class ClaudeSignIn {
         }
         var signedIn = answer.account!
         if signedIn.accountID == nil { signedIn.accountID = account.accountID }
-        return account.match(wanted) != .different ? .match(signedIn) : .wrong(signedIn)
+        guard account.match(wanted) != .different else { return .wrong(signedIn) }
+        return answer.verdict == .seatNotKnown && seatWanted ? .unsure(answer.account) : .match(signedIn)
     }
 
     private func finish(_ outcome: Outcome) {
@@ -749,8 +757,8 @@ public struct TerminalProfiles {
     public static let system = TerminalProfiles(
         read: {
             guard let d = UserDefaults(suiteName: "com.apple.Terminal"), let all = d.dictionary(forKey: "Window Settings") else { return nil }
-            let inUse = ["Default Window Settings", "Startup Window Settings"].compactMap { d.string(forKey: $0) }
-            return (all, Set(inUse))
+            let defaultOrStartup = ["Default Window Settings", "Startup Window Settings"].compactMap { d.string(forKey: $0) }
+            return (all, Set(defaultOrStartup))
         },
         write: { UserDefaults(suiteName: "com.apple.Terminal")?.set($0, forKey: "Window Settings") })
 }

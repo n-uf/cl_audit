@@ -33,13 +33,21 @@ public struct SignInChangeWatch {
 
     public init() {}
 
-    /// One look: true when the record names another account than the last one it named. `read` is asked only when the
-    /// stamp moved (it reads the record; the caller's own bounded reader).
+    /// One look: true when the record names another account or seat than the last one it named (the one comparison:
+    /// `.different`). Unlike the reader's `generation`, signing out isn't a change here: the watch remembers the last
+    /// account named and says only that another one signed in. `read` is asked only when the stamp moved.
     public mutating func look(stamp new: RecordStamp, read: () -> SignedInAccount?) -> Bool {
         guard new != stamp else { return false }
         stamp = new
         guard let now = read() else { return false }
         defer { seen = now }
-        return seen.map { !now.matches($0) } ?? false
+        return seen.map { now.match($0) == .different } ?? false
+    }
+
+    /// One look through the one folder reader (FolderRecordReader): the reader's parse, read once for every part of
+    /// the app that follows the folder.
+    public mutating func look(_ reader: FolderRecordReader, folder: AuthFolder) -> Bool {
+        let l = reader.look(folder)
+        return look(stamp: l.stamp) { l.account }
     }
 }

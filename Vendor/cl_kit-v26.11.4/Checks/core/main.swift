@@ -75,6 +75,25 @@ do {
     check(AccountIdentity(a).withoutOrganization.sameAccount(AccountIdentity(account: uuid(1).uppercased(), email: nil, organization: nil, source: .verified))
           && !AccountIdentity(a).sameAccount(AccountIdentity(account: uuid(1), email: nil, organization: nil, source: .verified)),
           "an id named without an organisation: compared with the seat's left out (withoutOrganization)")
+    // the one seat comparison: the account, then the organisation by its id, else its name (any case); one-sided: not known
+    func who(_ id: Int?, _ email: String?, org: Int? = nil, name: String? = nil) -> AccountIdentity {
+        AccountIdentity(account: id.map(uuid), email: email, organization: org.map(uuid), organizationName: name, source: .guessed)
+    }
+    check(who(1, nil, org: 51).compare(who(1, nil, org: 51)) == .seat && who(1, nil, org: 51).compare(who(1, nil, org: 52)) == .different
+          && who(1, nil).compare(who(1, nil)) == .seat && who(1, nil, org: 51).compare(who(1, nil)) == .seatNotKnown,
+          "compare by ids: the organisation's id; none on both sides is one; one side only: seat not known")
+    check(who(nil, "wu@example.com", name: "Example Team").compare(who(nil, "WU@example.com", name: "EXAMPLE TEAM")) == .seat
+          && who(nil, "wu@example.com", name: "Example Team").compare(who(nil, "wu@example.com", name: "Wu Personal")) == .different
+          && who(nil, "wu@example.com", name: "Example Team").compare(who(1, "wu@example.com", org: 52)) == .seatNotKnown,
+          "compare by address: the organisation's name in any case; an id on one side and a name on the other can't be compared")
+    check(who(1, "wu@example.com", org: 52, name: "Old Name").compare(who(1, nil, org: 52, name: "New Name")) == .seat
+          && who(1, nil, org: 51, name: "Example Team").compare(who(1, nil, org: 52, name: "Example Team")) == .different,
+          "both organisations' ids: they decide, not the names")
+    check(who(1, "wu@example.com").compare(who(2, "wu@example.com")) == .different
+          && who(nil, "wu@example.com").compare(who(nil, "zedekiah@example.com")) == .different && who(nil, nil).compare(who(nil, nil)) == .different,
+          "another id (never the address then), another address, or nobody: different")
+    check(!who(1, nil, org: 51).matches(who(1, nil)) && who(1, nil, org: 51).matches(who(1, nil, org: 51)),
+          "matches is the same seat (a seat not known isn't)")
     // the saved shapes stay as they were (older Dock icon copies read the same files)
     let keys = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(Seat(account: "a", organization: "o", email: "e@example.com"))) as? [String: Any])?.keys.sorted()
     check(keys == ["account", "email", "organization"], "Seat's JSON keys: \(keys ?? [])")
@@ -114,32 +133,67 @@ do {
     check(read?.id == "k9" && read?.addedAt == nil && read?.lastInUse == nil && read?.lastWeek == nil, "a crafted standby entry: its dates and week dropped")
     let keys = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(light)) as? [String: Any])?.keys.sorted()
     check(keys == ["addedAt", "email", "id", "lastWeek", "seat"], "StandbyAccount's JSON keys stay its own: \(keys ?? [])")
-    // the tidy list: one entry per account, never an account in use
+    // the tidy list: within one profile, one entry per seat, never the profile's own account in use
     struct P: StandbyHolder { var seat: Seat?; var name: String; var standby: [StandbyAccount]; var accountNote: AccountNote? }
     var dup = light; dup.id = "kd"; dup.seat?.account = uuid(12).uppercased(); dup.lastInUse = now
     let inUseElsewhere = sb(7)
-    let profiles = [P(seat: Seat(account: uuid(1)), name: "Main", standby: [light, dup, inUseElsewhere], accountNote: nil),
-                    P(seat: Seat(account: uuid(17)), name: "Work", standby: [], accountNote: nil)]
+    var ownInUse = sb(11); ownInUse.seat = Seat(account: uuid(1).uppercased(), organization: uuid(51))
+    let profiles = [P(seat: Seat(account: uuid(1), organization: uuid(51)), name: "Main", standby: [light, dup, inUseElsewhere, ownInUse],
+                      accountNote: nil),
+                    P(seat: Seat(account: uuid(17), organization: uuid(67)), name: "Work", standby: [], accountNote: nil)]
     let tidy = StandbyTidy.apply(profiles, now: now)
-    check(tidy.changed && tidy.accounts[0].standby.map(\.id) == ["k2"] && tidy.accounts[0].accountNote?.kind == .tidied
-          && tidy.accounts[0].standby[0].lastInUse == now, "tidied: one entry per account (any case), not another profile's in use; the newest last use kept")
+    check(tidy.changed && tidy.accounts[0].standby.map(\.id) == ["k2", "k7"] && tidy.accounts[0].accountNote?.kind == .tidied
+          && tidy.accounts[0].standby[0].lastInUse == now && tidy.accounts[1].accountNote == nil,
+          "tidied: one seat twice (any case) is one entry with the newest last use, the profile's own account in use goes")
+    check(tidy.accounts[0].standby.contains { $0.id == "k7" },
+          "a seat in use in Work stands by in Main: a seat may belong to several profiles, only twice in one is tidied")
     check(!StandbyTidy.apply([P(seat: nil, name: "x", standby: [light, heavy], accountNote: nil)], now: now).changed, "a tidy list stays as it is")
-    // two entries of one account, one with an organisation and one without: the merge never swaps the known one for none
-    // (no record organisation, nil == nil), whichever is newer; a newer one with another organisation still wins
-    func merged(_ a: StandbyAccount, _ b: StandbyAccount, orgs: [String: String] = [:]) -> Seat? {
-        StandbyTidy.apply([P(seat: nil, name: "x", standby: [a, b], accountNote: nil)], recordOrgs: { orgs }, now: now).accounts[0].standby.first?.seat
+    func merged(_ a: StandbyAccount, _ b: StandbyAccount, own: Seat? = nil, orgs: [String: String] = [:]) -> [StandbyAccount] {
+        StandbyTidy.apply([P(seat: own, name: "x", standby: [a, b], accountNote: nil)], recordOrgs: { orgs }, now: now).accounts[0].standby
     }
     func entry(_ id: String, org: String?, used: TimeInterval) -> StandbyAccount {
         StandbyAccount(email: "m@example.com", seat: Seat(account: uuid(40), organization: org, email: "m@example.com"), id: id,
                        lastInUse: now.addingTimeInterval(-used))
     }
+    // a personal plan and a Team seat on one account id: two seats, both stay
     let withOrgOld = entry("a", org: uuid(41), used: 600), noOrgNew = entry("b", org: nil, used: 60), emptyOrgNew = entry("c", org: "", used: 60)
-    check(merged(withOrgOld, noOrgNew)?.organization == uuid(41) && merged(withOrgOld, emptyOrgNew)?.organization == uuid(41)
-          && merged(noOrgNew, withOrgOld)?.organization == uuid(41),
-          "a newer entry with no organisation (nil or \"\") never takes the place of a known one; an older known one replaces none")
-    check(merged(withOrgOld, entry("d", org: uuid(42), used: 60))?.organization == uuid(42)
-          && merged(entry("e", org: uuid(42), used: 60), withOrgOld, orgs: [uuid(40): uuid(41)])?.organization == uuid(41),
-          "a newer one with another organisation still wins; the record's organisation wins over any")
+    let otherOrg = entry("d", org: uuid(42), used: 60)
+    check(merged(withOrgOld, otherOrg).map(\.id) == ["a", "d"], "one account id in two organisations: two seats, both kept")
+    check(merged(withOrgOld, otherOrg, own: Seat(account: uuid(40), organization: uuid(42))).map(\.id) == ["a"],
+          "the other seat of the account in use stands by; the seat in use itself doesn't")
+    // an entry whose organisation isn't known joins the account's one seat here, never swapping the known one for none
+    check(merged(withOrgOld, noOrgNew).map(\.seat?.organization) == [uuid(41)] && merged(withOrgOld, emptyOrgNew).map(\.seat?.organization) == [uuid(41)]
+          && merged(noOrgNew, withOrgOld).map(\.seat?.organization) == [uuid(41)] && merged(noOrgNew, withOrgOld).first?.lastInUse == noOrgNew.lastInUse,
+          "a seat not known joins the one known seat (nil or \"\"), keeping the known organisation and the newest last use")
+    let three = StandbyTidy.apply([P(seat: nil, name: "x", standby: [withOrgOld, otherOrg, noOrgNew], accountNote: nil)], now: now).accounts[0].standby
+    check(three.map(\.id) == ["a", "d", "b"], "with two seats and no record to say which, a seat not known stays apart")
+    let hinted = StandbyTidy.apply([P(seat: nil, name: "x", standby: [withOrgOld, otherOrg, noOrgNew], accountNote: nil)],
+                                   recordOrgs: { [uuid(40): uuid(42).uppercased()] }, now: now).accounts[0].standby
+    check(hinted.map(\.id) == ["a", "d"] && hinted[1].lastInUse == noOrgNew.lastInUse, "...and joins the seat its record names")
+    check(merged(noOrgNew, emptyOrgNew).count == 1 && merged(noOrgNew, otherOrg, own: Seat(account: uuid(40))).map(\.id) == ["d"],
+          "two not known are one; the account in use with no organisation drops only its id's entries not known either, never a known seat")
+    check(merged(otherOrg, noOrgNew, own: Seat(account: uuid(40), organization: "")).map(\.id) == ["d"],
+          "...the same with an empty organisation; a known seat of its id (the Team seat) stands by")
+    // one not known joining a known one: the known seat's own plan and week stay, only a newer last use is taken
+    var known = entry("k", org: uuid(41), used: 600); known.plan = "Team"; known.lastWeek = 40; known.lastWeekResets = now
+    var unknownNewer = entry("u", org: nil, used: 60); unknownNewer.plan = "Max"; unknownNewer.lastWeek = 90; unknownNewer.lastWeekResets = nil
+    for pair in [(known, unknownNewer), (unknownNewer, known)] {
+        let one = merged(pair.0, pair.1)
+        check(one.count == 1 && one[0].seat?.organization == uuid(41) && one[0].plan == "Team" && one[0].lastWeek == 40
+              && one[0].lastWeekResets == now && one[0].lastInUse == unknownNewer.lastInUse && one[0].id == pair.0.id,
+              "a seat not known joining the known one (\(pair.0.id) first): the known plan and week, the newest last use, the first entry's id")
+    }
+    // merge(into:): entries joining a profile's list, as the tidy keeps it
+    let into = StandbyTidy.merge([noOrgNew, otherOrg, withOrgOld, sb(5, seat: false)], into: [withOrgOld],
+                                 inUse: Seat(account: uuid(40), organization: uuid(42)))
+    check(into.map(\.id) == ["a", "b", "k5"],
+          "merge: the list's entries first, each seat once, never the account in use; a seat not known with two seats here stays apart (\(into.map(\.id)))")
+    struct Q: StandbyHolder { var seat: Seat?; var name: String; var standby: [StandbyAccount]; var accountNote: AccountNote? }
+    check(!StandbyTidy.apply([Q(seat: Seat(account: uuid(40), organization: uuid(42)), name: "x", standby: into, accountNote: nil)], now: now).changed,
+          "...so the next tidy changes nothing")
+    check(StandbyTidy.key(withOrgOld) == uuid(40) + "|" + uuid(41) && StandbyTidy.key(noOrgNew) == uuid(40) + "|"
+          && StandbyTidy.key(emptyOrgNew) == StandbyTidy.key(noOrgNew) && StandbyTidy.key(sb(5, seat: false)) == "@s5@example.com",
+          "the key: account id and organisation, else the address")
 }
 
 // ============ 3. limits: fresh, full, the blocker, the countdown face ============
@@ -321,6 +375,22 @@ do {
           && answer(Headline.Owner(inUse: who(2, "pat@example.com", org: uuid(52)), signIn: process)).split != nil
           && answer(Headline.Owner(inUse: mo, signIn: process)).split != nil,
           "an identity without an id (a running process's): by address (any case) and organisation")
+    // with organisation names (a running claude names its organisation by name only): the one comparison decides
+    func named(_ n: Int?, _ email: String?, org: String? = nil, name: String?) -> AccountIdentity {
+        AccountIdentity(account: n.map(uuid), email: email, organization: org, organizationName: name, source: n == nil ? .verified : .guessed)
+    }
+    let teamWord = named(nil, "wu@example.com", name: "Example Team")
+    check(answer(Headline.Owner(inUse: named(2, "wu@example.com", org: uuid(52), name: "EXAMPLE TEAM"), signIn: teamWord)).split == nil
+          && answer(Headline.Owner(inUse: named(2, "wu@example.com", org: uuid(51), name: "Wu Personal"), signIn: teamWord)).split != nil,
+          "names: the same organisation in any case is no split; the other seat on the address is one")
+    check(answer(Headline.Owner(inUse: who(nil, "wu@example.com"), signIn: teamWord)).split != nil
+          && answer(Headline.Owner(reading: teamWord, label: who(nil, "wu@example.com"))).otherReading
+          && answer(Headline.Owner(reading: teamWord, label: named(nil, "wu@example.com", name: "example team"))).otherReading == false,
+          "names: an address alone against a named organisation is a seat not known, never shown as the same (no split hidden, no label taken)")
+    check(who(nil, "wu@example.com").sameAccount(named(2, "wu@example.com", org: uuid(51), name: "Wu Personal"))
+          && !teamWord.addressOnly && !teamWord.sameAccount(named(2, "wu@example.com", org: uuid(51), name: "Wu Personal"))
+          && teamWord.sameAccount(named(2, "wu@example.com", org: uuid(52), name: "Example Team")),
+          "the owner rule: a word naming its organisation isn't address-only, so it never takes the other seat by the address")
     check(answer(Headline.Owner(inUse: nil, signIn: mo, differs: true)).split == nil && answer(Headline.Owner(inUse: pat, signIn: nil, differs: true)).split == nil,
           "no account in use apart from the sign-in, or no sign-in: no split")
     check(answer(Headline.Owner(inUse: pat, signIn: mo, differs: true, elsewhere: true)).split == nil,
@@ -816,6 +886,153 @@ do {
     _ = a.handle(.rateLimit(RateLimitEvent(window: .week, utilization: 1, resetsAt: nil, status: .rejected), now: t0))
     _ = a.handle(.limitMessage(LimitMessage(isError: true, model: "<synthetic>", on: .week, until: nil), now: t0))
     check(a.refusal == nil && !ReadingRules.clAudit.readsMessage(isError: true, model: "<synthetic>"), "cl_audit's rules: no refusal kept, no message text read")
+}
+
+// ============ 10. the status record, its codec, and a profile's small picture (StatusFace) ============
+do {
+    let ann = "ann@example.com", bob = "bob@example.com"
+    func record(state: String = "ok", five: Double? = 12, week: Double? = 40, age: TimeInterval = 60, fiveIn: TimeInterval = 3600,
+                weekIn: TimeInterval = 2 * 86400, login: String? = ann, expected: String? = ann, resolved: ResolvedAccount? = nil) -> StatusRecord {
+        var s = StatusRecord(state: state); s.loginEmail = login; s.expectedEmail = expected; s.fiveHour = five; s.weekly = week
+        s.fiveHourResets = t0.addingTimeInterval(fiveIn); s.weeklyResets = t0.addingTimeInterval(weekIn)
+        s.updatedAt = t0.addingTimeInterval(-age); s.numbersOwner = login; s.numbersAccount = uuid(1); s.resolved = resolved
+        return s
+    }
+    let own = ResolvedAccount(account: uuid(1), email: ann, fromApp: true, numbersFor: ann, differs: false, line: nil, lit: true,
+                              clash: nil, at: t0, codeAccount: uuid(1), codeName: ann)
+    let split = ResolvedAccount(account: uuid(1), email: ann, fromApp: true, numbersFor: bob, differs: true, line: "split", lit: true,
+                                clash: nil, at: t0, codeAccount: uuid(2), codeName: bob)
+
+    // the codec: sorted keys, seconds since 1970, empty fields left out; an older record (fewer keys) decodes; unknown keys skipped
+    let fresh = record(resolved: own)
+    let bytes = StatusCodec.encode(fresh)
+    let text = bytes.map { String(decoding: $0, as: UTF8.self) } ?? ""
+    check(StatusCodec.decode(bytes ?? Data()) == fresh && !text.contains("credits") && text.contains("\"fiveHour\":12")
+          && text.range(of: "\"expectedEmail\".*\"fiveHour\"", options: .regularExpression) != nil,
+          "the codec: a round trip, empty fields left out, sorted keys")
+    let older = StatusCodec.decode(Data(#"{"state":"ok","weekly":40,"updatedAt":1800000000,"someday":1}"#.utf8))
+    check(older?.weekly == 40 && older?.resolved == nil && older?.updatedAt == t0, "an older record decodes; a key it doesn't know is skipped")
+    check(StatusCodec.decode(Data("{ not json".utf8)) == nil, "not a record: nil")
+    var wild = record(); wild.fiveHour = 1e300; wild.weekly = -5; wild.fiveHourResets = t0.addingTimeInterval(1e300); wild.updatedAt = t0
+    let tame = StatusCodec.drawable(wild, now: t0)
+    check(tame.fiveHour == nil && tame.weekly == nil && tame.fiveHourResets == nil && tame.weeklyResets != nil && tame.updatedAt == t0
+          && StatusCodec.drawable(record(five: 1000), now: t0).fiveHour == 1000,
+          "drawable: a percent outside 0–1,000 or a time over 100 years away is left out; 1,000 % kept")
+
+    // the line as a fact: the record keeps `codeUsageLine` and `splitLine`, never the sentence; they round-trip, and a record
+    // from before them decodes with them empty
+    let wu = "wu@example.com", zed = "zedekiah@example.com"
+    var facts = ResolvedAccount(account: uuid(1), email: zed, fromApp: true, numbersFor: wu, differs: true, line: nil, lit: true,
+                                clash: nil, at: t0, codeAccount: uuid(2), codeName: wu)
+    facts.codeUsageLine = true; facts.splitLine = true
+    let factRecord = record(login: wu, expected: wu, resolved: facts)
+    let factBack = StatusCodec.decode(StatusCodec.encode(factRecord) ?? Data())
+    check(factBack == factRecord && factBack?.resolved?.codeUsageLine == true && factBack?.resolved?.splitLine == true
+          && factBack?.resolved?.line == nil, "the new fields round-trip (codeUsageLine, splitLine), the sentence kept nowhere")
+    let beforeFacts = StatusCodec.decode(Data(#"{"state":"ok","resolved":{"fromApp":true,"differs":false,"lit":true,"at":1800000000}}"#.utf8))
+    check(beforeFacts?.resolved?.codeUsageLine == nil && beforeFacts?.resolved?.splitLine == nil && beforeFacts?.resolved?.lit == true,
+          "a record from before the new fields decodes with them empty")
+
+    // an old record carries the sentence "Usage: Claude Code on <address>" in `line`: once read, no address reaches the display
+    // value or its note, only the fact is kept
+    let ages5 = StatusAges.of(pollMinutes: 5)
+    let sentence = ResolvedAccount.usageOnPrefix + wu
+    let oldLine = ResolvedAccount(account: uuid(1), email: nil, fromApp: true, numbersFor: nil, differs: false, line: sentence, lit: true,
+                                  clash: nil, at: t0, codeAccount: uuid(2), codeName: wu)
+    let oldRecord = record(login: zed, expected: zed, resolved: oldLine)
+    check(oldRecord.resolved?.line?.contains(wu) == true
+          && !String(describing: ProfileDisplay.of(oldRecord, ages: ages5, source: "reader", now: t0)).contains(wu),
+          "an old record that never went through the codec (its sentence holds the address): ProfileDisplay.of migrates it too, no address")
+    let migrated = StatusCodec.decode(StatusCodec.encode(oldRecord) ?? Data())
+    let migratedText = migrated.map { String(describing: ProfileDisplay.of($0, ages: ages5, source: "reader", now: t0)) } ?? wu
+    check(migrated?.resolved?.line == nil && migrated?.resolved?.codeUsageLine == true && migrated?.resolved?.codeName == wu
+          && !migratedText.contains(wu) && !migratedText.contains(ResolvedAccount.usageOnPrefix)
+          && StatusCodec.drawable(oldRecord, now: t0).resolved?.line == nil,
+          "an old record's sentence: after decode and drawable, no address in the display value or its note; the fact kept")
+    // no name to build the sentence from: the line is dropped and no fact is claimed; any other line stays as it is
+    var nameless = oldLine; nameless.codeName = nil
+    var other = oldLine; other.line = "Another line"
+    check(StatusCodec.drawable(record(resolved: nameless), now: t0).resolved.map { $0.line == nil && $0.codeUsageLine == nil } == true
+          && StatusCodec.drawable(record(resolved: other), now: t0).resolved?.line == "Another line"
+          && StatusCodec.drawable(record(resolved: other), now: t0).resolved?.codeUsageLine == nil,
+          "an old sentence with no account name is dropped (no fact claimed); another line is left alone")
+    // the app's builder says the fact in its words (the kit stays wordless)
+    let built = ProfileDisplay.of(StatusCodec.drawable(oldRecord, now: t0), ages: ages5, source: "reader", now: t0,
+                                  lineText: { $0.codeUsageLine == true ? "built for \($0.codeName ?? "-")" : $0.line })
+    check(String(describing: built).contains("built for \(wu)"), "ProfileDisplay.of: the app's builder says the fact as the note")
+
+    // the JSON keys are the shape every reader and writer shares: the exact list, so a renamed or dropped key is seen at once
+    func keyList<T: Encodable>(_ v: T) -> [String] {
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
+        return ((try? JSONSerialization.jsonObject(with: enc.encode(v)) as? [String: Any])?.keys.sorted()) ?? []
+    }
+    var all = StatusRecord(state: "ok")
+    all.loginEmail = wu; all.expectedEmail = wu; all.fiveHour = 1; all.weekly = 2; all.updatedAt = t0; all.renewNote = "n"
+    all.fiveHourResets = t0; all.weeklyResets = t0; all.plan = "p"; all.source = "s"; all.problem = "q"; all.renewing = false
+    all.scoped = [ScopedLimit(name: "m", percent: 1, resets: t0)]; all.credits = Credits(enabled: true, used: 1, cap: 2, currency: "USD", out: false)
+    all.noFiveHour = false; all.resolved = facts; all.numbersOwner = wu; all.numbersAccount = uuid(1); all.numbersOrganization = "o"
+    all.ownerUnconfirmed = false
+    var allResolved = facts
+    allResolved.line = "l"; allResolved.clash = "c"; allResolved.recordTooLarge = false; allResolved.readStale = false
+    allResolved.switchWaits = false; allResolved.clashID = "i"; allResolved.codeOrganization = "o"
+    check(keyList(all) == ["credits", "expectedEmail", "fiveHour", "fiveHourResets", "loginEmail", "noFiveHour", "numbersAccount",
+                           "numbersOrganization", "numbersOwner", "ownerUnconfirmed", "plan", "problem", "renewNote", "renewing", "resolved",
+                           "scoped", "source", "state", "updatedAt", "weekly", "weeklyResets"],
+          "StatusRecord's JSON keys: \(keyList(all))")
+    check(keyList(allResolved) == ["account", "at", "clash", "clashID", "codeAccount", "codeName", "codeOrganization", "codeUsageLine",
+                                   "differs", "email", "fromApp", "line", "lit", "numbersFor", "readStale", "recordTooLarge", "splitLine",
+                                   "switchWaits"],
+          "ResolvedAccount's JSON keys: \(keyList(allResolved))")
+    check(keyList(ScopedLimit(name: "m", percent: 1, resets: t0)) == ["name", "percent", "resets"],
+          "ScopedLimit's JSON keys: \(keyList(ScopedLimit(name: "m", percent: 1, resets: t0)))")
+    let fullCredits = Credits(enabled: true, used: 1, cap: 2, currency: "USD", out: false, spentAt: t0)
+    check(keyList(fullCredits) == ["cap", "currency", "enabled", "out", "spentAt", "used"], "Credits' JSON keys, every one: \(keyList(fullCredits))")
+
+    // the ages: the read interval (1 minute to a day), 5 minutes at least, plus a minute; grey after three reads, 30 min at least
+    check(StatusAges.freshFor(pollMinutes: 5) == 360 && StatusAges.greyAfter(pollMinutes: 5) == 1800
+          && StatusAges.freshFor(pollMinutes: 20) == 1260 && StatusAges.greyAfter(pollMinutes: 20) == 3600
+          && StatusAges.freshFor(pollMinutes: .max) == TimeInterval(1440 * 60 + 60) && StatusAges.greyAfter(pollMinutes: .min) == 1800,
+          "StatusAges: the formula, and an absurd interval clamped (no overflow)")
+
+    // the look: its own defaults for keys it lacks or can't read; unknown keys skipped
+    let dec = JSONDecoder()
+    let bare = try? dec.decode(ProfileLook.self, from: Data("{}".utf8))
+    let some = try? dec.decode(ProfileLook.self, from: Data(#"{"name":"Main","pollMinutes":20,"windowDot":"yes","colour":"red"}"#.utf8))
+    check(bare == ProfileLook() && bare?.pollMinutes == 5 && bare?.windowDot == true && some?.name == "Main" && some?.pollMinutes == 20
+          && some?.windowDot == true && some?.shownLabel == "MAIN" && ProfileLook(name: "Workplace", label: "").shownLabel == "WORKPL"
+          && ProfileLook(name: "Main", label: "M1").shownLabel == "M1",
+          "ProfileLook: defaults for missing or unreadable keys, unknown ones skipped; the label from the name when it has none")
+
+    // the picture, from the one display value
+    let look = ProfileLook(name: "Main", label: "MAIN")
+    func face(_ r: StatusRecord?, window: Bool = false, look l: ProfileLook = look) -> StatusFace {
+        StatusFace.of(record: r, look: l, windowOpen: window, source: "reader", now: t0)
+    }
+    let f = face(fresh)
+    check(f.label == "MAIN" && f.fiveHour == 12 && f.weekly == 40 && !f.grey && !f.otherAccount && f.full == nil && !f.windowOpen,
+          "fresh, the profile's own: the numbers, not grey, nothing full")
+    check(f.fiveHourElapsed.map { abs($0 - 80) < 0.001 } == true && f.weeklyElapsed.map { abs($0 - (5.0 / 7 * 100)) < 0.001 } == true,
+          "the elapsed shares: an hour left of five is 80 %, two days left of seven")
+    let old = face(record(age: 40 * 60, resolved: own))
+    check(old.grey && old.weekly == 40, "40 minutes old: grey, the numbers still drawn")
+    let full = face(record(five: 100, fiveIn: 3 * 3600, resolved: own))
+    check(full.full?.kind == .fiveHour && full.full?.resets == t0.addingTimeInterval(3 * 3600), "a fresh full 5-hour limit: the full limit, with its reset")
+    check(face(record(five: 100, age: 10 * 60, fiveIn: 3 * 3600, resolved: own)).full == nil, "the same read 10 minutes ago: nothing full")
+    let splitFace = face(record(login: bob, resolved: split))
+    check(splitFace.fiveHour == nil && splitFace.weekly == nil && splitFace.grey, "a split (the numbers another account's): no numbers on the picture")
+    let out = face(record(state: "noLogin", resolved: own))
+    check(out.fiveHour == nil && out.weekly == nil && out.grey, "signed out: no numbers, grey")
+    check(face(record(login: bob, expected: ann)).otherAccount, "signed in to another account than the folder names: the warning")
+    let none = face(nil)
+    check(none.fiveHour == nil && none.weekly == nil && none.grey && none.full == nil && none.label == "MAIN", "no record yet: blank and grey")
+    check(face(fresh, window: true).windowOpen && !face(fresh, window: true, look: ProfileLook(name: "Main", windowDot: false)).windowOpen
+          && !face(fresh, window: false).windowOpen, "the window mark: only while the window runs and the look shows it")
+    // the one display value: the record's own rules (an expired sign-in's numbers dropped, a passed reset has no percent)
+    let display = ProfileDisplay.of(record(weekIn: -60, resolved: own), ages: look.ages, source: "reader", now: t0)
+    check(display.usage?.weekly == nil && display.usage?.fiveHour == 12 && display.usage?.source == "reader",
+          "ProfileDisplay.of: a passed reset has no percent; the caller's source words when the record names none")
+    check(StatusFace.of(display, look: look, windowOpen: false, now: t0) == face(record(weekIn: -60, resolved: own)),
+          "the picture from a display value is the picture from its record")
 }
 
 print("core checks: \(passed) passed, \(failed) failed")

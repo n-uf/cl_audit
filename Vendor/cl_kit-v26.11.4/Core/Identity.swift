@@ -61,10 +61,13 @@ public struct AccountIdentity: Equatable, Hashable {
     public var account: String?
     public var email: String?
     public var organization: String?
+    /// The organisation's name, where a source names it (a running claude names its organisation by name only).
+    public var organizationName: String?
     public var source: Source
 
-    public init(account: String?, email: String?, organization: String?, source: Source) {
-        self.account = account; self.email = email; self.organization = organization; self.source = source
+    public init(account: String?, email: String?, organization: String?, organizationName: String? = nil, source: Source) {
+        self.account = account; self.email = email; self.organization = organization
+        self.organizationName = organizationName; self.source = source
     }
 
     /// A seat's identity (from a file unless said otherwise). An empty account id is none.
@@ -72,11 +75,32 @@ public struct AccountIdentity: Equatable, Hashable {
         self.init(account: s.account.isEmpty ? nil : s.account, email: s.email, organization: s.organization, source: source)
     }
 
-    /// The same account: by the ids when both have one; else by address (case doesn't count) and organisation.
-    public func matches(_ o: AccountIdentity) -> Bool {
-        if let a = account, let b = o.account { return AccountID.same(a, b) && AccountID.sameOrganization(organization, o.organization) }
-        guard let e = email?.lowercased(), !e.isEmpty, e == o.email?.lowercased() else { return false }
-        return AccountID.sameOrganization(organization, o.organization)
+    /// The same seat: `compare` says `.seat`. A seat that isn't known (an organisation only one side names) is not the same.
+    public func matches(_ o: AccountIdentity) -> Bool { compare(o) == .seat }
+
+    /// The kit's one seat comparison. First the account: by the ids when both have one (case doesn't count; never the
+    /// address then), else by the address (case doesn't count; both must have one). Then the organisation: by its id
+    /// when both have one, else by its name when both have one (case doesn't count); none on either side is the same
+    /// ("none recorded", as AccountID has it). An organisation only one side names doesn't tell the seats apart:
+    /// `.seatNotKnown`, the same account but maybe another seat (a personal plan and a Team seat share an address and
+    /// even an account id; only the organisation tells them apart).
+    public func compare(_ o: AccountIdentity) -> SeatMatch {
+        // every value as it is compared: trimmed, and an empty one is none
+        func named(_ s: String?) -> String? {
+            s.flatMap { let t = $0.trimmingCharacters(in: .whitespacesAndNewlines); return t.isEmpty ? nil : t }
+        }
+        if let a = account, let b = o.account {
+            guard AccountID.same(named(a) ?? a, named(b) ?? b) else { return .different }
+        } else {
+            guard let e = named(email)?.lowercased(), e == named(o.email)?.lowercased() else { return .different }
+        }
+        let (x, y) = (named(organization), named(o.organization))
+        if let x, let y { return AccountID.same(x, y) ? .seat : .different }
+        let (m, n) = (named(organizationName), named(o.organizationName))
+        if let m, let n { return m.lowercased() == n.lowercased() ? .seat : .different }
+        // none on both sides is one; anything else left (one side only, or an id on one and a name on the other) can't
+        // be compared
+        return x == nil && m == nil && y == nil && n == nil ? .seat : .seatNotKnown
     }
 
     /// An account known by its address only (a typed address, the address a reading was for).
@@ -86,11 +110,16 @@ public struct AccountIdentity: Equatable, Hashable {
 
     /// Known by its address only: no account id and no organisation (an address typed, a standby entry remembered by its
     /// address).
-    public var addressOnly: Bool { (account ?? "").isEmpty && (organization ?? "").isEmpty }
+    /// An organisation named by its name only (a running claude's word) is an organisation: such an identity isn't known
+    /// by its address only, so it never matches the other seat on its address by the address alone.
+    public var addressOnly: Bool {
+        (account ?? "").isEmpty && (organization ?? "").isEmpty
+            && (organizationName ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
-    /// The one owner rule, for every "is this the same account / whose account is it" check: `matches` (the ids in any case
-    /// when both have one, never the address then; else the address, any case, and the organisation), except that one
-    /// side known by its address only is matched by the address (cl_quick's placeholder rule).
+    /// The one owner rule, for every "is this the same account / whose account is it" check: `compare` says `.seat`
+    /// (`matches`), except that one side known by its address only (no id, no organisation by id or name) is matched by
+    /// the address (cl_quick's placeholder rule). It is `compare` with that one exception, not a second comparison.
     public func sameAccount(_ o: AccountIdentity) -> Bool {
         guard addressOnly || o.addressOnly else { return matches(o) }
         guard let e = email?.lowercased(), !e.isEmpty else { return false }
@@ -102,6 +131,17 @@ public struct AccountIdentity: Equatable, Hashable {
     public var withoutOrganization: AccountIdentity {
         AccountIdentity(account: account, email: email, organization: nil, source: source)
     }
+}
+
+/// How two accounts compare (AccountIdentity.compare, the one seat comparison).
+public enum SeatMatch: String, Equatable {
+    /// The same seat: the same account in the same organisation (or none named on either side).
+    case seat
+    /// The same account (its id, or its address), but an organisation only one side names: maybe another seat on it.
+    /// Nothing seat-specific (ids, plan, numbers) is taken from one side for the other.
+    case seatNotKnown
+    /// Another account, or another seat of it.
+    case different
 }
 
 /// Account and organisation ids compared loosely: case doesn't count (Claude writes them in lower case, a hand-edited file

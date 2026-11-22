@@ -17,7 +17,7 @@ its own release. Nothing here is a product of its own, and no prebuilt binaries 
 | --- | --- | --- | --- |
 | [`Core/`](Core/README.md) | ProfileCore | the account, usage and reading rules: ids, standby accounts, limits, headlines, what to show, times, parsing, the reader's state machine | Foundation |
 | [`Run/`](Run/README.md) | Runs | the one runner (timeout, SIGTERM, a grace, SIGKILL; output read while it runs), a program kept running, the cleaned environment of a `claude` run, the process table | Foundation |
-| [`Auth/`](Auth/README.md) | ClaudeAuth | one folder's Claude Code sign-in: which account, verified or guessed; the watch; renew and sign-out; ClaudeSignIn, the sign-in in a Terminal window followed to its outcome | Foundation, CryptoKit, ProfileCore, Runs |
+| [`Auth/`](Auth/README.md) | ClaudeAuth | one folder's Claude Code sign-in: Claude Code's account, verified or guessed, and whose the numbers are (the one account rule both apps ask); a running claude's trail; the one `.claude.json` reader; saved keys; the watch; renew and sign-out; ClaudeSignIn, the sign-in in a Terminal window followed to its outcome | Foundation, CryptoKit, ProfileCore, Runs |
 | [`Privacy/`](Privacy/README.md) | AddressPrivacy | an account address on screen: the one fixed stand-in or "hidden address" in its place, never the real address blurred or masked; views, labels and plain text; the setting as a value the app passes in | Foundation, AppKit, CoreImage, Combine, SwiftUI |
 
 The layers are ProfileCore → Runs → ClaudeAuth: ProfileCore never imports the others, Runs imports nothing of ours, and

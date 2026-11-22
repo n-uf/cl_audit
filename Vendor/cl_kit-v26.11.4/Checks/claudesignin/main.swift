@@ -488,6 +488,28 @@ do {
     if case .wrongAccount(let a, _)? = e.waitEnd() { check("wrong account by address", a.email == "bob@example.com") }
     else { check("wrong address", false, "\(String(describing: e.outcome))") }
     e.cleanUp()
+    // a word that names no organisation, the record naming one: the seat isn't known. Wanted by its seat (an organisation
+    // named): which seat the sign-in landed on isn't known, so unverified, never signed in; wanted by its address alone:
+    // the address is all that was asked, signed in
+    let noOrg: ClaudeSignIn.Confirm = { _ in SignedInAccount.process(["email": "ann@example.com"]) }
+    let f = Case("seatnotknown", login: ["login": "ok", "email": "ann@example.com", "uuid": uuid(7), "org": uuid(51), "orgName": "Sample Org"])
+    f.start(wanted: SignedInAccount(email: "ann@example.com", organizationName: "Sample Org", origin: .record), confirm: noOrg)
+    if case .unverified? = f.waitEnd() { check("a seat not known, the seat wanted named: unverified", true) }
+    else { check("seat not known, seat wanted", false, "\(String(describing: f.outcome))") }
+    f.cleanUp()
+    let g = Case("seatnotknown2", login: ["login": "ok", "email": "ann@example.com", "uuid": uuid(8), "org": uuid(51), "orgName": "Sample Org"])
+    g.start(wanted: SignedInAccount(email: "ann@example.com", origin: .record), confirm: noOrg)
+    if case .signedIn? = g.waitEnd() { check("a seat not known, only the address wanted: signed in", true) }
+    else { check("seat not known, address wanted", false, "\(String(describing: g.outcome))") }
+    g.cleanUp()
+    // another account on a seat not known (bob's word naming no organisation, bob's record naming one): the account
+    // decides first, so it is the wrong account, never just unsure
+    let h = Case("seatnotknownother", login: ["login": "ok", "email": "bob@example.com", "uuid": uuid(9), "org": uuid(51), "orgName": "Sample Org"])
+    h.start(wanted: SignedInAccount(email: "ann@example.com", organizationName: "Sample Org", origin: .record),
+            confirm: { _ in SignedInAccount.process(["email": "bob@example.com"]) })
+    if case .wrongAccount(let a, _)? = h.waitEnd() { check("another account on a seat not known: wrong account", a.email == "bob@example.com", "\(a)") }
+    else { check("seat not known, another account", false, "\(String(describing: h.outcome))") }
+    h.cleanUp()
 }
 do {
     let c = Case("declined", login: ["login": "declined"])
