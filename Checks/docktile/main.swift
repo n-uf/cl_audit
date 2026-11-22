@@ -401,6 +401,11 @@ do {
     check(DockTileMenu.splitDiffers.count <= DockTileMenu.rowCharacters
           && ("Usage hidden: Terminal on " + AddressText.hidden).count <= DockTileMenu.rowCharacters,
           "the split's status line fits whole: its fallback, and the address form while hidden")
+    let back = DockTileMenu.AddressRow(address: "ann@example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
+    let longBack = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example.com", suffix: DockTileMenu.moveBackSuffix, ticked: true)
+    check(DockTileMenu.words(back, blur: true) == "hidden address · move back here" && DockTileMenu.words(back, blur: false) == "ann@example.com · move back here"
+          && DockTileMenu.words(longBack, blur: false).hasSuffix(" · move back here") && DockTileMenu.words(longBack, blur: false).count == DockTileMenu.rowCharacters,
+          "a clash's ticked row: only the address is cut, its words whole, within 40 (got \(DockTileMenu.words(longBack, blur: false)))")
     let noAgent = DockTileMenu.rows(win, show, windowOpen: false, agentRuns: false, now: now)
     check(DockTileMenu.lines(noAgent, blur: false) == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "—", "cl_audit's agent isn't running"]
           && !noAgent.contains { if case .action = $0 { return true }; if case .address(let r) = $0 { return r.act != nil }; return false },

@@ -3425,7 +3425,7 @@ MainActor.assumeIsolated {
     _ = Store.writeStatus("acc", rec(login: u3.email, code: u3))
     let bothShow = ProfileShow.load(both, now: now), bothDock = dockOf(both, bothShow), bothBar = menuBarMenu(bothShow)
     let u2Short = AccountNames.short(u2.email!)
-    let backTitle = DockTileMenu.fit("\(u1.email!) · move Claude Code back here"), backKey = AccountEntry.switchKey("acc", "k1")
+    let backTitle = "ultra-1@example.com · move back here", backKey = AccountEntry.switchKey("acc", "k1")
     func allItems(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(allItems) ?? []) } }
     func rowsOf(_ m: NSMenu, _ short: String) -> Int { titles(m).filter { $0.hasPrefix(short) && !$0.hasPrefix("Claude") }.count }
     func ownRow(_ m: NSMenu) -> NSMenuItem? { allItems(m).first { $0.title == backTitle } }
@@ -4235,9 +4235,12 @@ MainActor.assumeIsolated {
     check(rows.allSatisfy { clean($0.0.title) && clean($0.1.accessibilityLabel() ?? "") && $0.0.title.contains("hidden address") && $0.1.accessibilityLabel() == $0.0.title }
           && titles(barMenu).allSatisfy(clean),
           "hidden, the menu bar icon's menu: no title or accessibility label holds any part of any address: \(titles(barMenu))")
-    check(Set(rows.filter { $0.0.title == "hidden address" }.map { $0.1.naturalWidth }).count == 1
-          && rows.filter { $0.0.title == "hidden address" }.count == 2,
+    let standbyRows = rows.filter { $0.0.state != .on }, tickedRow = rows.first { $0.0.state == .on }
+    check(Set(standbyRows.map { $0.1.naturalWidth }).count == 1 && standbyRows.count == 2 && standbyRows.allSatisfy { $0.0.title == "hidden address" },
           "hidden, the menu bar icon's menu: the two standby rows (a short and a long address) are the same width")
+    check(tickedRow?.1.ticked == true && tickedRow?.0.title == "hidden address" && tickedRow?.1.prefix == "",
+          "hidden, the menu bar icon's menu: the account in use ticks as the native rows do (its state, a mark in the margin), "
+          + "no \"✓\" in its words, its address in the standby rows' column")
     // the Dock icon's menu (the Dock draws it, no item views): plain titles, "hidden address" numbered so the rows stay apart
     let dockMenu = dockOf(e, show).menu
     let dockAccounts = all(dockMenu).filter { $0.title.hasPrefix("hidden address") }

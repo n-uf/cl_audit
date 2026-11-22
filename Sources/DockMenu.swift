@@ -108,10 +108,10 @@ enum DockTileMenu {
         let lines = SwitchMenu.lines(listed, now: now, own: show.ownStandbyID)
         var out: [Row] = []
         // the account in use (none while signed out); in a clash the profile's own account, whose click moves Claude Code
-        // back to it (SwitchOffer.moveBackWords)
+        // back to it ("ann@example.com · move back here", moveBackSuffix)
         if d.sign != .signedOut, let inUse = show.inUseLabel {
             if let own = lines.first(where: { $0.own }) {
-                out.append(.address(AddressRow(address: inUse, suffix: " · " + SwitchOffer.moveBackWords, ticked: true,
+                out.append(.address(AddressRow(address: inUse, suffix: moveBackSuffix, ticked: true,
                                                act: actions && own.canSwitch ? .switchTo : nil, target: own.key)))
             } else {
                 out.append(.address(AddressRow(address: inUse, ticked: true)))
@@ -189,11 +189,17 @@ enum DockTileMenu {
 
     /// A row's words as plain text (a Dock menu's title, every row's accessibility words): the address as it is, or "hidden
     /// address" while hidden, with `number` after it ("hidden address 2") where several account rows would read the same.
+    /// Only the address is cut to keep the row within 40 characters, never the words around it ("Sign Terminal in to …",
+    /// " · Terminal", " · move back here").
     static func words(_ r: AddressRow, number: Int? = nil, blur: Bool? = nil) -> String {
         let shown = hidden(r, blur: blur) ? AddressText.hidden + (number.map { " \($0)" } ?? "")
                                           : AddressSettings.words(r.address, blur: blur)
-        return fit(r.prefix + shown + r.suffix)
+        let room = rowCharacters - r.prefix.count - r.suffix.count
+        return r.prefix + (shown.count > room ? fit(shown, max: max(room, 9)) : shown) + r.suffix
     }
+
+    /// The clash's ticked row: what choosing the profile's own account does, short enough to leave its address room.
+    static let moveBackSuffix = " · move back here"
 
     /// Each hidden account row's number, in the order they are shown, when more than one is hidden (else none).
     static func numbers(_ rows: [Row], blur: Bool? = nil) -> [Int: Int] {
@@ -293,8 +299,8 @@ enum DockTileMenu {
         let what = r.act.map { object($0, r.target) }
         let i: NSMenuItem
         if views, hidden(r) {
-            i = AddressMenuRow.item(prefix: (r.ticked ? "✓ " : "") + r.prefix, address: r.address, suffix: r.suffix,
-                                    enabled: r.enabled) { [weak target] in
+            i = AddressMenuRow.item(prefix: r.prefix, address: r.address, suffix: r.suffix,
+                                    enabled: r.enabled, ticked: r.ticked) { [weak target] in
                 guard let what, let target else { return }
                 let sender = NSMenuItem(); sender.representedObject = what      // what the action reads
                 NSApp.sendAction(action, to: target, from: sender)

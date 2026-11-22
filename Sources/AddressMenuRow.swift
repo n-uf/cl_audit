@@ -23,6 +23,8 @@ final class AddressMenuRow: NSView {
     let pick: () -> Void
     /// For pictures: drawn as if the menu highlighted the row.
     var highlighted = false
+    /// The account in use: a checkmark in the left margin (the address keeps the standby rows' column).
+    var ticked = false
     /// A test override of the setting (nil: the app's, AddressPrivacy.shared); it reaches what is drawn and what is spoken.
     var blur: Bool?
 
@@ -36,14 +38,18 @@ final class AddressMenuRow: NSView {
     /// The item: the row as its view, and a title and action of its own for the menu's type-ahead and Return (a click on the
     /// row closes the menu, then runs `pick`; Return runs it too). `enabled` false: dimmed, never lit, does nothing.
     /// The caller may put its own `representedObject` on it: the row keeps its own handler in `target`.
-    static func item(prefix: String = "", address: String, suffix: String = "", enabled: Bool = true,
+    /// `ticked`: the account in use, its checkmark drawn in the row's left margin, so its address stands in the same column as
+    /// the standby rows' (the item's state says it too).
+    static func item(prefix: String = "", address: String, suffix: String = "", enabled: Bool = true, ticked: Bool = false,
                      pick: @escaping () -> Void) -> NSMenuItem {
         let row = AddressMenuRow(prefix: prefix, address: address, suffix: suffix, enabled: enabled, pick: pick)
+        row.ticked = ticked
         let item = NSMenuItem(title: row.title, action: #selector(AddressMenuRow.fire), keyEquivalent: "")
         item.target = row                       // (the item keeps its view, so its target lives as long as it does)
         item.isEnabled = enabled
         if !enabled { item.action = nil }       // a dimmed row has nothing to run
         item.view = row
+        if ticked { item.state = .on }
         return item
     }
 
@@ -127,6 +133,7 @@ final class AddressMenuRow: NSView {
         func text(_ s: String, x: CGFloat) {
             (s as NSString).draw(at: NSPoint(x: x, y: mid - h / 2), withAttributes: [.font: Self.font, .foregroundColor: color])
         }
+        if ticked { text("✓", x: max(2, Self.padX - w("✓") - 2)) }
         var x = Self.padX
         if !prefix.isEmpty { text(prefix, x: x); x += w(prefix) }
         ink.draw(address: address, readable: sharp, color: color, x: x, midY: mid, blur: blurred)
