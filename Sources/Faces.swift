@@ -810,19 +810,32 @@ extension View {
 }
 
 /// A text field drawn as a well, like the pop-ups: the address when signing in to another account. As wide as it's
-/// given; Return submits, Esc cancels.
+/// given; Return submits, Esc cancels. With Show emails off, an address in it is drawn as the one stand-in (BlurredAddress)
+/// whenever the field isn't being typed in: the field's own text is not drawn then (never real text under a blur), and a
+/// click goes through to the field.
 struct WellField: View {
     let placeholder: String
     @Binding var text: String
     var onSubmit: () -> Void = {}
     var onCancel: () -> Void = {}
     @FocusState private var focused: Bool
+    @ObservedObject private var privacy = AddressPrivacy.shared
     @Environment(\.face) private var face
+
+    /// The stand-in shows in place of the text: an address, Show emails off, not focused.
+    private var standIn: Bool { !focused && privacy.blur && AddressSettings.hides(text) }
 
     var body: some View {
         TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Color.white.opacity(0.32)))
             .textFieldStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.hex(0xececee))
             .environment(\.colorScheme, .dark)             // the well is dark on every face: a light caret
+            .opacity(standIn ? 0 : 1)
+            .overlay(alignment: .leading) {
+                if standIn {
+                    BlurredAddress(address: text, size: 12).font(.system(size: 12)).foregroundStyle(Color.hex(0xececee))
+                        .allowsHitTesting(false)
+                }
+            }
             .focused($focused)
             .onSubmit(onSubmit)
             .onExitCommand(perform: onCancel)
