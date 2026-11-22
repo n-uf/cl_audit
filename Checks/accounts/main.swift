@@ -154,11 +154,17 @@ do {
     dirs["~/.claude"] = u1
     let back = note([out])[0]
     check(back.seat.map { $0.same(u1) } == true && back.standby.map { $0.seat?.account } == [u2.account], "switched back: one standby entry each, never the one in use")
-    // another profile's account in use: refused
+    // another profile's account in use: taken here too (shared seats), that profile unchanged
     let work = profile("work", "~/.claude-work", u3)
     dirs = ["~/.claude": u3, "~/.claude-work": u3]
-    let refused = note([main, work])
-    check(refused == [main, work], "an account another profile works on is refused: nothing changes")
+    let sharedSeat = note([main, work])
+    check(sharedSeat[0].seat.map { $0.same(u3) } == true && sharedSeat[1] == work && sharedSeat[0].standby.map { $0.seat?.account } == [u1.account],
+          "shared seats: an account another profile works on is taken here too, the other profile unchanged")
+    check(FolderRules.sharedNote(FolderRules.seatSharers(u3, among: sharedSeat, except: "main", signedIn: { dirs[$0] }))
+          == "This account is also in use in “Work”. Both profiles show the same numbers.", "…with the amber note, no address in it")
+    // the same seat twice in one profile: still never (noted again, it's in use once and not on its own standby)
+    check(note(sharedSeat) == sharedSeat && !sharedSeat[0].standby.contains { $0.seat.map { $0.same(u3) } == true },
+          "the same seat twice in one profile: never")
     // on another profile's standby: it comes here, with a note on both
     var w2 = profile("work", "~/.claude-work", u3, standby: [StandbyAccount(email: u4.email!, seat: u4, id: "w4")])
     dirs = ["~/.claude": u4, "~/.claude-work": u3]
@@ -1226,12 +1232,12 @@ do {
     check(Leftovers.offerable("~/.claude-window", among: all) && !Leftovers.offerable("~/.claude-window", among: all + [withWindow]),
           "nor a profile's Claude window folder")
 
-    // one account on one standby list: a stale entry for the leaving account on another profile's list goes
+    // shared seats: the leaving account stands by here, and another profile's entry for it stays (several standby lists)
     let p1 = profile("p1", "~/.claude-p1", u1)
     let p2 = profile("p2", "~/.claude-p2", u3, standby: [StandbyAccount(email: u1.email!, seat: u1, id: "x1")])
     let noted = FolderRules.noteAccounts([p1, p2], signedIn: { $0 == "~/.claude-p1" ? u2 : ($0 == "~/.claude-p2" ? u3 : nil) }, status: { _ in nil }, now: t0)
     let holders = noted.filter { $0.standby.contains { $0.seat.map { $0.same(u1) } == true } }.map(\.id)
-    check(holders == ["p1"], "the leaving account stands by on one list only: \(holders)")
+    check(holders == ["p1", "p2"] && noted[1].accountNote == nil, "the leaving account stands by on both lists, nothing said on the other: \(holders)")
 
     // the leaving account's week, even after another account's numbers took its place
     let me = profile("lw", "~/.claude-lw", u1)
@@ -2227,7 +2233,7 @@ do {
     try? fm.removeItem(atPath: base)
 }
 
-// ============ 19. New profile's one owner rule (FolderRules.seatOwner): in use or standing by, one profile per account ============
+// ============ 19. shared seats (FolderRules.seatSharers): who else has an account, in use or standing by; a note, never a block ============
 do {
     let u5 = seat(5, "ultra-5@example.com")
     let none: (String) -> Seat? = { _ in nil }
@@ -2236,10 +2242,10 @@ do {
                                                                 StandbyAccount(email: "ULTRA-3@example.com", id: "s3")])
     let list = [main, work]
     func owner(_ s: Seat?, except: String? = nil) -> (String, Bool)? {
-        FolderRules.seatOwner(s, among: list, except: except, signedIn: none).map { ($0.profile.id, $0.standby) }
+        FolderRules.seatSharers(s, among: list, except: except, signedIn: none).first.map { ($0.profile.id, $0.standby) }
     }
-    func owner(_ i: AccountIdentity) -> (String, Bool)? { FolderRules.seatOwner(i, among: list, signedIn: none).map { ($0.profile.id, $0.standby) } }
-    // a standby of another profile is refused
+    func owner(_ i: AccountIdentity) -> (String, Bool)? { FolderRules.seatSharers(i, among: list, signedIn: none).first.map { ($0.profile.id, $0.standby) } }
+    // a standby of another profile: found, as a standby
     check(owner(u2).map { $0 == ("work", true) } == true, "another profile's standby account, by its ids: that profile's, as a standby")
     check(owner(Seat(account: u2.account.uppercased(), organization: u2.organization!.uppercased(), email: nil)).map { $0 == ("work", true) } == true,
           "…its ids in another case: the same account")
@@ -2254,27 +2260,36 @@ do {
     check(owner(u5) == nil && owner(AccountIdentity(account: nil, email: u5.email, organization: nil, source: .guessed)) == nil && owner(nil) == nil,
           "a free account: no owner")
     let fresh = profile("fresh", "~/.claude-nfresh", nil)
-    check(FolderRules.seatOwner(u5, among: [fresh], signedIn: { $0 == fresh.configDir ? u5 : nil }).map { ($0.profile.id, $0.standby) == ("fresh", false) } == true,
+    check(FolderRules.seatSharers(u5, among: [fresh], signedIn: { $0 == fresh.configDir ? u5 : nil }).first.map { ($0.profile.id, $0.standby) == ("fresh", false) } == true,
           "not linked yet: the profile whose folder is signed in to it")
-    // the address route's words
-    check(NewAccountSetup.addressProblem("ULTRA-2@example.com", among: list, signedIn: none) == "That's a standby account of “Work”. One profile per account.",
-          "an address typed that is another profile's standby account: refused, plainly")
-    check(NewAccountSetup.addressProblem(u4.email!, among: list, signedIn: none) == "That's the account of “Main”. One profile per account."
-          && NewAccountSetup.addressProblem(u5.email!, among: list, signedIn: none) == nil
-          && NewAccountSetup.addressProblem("nope", among: list, signedIn: none) == "Type the account's email address.", "an account in use refused as before; a free one allowed")
+    // several profiles: each once, in the file's order; the note names the first and counts the rest
+    let third = profile("third", "~/.claude-nthird", u4)
+    let both = FolderRules.seatSharers(u4, among: [main, work, third], signedIn: none)
+    check(both.map(\.profile.id) == ["main", "third"] && FolderRules.sharedNote(both) == "This account is also in use in “Main” and 1 other. All of them show the same numbers.",
+          "two other profiles on one account: both found, the note short: \(FolderRules.sharedNote(both) ?? "none")")
+    // the address route: never refused for another profile's account, the amber note instead (no address in it)
+    check(NewAccountSetup.addressNote("ULTRA-2@example.com", among: list, signedIn: none) == "This account is also a standby account in “Work”.",
+          "an address typed that is another profile's standby account: the standby note")
+    check(NewAccountSetup.addressNote(u4.email!, among: list, signedIn: none) == "This account is also in use in “Main”. Both profiles show the same numbers."
+          && NewAccountSetup.addressNote(u5.email!, among: list, signedIn: none) == nil
+          && NewAccountSetup.addressProblem(u4.email!) == nil
+          && NewAccountSetup.addressProblem("nope") == "Type the account's email address.", "an account in use: the in-use note, not refused; a free one: nothing")
+    // the note's address form: no address and no "hidden address" in it, whatever Show emails says (the field above shows it)
+    for n in [NewAccountSetup.addressNote(u4.email!, among: list, signedIn: none), NewAccountSetup.addressNote("ULTRA-2@example.com", among: list, signedIn: none)] {
+        check(n.map { !$0.contains("@") && !$0.contains("hidden address") && $0.first?.isUppercase == true } == true, "the note names no address in any form: \(n ?? "none")")
+    }
     // the sign-in's line on the Checks card (the folder's .claude.json)
     var d = NewAccountDraft(); d.name = "Draft"; d.source = .existing; d.existingDir = "~/.claude-ndraft"
-    func signInLine(_ s: Seat) -> SetupCheck? {
+    func signInLines(_ s: Seat) -> [SetupCheck] {
         sign(d.configDir, nil); sign(d.configDir, s)          // a new file each time (the record is read again when it changed)
-        return NewAccountSetup.checks(d, accounts: list, runs: [], checked: true).first { $0.section == .signIn }
+        return NewAccountSetup.checks(d, accounts: list, runs: [], checked: true).filter { $0.section == .signIn }
     }
-    let standbyLine = signInLine(u2), inUseLine = signInLine(u4), freeLine = signInLine(u5)
-    check(standbyLine?.state == .bad && standbyLine?.text.hasSuffix(", a standby account of “Work”: one profile per account") == true,
-          "signed in to another profile's standby account: a red line that says so: \(standbyLine?.text ?? "none")")
-    check(inUseLine?.state == .bad && inUseLine?.text.hasSuffix(", the Claude account of “Main”: one profile per account") == true && freeLine?.state == .ok,
-          "another profile's account in use: red as before; a free one: fine")
-    // Finish links the folder's account only when no other profile has it, in use or standing by (by its ids, or
-    // remembered by its address)
+    let standbyLines = signInLines(u2), inUseLines = signInLines(u4), freeLines = signInLines(u5)
+    check(standbyLines.map(\.state) == [.ok, .warn] && standbyLines.last?.text == "This account is also a standby account in “Work”." && !standbyLines.contains { $0.blocks },
+          "signed in to another profile's standby account: signed in, and the amber standby note, nothing blocks: \(standbyLines.map(\.text))")
+    check(inUseLines.map(\.state) == [.ok, .warn] && inUseLines.last?.text == "This account is also in use in “Main”. Both profiles show the same numbers."
+          && freeLines.map(\.state) == [.ok], "another profile's account in use: the amber in-use note, no red; a free one: fine")
+    // Finish links the folder's account whoever else has it (shared seats), in use or standing by
     let installs = SettingsModel.applyInstalls
     SettingsModel.applyInstalls = false
     func finished(_ s: Seat, _ name: String) -> AccountEntry? {
@@ -2285,8 +2300,8 @@ do {
         return m.accounts.first { $0.id == f.id }
     }
     let fStandby = finished(u2, "Draft A"), fByAddress = finished(u3, "Draft B"), fFree = finished(u5, "Draft C")
-    check(fStandby != nil && fStandby?.seat == nil && fByAddress != nil && fByAddress?.seat == nil && fFree?.seat.map { $0.same(u5) } == true,
-          "Finish: another profile's standby account (by its ids, or remembered by its address) isn't linked; a free one is")
+    check(fStandby?.seat.map { $0.same(u2) } == true && fByAddress?.seat.map { $0.same(u3) } == true && fFree?.seat.map { $0.same(u5) } == true,
+          "Finish: another profile's standby account (by its ids, or remembered by its address) is linked too, as a free one is")
     SettingsModel.applyInstalls = installs
     try? fm.removeItem(atPath: expand(d.configDir))
     // an address typed against the profiles' folders, as the address check always did: an unlinked profile's folder signed
@@ -2299,11 +2314,11 @@ do {
     sign(noEmail.configDir, u5)
     put(expand(idless.configDir) + "/.claude.json", #"{"oauthAccount":{"emailAddress":"ultra-7@example.com"}}"#)
     let folders = [unlinked, noEmail, idless]
-    check(NewAccountSetup.addressProblem("ULTRA-6@example.com", among: folders) == "That's the account of “Unlinked”. One profile per account."
-          && NewAccountSetup.addressProblem(u5.email!, among: folders) == "That's the account of “Noemail”. One profile per account."
-          && NewAccountSetup.addressProblem("ultra-7@example.com", among: folders) == "That's the account of “Idless”. One profile per account.",
-          "an address typed: an unlinked profile's signed-in folder, a linked account with no address, a record with no id: refused as before")
-    check(NewAccountSetup.addressProblem("ultra-8@example.com", among: folders) == nil, "…another address: allowed")
+    check(NewAccountSetup.addressNote("ULTRA-6@example.com", among: folders) == "This account is also in use in “Unlinked”. Both profiles show the same numbers."
+          && NewAccountSetup.addressNote(u5.email!, among: folders) == "This account is also in use in “Noemail”. Both profiles show the same numbers."
+          && NewAccountSetup.addressNote("ultra-7@example.com", among: folders) == "This account is also in use in “Idless”. Both profiles show the same numbers.",
+          "an address typed: an unlinked profile's signed-in folder, a linked account with no address, a record with no id: found as before, a note")
+    check(NewAccountSetup.addressNote("ultra-8@example.com", among: folders) == nil, "…another address: nothing to say")
     for f in folders { try? fm.removeItem(atPath: expand(f.configDir)) }
     // the folder and window rules are unchanged
     check(FolderRules.configOwner("~/.claude-nwork/inside", among: list)?.id == "work" && FolderRules.configOwner("~/.claude-nwork", among: list, except: "work") == nil
@@ -2338,10 +2353,11 @@ do {
           "noteAccounts: h1's address in another organisation is another account: in use, h1 stands by")
     dirs = ["~/.claude-o20main": otherID]
     check(note([main])[0].seat.map { $0.same(otherID) } == true, "noteAccounts: both ids present but different: another account, never the address")
-    // another profile's account in use, ids in another case: refused
+    // another profile's account in use, ids in another case: taken here too (shared seats), that profile unchanged
     let work = profile("work", "~/.claude-o20work", h2)
     dirs = ["~/.claude-o20main": upper(h2), "~/.claude-o20work": h2]
-    check(note([main, work]) == [main, work], "noteAccounts: another profile's account in use, ids in another case: refused")
+    let shared = note([main, work])
+    check(shared[0].seat.map { $0.sameAccount(h2) } == true && shared[1] == work, "noteAccounts: another profile's account in use, ids in another case: shared, taken here")
     // a standby entry with its ids in another case moves here; one remembered by its address moves by the address
     let w2 = profile("work", "~/.claude-o20work", h1, standby: [StandbyAccount(email: h2.email!, seat: upper(h2), id: "c2")])
     let m2 = profile("main", "~/.claude-o20main", otherID)
@@ -2363,21 +2379,38 @@ do {
           && !FolderRules.isThat(h1, StandbyAccount(email: h1.email!, seat: otherOrg, id: "z")) && !FolderRules.isThat(h1, StandbyAccount(email: h1.email!, seat: otherID, id: "w"))
           && FolderRules.isThat(Seat(account: h2.account, organization: "", email: nil), StandbyAccount(email: "", seat: Seat(account: h2.account, organization: nil), id: "v")),
           "isThat: ids in any case, an address only by the address, another organisation or id never by the address, nil and \"\" one")
-    // has and seatTaken
+    // has
     let holder = profile("holder", "~/.claude-o20holder", h2, standby: [StandbyAccount(email: "HEX-1@example.com", id: "s1")])
     let byID = profile("byid", "~/.claude-o20byid", h1)
     check(holder.has(upper(h2)) && holder.has(h1) && holder.has(otherID) && !byID.has(otherID) && !byID.has(otherOrg) && !holder.has(hexSeat(3, nil)) && !holder.has(nil),
           "has: in use (ids in any case); a standby remembered by its address only by the address, whatever the id; another id or organisation "
           + "with the address of one known by its ids, or a free one: no")
+    // shared seats: two profiles not linked yet on one account are both linked to it (no "left out" any more)
     let fresh = profile("fresh", "~/.claude-o20fresh", nil)
-    func taken(_ s: Seat, _ list: [AccountEntry]) -> String? { FolderRules.seatTaken(fresh, among: list, signedIn: { $0 == fresh.configDir ? s : nil })?.id }
-    check(taken(upper(h2), [holder, fresh]) == "holder" && taken(h1, [holder, fresh]) == "holder",
-          "seatTaken: another profile's account in use with its ids in another case, or its standby by address: taken")
-    check(taken(otherID, [byID, fresh]) == nil && taken(otherOrg, [byID, fresh]) == nil,
-          "seatTaken: another id or another organisation with the same address: free")
     let early = profile("early", "~/.claude-o20early", nil)
-    check(FolderRules.seatTaken(fresh, among: [early, fresh], signedIn: { $0 == early.configDir ? h1 : ($0 == fresh.configDir ? upper(h1) : nil) })?.id == "early",
-          "seatTaken: an earlier profile not linked yet signed in to it, ids in another case: taken")
+    dirs = [early.configDir: h1, fresh.configDir: upper(h1)]
+    let bothLinked = note([early, fresh])
+    check(bothLinked.allSatisfy { $0.seat.map { $0.sameAccount(h1) } == true }, "noteAccounts: two profiles not linked yet on one account: both linked to it")
+    // the agent's one read per shared seat (SharedReads): a reading taken for a seat is reused by another reader on it
+    SharedReads.last = [:]
+    let read = Usage(fiveHour: 40, weekly: 10, fetchedAt: t0, source: "Anthropic")
+    SharedReads.note(read, owner: h1.account, organization: h1.organization, by: "early")
+    check(SharedReads.reuse(owner: upper(h1).account, organization: h1.organization, folder: upper(h1), have: nil, within: 300, now: t0.addingTimeInterval(60)) == read,
+          "one read per shared seat: another reader on the same seat (ids in another case) takes it within its interval")
+    check(SharedReads.reuse(owner: h1.account, organization: h1.organization, folder: h1, have: nil, within: 300, now: t0.addingTimeInterval(400)) == nil
+          && SharedReads.reuse(owner: h1.account, organization: h1.organization, folder: h1, have: t0, within: 300, now: t0.addingTimeInterval(60)) == nil
+          && SharedReads.reuse(owner: h1.account, organization: h1.organization, folder: otherID, have: nil, within: 300, now: t0.addingTimeInterval(60)) == nil
+          && SharedReads.reuse(owner: h1.account, organization: "00000000-0000-4000-8000-0000000000c1", folder: otherOrg, have: nil, within: 300, now: t0.addingTimeInterval(60)) == nil
+          && SharedReads.reuse(owner: nil, organization: nil, folder: h1, have: nil, within: 300, now: t0.addingTimeInterval(60)) == nil,
+          "…never past its interval, never one it has already, never across a switch (another folder seat), another organisation, or an owner not confirmed")
+    // …and its alerts go out once: from the first profile that has the seat in use
+    let sharers = [profile("a1", "~/.claude-o20a1", h1), profile("a2", "~/.claude-o20a2", upper(h1)), profile("a3", "~/.claude-o20a3", h2)]
+    check(SharedReads.alertsHere("a1", owner: h1.account, organization: h1.organization, among: sharers)
+          && !SharedReads.alertsHere("a2", owner: h1.account, organization: h1.organization, among: sharers)
+          && SharedReads.alertsHere("a3", owner: h2.account, organization: h2.organization, among: sharers)
+          && SharedReads.alertsHere("a2", owner: nil, organization: nil, among: sharers),
+          "a shared seat alerts from its first profile only; a seat of one profile, or an owner not known, alerts as before")
+    SharedReads.last = [:]
     // the default-profile move: the old profile's account is kept as a standby account only when the default profile hasn't
     // it (the one owner rule, or its id in another organisation: StandbyTidy keeps one entry per id)
     let h2Org = Seat(account: h2.account, organization: "00000000-0000-4000-8000-0000000000c2", email: h2.email)

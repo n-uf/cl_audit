@@ -58,7 +58,8 @@ Only the calls moved; no expectation changed:
 - The one lock is `Flows.takeLock()` (was `SwitchEngine.Lock.take()`), a switch's receipt is read through its store
   (`SwitchEngine.store.load`), and a process's program is `Processes.executable(of:)` (was `SwitchMarker.executable`), as in
   `backup`.
-- `FolderRules.seatOwner` answers the owner with whether it is a standby account: the profile's id is `.profile.id`.
+- `FolderRules.seatSharers` (was `seatOwner`) answers every other profile that has the account, each with whether it is a
+  standby account: the profile's id is `.profile.id` (shared seats: a note, never a refusal).
 - `AccountFacts` reads a folder's record (`AccountFacts.of(configDir:)`, through `Account.record`) instead of a dictionary:
   the same oauthAccount block is written to a throwaway folder's `.claude.json` and read from there.
 - The switch's bounded checks run through `Processes` since 26.11.35: `SwitchEngine.probe` is a three-line helper in the suite

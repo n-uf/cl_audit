@@ -217,10 +217,11 @@ MainActor.assumeIsolated {
     check(NewAccountSetup.wellAddress(wellAddr) == wellAddr && NewAccountSetup.wellAddress("account 1a2b3c4d") == "account 1a2b3c4d"
           && NewAccountSetup.wellAddress("Choose an account") == nil && NewAccountSetup.wellAddress("not signed in yet") == nil,
           "wellAddress (Account pop-up): the real address (or an account id) for the label to hide; its other words as they are")
-    check(NewAccountSetup.addressProblem("nope", among: accounts) == "Type the account's email address.", "address route: an address is needed")
-    check(NewAccountSetup.addressProblem("a b@example.com", among: accounts) == "Type the account's email address.", "address route: no spaces")
-    check(NewAccountSetup.addressProblem(" WORK@example.com ", among: accounts)?.contains("“Work”") == true, "address route: another profile's address is refused early, by name")
-    check(NewAccountSetup.addressProblem("first@example.com", among: accounts) == nil, "address route: a free address goes")
+    check(NewAccountSetup.addressProblem("nope") == "Type the account's email address.", "address route: an address is needed")
+    check(NewAccountSetup.addressProblem("a b@example.com") == "Type the account's email address.", "address route: no spaces")
+    check(NewAccountSetup.addressProblem(" WORK@example.com ") == nil && NewAccountSetup.addressNote(" WORK@example.com ", among: accounts)?.contains("“Work”") == true,
+          "address route: another profile's address goes (shared seats), with the note naming that profile")
+    check(NewAccountSetup.addressProblem("first@example.com") == nil && NewAccountSetup.addressNote("first@example.com", among: accounts) == nil, "address route: a free address goes, no note")
     check(NewAccountSetup.freeFolder(for: "FREE@example.com", among: accounts, folders: folders) == dFree, "an address already signed in in a free folder: that folder is offered")
     check(NewAccountSetup.freeFolder(for: "first@example.com", among: accounts, folders: folders) == nil, "an address in no folder: a new folder")
 
@@ -243,12 +244,14 @@ MainActor.assumeIsolated {
     check(!NewAccountSetup.waiting(d, now: t0), "another account now: the wait ends")
 
     // after the sign-in: account and organisation ids decide; the address only fills in the sign-in
+    // (the last sign-in line: the shared note when another profile has the account, else the one line)
     func signInLine(_ s: Seat, typed: String) -> SetupCheck? {
         writeClaudeJSON(d.configDir, s); var x = d; x.email = typed
-        return NewAccountSetup.checks(x, accounts: accounts, runs: [], checked: true).first { $0.section == .signIn }
+        return NewAccountSetup.checks(x, accounts: accounts, runs: [], checked: true).last { $0.section == .signIn }
     }
     let l1 = signInLine(taken, typed: "first@example.com")
-    check(l1?.state == .bad && l1?.text.contains("“Work”") == true, "signed in to Work's account (by ids): refused, one profile per account")
+    check(l1?.state == .warn && l1?.text.contains("“Work”") == true && l1?.text.hasPrefix("This account is also") == true,
+          "signed in to Work's account (by ids): shared, the amber note names Work, nothing refused")
     let l2 = signInLine(Seat(account: "lab", organization: "org-other", email: "work@example.com"), typed: "work@example.com")
     check(l2?.state == .ok, "same account, another organisation: another seat, not Work's")
     let l3 = signInLine(Seat(account: "zzz", organization: "org-lab", email: "work@example.com"), typed: "work@example.com")
@@ -541,15 +544,15 @@ MainActor.assumeIsolated {
     var p1 = AccountEntry(id: "a", name: "A", label: "A", configDir: home + "/.claude-acc-a"); p1.seat = seat("s1", "s1@example.com")
     p1.standby = [StandbyAccount(email: "s2@example.com", seat: seat("s2", "s2@example.com"), id: "k2")]
     let p2 = AccountEntry(id: "b", name: "B", label: "B", configDir: home + "/.claude-acc-b")
-    check(FolderRules.seatOwner(seat("s2", "s2@example.com"), among: [p1, p2])?.profile.id == "a", "a standby account belongs to its profile")
-    check(FolderRules.seatOwner(seat("s2", "s2@example.com"), among: [p1, p2], except: "a") == nil, "its own profile isn't another owner")
+    check(FolderRules.seatSharers(seat("s2", "s2@example.com"), among: [p1, p2]).map(\.profile.id) == ["a"], "a standby account is found on its profile")
+    check(FolderRules.seatSharers(seat("s2", "s2@example.com"), among: [p1, p2], except: "a").isEmpty, "its own profile isn't another one")
     check(FolderRules.configOwner(home + "/.claude-acc-a/inner", among: [p1, p2], except: "b")?.id == "a", "a folder inside a profile's is that profile's")
     check(FolderRules.configOwner(home + "/.claude-acc-s2", among: [p1, p2]) == nil, "no folder is a standby account's")
-    // not linked yet, two profiles signed in to the same account: the first takes it, the later one says whose
+    // not linked yet, two profiles signed in to the same account: both take it (shared seats)
     let q1 = AccountEntry(id: "q1", name: "Q1", label: "Q1", configDir: home + "/.claude-q1"), q2 = AccountEntry(id: "q2", name: "Q2", label: "Q2", configDir: home + "/.claude-q2")
     let sameSeat: (String) -> Seat? = { $0.hasSuffix("-q1") || $0.hasSuffix("-q2") ? seat("qq", "qq@example.com") : nil }
-    check(FolderRules.seatTaken(q2, among: [q1, q2], signedIn: sameSeat)?.id == "q1" && FolderRules.seatTaken(q1, among: [q1, q2], signedIn: sameSeat) == nil,
-          "seatTaken: the later of two unlinked profiles on one account is the one left out")
+    check(FolderRules.noteAccounts([q1, q2], signedIn: sameSeat, status: { _ in nil }).allSatisfy { $0.seat?.account == "qq" },
+          "two unlinked profiles on one account: both linked to it")
     // two profiles sharing a folder or a window: said
     let r1 = AccountEntry(id: "r1", name: "R1", label: "R1", configDir: "~/.claude-shared")
     var r2 = AccountEntry(id: "r2", name: "R2", label: "R2", configDir: "~/.claude-shared/x"); r2.desktop = .separate; r2.desktopDataDir = "~/Library/Application Support/Claude-r2"
@@ -2936,7 +2939,7 @@ do {
     do {
         let dir = home + "/.claude-sg-words"
         try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        func said(_ e: SignInWindow.End, owner: String? = nil) -> SignInSaid? { SignInSaid(e, configDir: dir, owner: owner) }
+        func said(_ e: SignInWindow.End, shared: String? = nil) -> SignInSaid? { SignInSaid(e, configDir: dir, shared: shared) }
         let a = server(ann), b = server(bob)
         let ends: [(SignInWindow.End, SignInSaid.Kind)] = [
             (.signedIn(a), .signedIn), (.unverified(a), .unverified), (.wrongAccount(signedIn: b, wanted: a), .wrongAccount), (.declined, .declined),
@@ -2956,9 +2959,13 @@ do {
         check(said(.failed(.notOpened))!.text == "Terminal didn't open." && fl[5] == "An earlier Claude Code sign-in window is still open. Close it, then try again.",
               "stage G: Terminal not opening and a window still open say what they always said")
         let wrong = said(.wrongAccount(signedIn: b, wanted: a))!
-        let refused = said(.wrongAccount(signedIn: b, wanted: a), owner: "the account of “Other”")!
-        check(!wrong.danger && refused.danger && refused.text.hasSuffix("is the account of “Other”: one profile per account.") && !refused.text.contains("on standby"),
-              "stage G: another account signed in: amber; another profile's account: refused in red, one profile per account, nobody followed: \(refused.text)")
+        // shared seats: another profile's account is taken, never refused; the note goes after the line, amber, no address in it
+        let note = "This account is also in use in “Other”. Both profiles show the same numbers."
+        let shared = said(.wrongAccount(signedIn: b, wanted: a), shared: note)!
+        let sharedIn = said(.signedIn(b), shared: note)!
+        check(!wrong.danger && !shared.danger && shared.text(emailsShown: true).hasSuffix(" " + note) && shared.text(emailsShown: true).hasPrefix(wrong.text(emailsShown: true))
+              && sharedIn.kind == .signedIn && !sharedIn.danger && sharedIn.text == "Signed in. " + note,
+              "stage G: another profile's account signed in: taken, amber, the shared note after the line: \(shared.text) | \(sharedIn.text)")
         // what happened after a wrong or unconfirmed account that isn't another profile's: the profile follows, the account before is on standby
         func follow(_ e: SignInWindow.End, previous: String?, follows: Bool = true) -> SignInSaid { SignInSaid(e, configDir: dir, previous: previous, follows: follows)! }
         let wrongNow = follow(.wrongAccount(signedIn: b, wanted: a), previous: ann.email)

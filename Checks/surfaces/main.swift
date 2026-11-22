@@ -31,6 +31,16 @@ func check(_ ok: Bool, _ what: String, line: Int = #line) {
 }
 func uuid(_ n: Int) -> String { "00000000-0000-4000-8000-" + String(format: "%012d", n) }
 func seat(_ n: Int, _ email: String) -> Seat { Seat(account: uuid(n), organization: uuid(n + 100), email: email) }
+/// A record as a build before shared seats wrote it for Claude Code's folder on another profile's account in use (a clash):
+/// the resolver makes none now (both profiles show the seat's numbers), but such a record is read until its next save, so
+/// the surfaces still say it as they did.
+func olderClash(_ s: IconStatus, _ o: AccountEntry) -> IconStatus {
+    var s = s
+    s.resolved?.clash = o.name; s.resolved?.clashID = o.id
+    s.resolved?.line = "Claude Code's folder is on \(o.name)'s account: its numbers show on \(o.name)."
+    s.resolved?.lit = s.resolved?.fromApp ?? false
+    return s
+}
 func put(_ path: String, _ text: String) {
     try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
     fm.createFile(atPath: path, contents: Data(text.utf8))
@@ -289,8 +299,9 @@ do {
     check(!out.fromApp && out.email == u1.email && out.line?.contains("signed out") == true, "the app signed out: Claude Code's account, with a muted line")
     var noWin = main; noWin.claudeWindow = false
     check(res(noWin, appU2, code: u1, numbers: u1.email).line == nil && !res(noWin, appU2, code: u1, numbers: u1.email).fromApp, "no Claude window: Claude Code's account, nothing to say")
-    let clash = res(main, .unknown, code: u3, numbers: u3.email)
-    check(clash.clash == "Other" && clash.line?.contains("Other") == true && !clash.lit, "Claude Code's folder on another profile's account in use: said, lamp off")
+    let shared = res(main, .unknown, code: u3, numbers: u3.email)
+    check(shared.clash == nil && shared.clashID == nil && shared.line == nil && shared.lit && shared.email == u3.email,
+          "shared seats: Claude Code's folder on another profile's account in use: its numbers are this profile's too, no clash, lamp on")
     // a read from just before the folder's sign-in changed: the app signed out, the folder already on a free account, the
     // numbers still u1's: labelled with the address they were read for
     let late = res(main, appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
@@ -1698,9 +1709,9 @@ do {
     check(posts.isEmpty && ProfileShow.of(e, raw: saved).display.split != nil && Store.status(for: e)?.weekly == nil,
           "the split: no full or back alert, no switch offer, and no numbers for the profile: \(posts)")
     sr.stop()
-    // the same read with the app on mo (no split): the full alert goes out (the check above isn't empty by accident). One
-    // account belongs to one profile: a second profile whose folder is signed in to mo too (a clash) shows no numbers
-    // and raises no alert, so the full limit alerts exactly once, from the profile whose account it is
+    // the same read with the app on mo (no split): the full alert goes out (the check above isn't empty by accident). Shared
+    // seats: a second profile whose folder is signed in to mo too shows the same numbers, but the full limit alerts exactly
+    // once, from the first profile that has mo in use (SharedReads.alertsHere)
     var same = profile("spm", "~/.claude-spm", mo); same.claudeWindow = false
     var twin = profile("spt", "~/.claude-spt", nil); twin.claudeWindow = false
     signIn(same.configDir, mo, plan: "Ultra"); signIn(twin.configDir, mo, plan: "Ultra")
@@ -1715,15 +1726,14 @@ do {
     RunLoop.main.run(until: Date().addingTimeInterval(0.5))                // time for a second, unwanted one to show
     let fulls = posts.filter { $0.contains("full") }
     check(fulls == ["Claude Spm: weekly limit full"],
-          "two profiles' folders on one account: exactly one full alert, from the profile whose account it is: \(fulls)")
-    check(Store.status("spt")?.resolved?.clash == "Spm" && Store.status(for: twin)?.weekly == nil,
-          "the twin is the clash: its card shows no numbers, and it stays quiet")
-    // nor the plan: the reader writes none into a clash record (it is mo's, Spm's), so every reader of it, the widget too,
-    // shows none; the profile whose account it is keeps it
-    let widgetClash = AgentFiles.load(from: Store.folder, now: now)
-    check(Store.status("spm")?.plan == "Ultra" && Store.status("spt")?.plan == nil && Store.status("spt")?.problem == Store.status("spt")?.resolved?.lineText()
-          && widgetClash.first { $0.id == "spm" }?.plan == "Ultra" && widgetClash.first { $0.id == "spt" }.map { $0.plan == nil && $0.week == nil } == true,
-          "the reader's clash record has no plan (Spm's Ultra stays on Spm): the widget shows none for the twin: \(Store.status("spt")?.plan ?? "nil")")
+          "two profiles' folders on one account: exactly one full alert, from the first profile that has it: \(fulls)")
+    check(Store.status("spt")?.resolved?.clash == nil && Store.status(for: twin)?.weekly == 100,
+          "the twin shares the seat: no clash, its card shows the same numbers, and it stays quiet")
+    // and the plan: both records have it, so every reader of them, the widget too, shows it on both
+    let widgetShared = AgentFiles.load(from: Store.folder, now: now)
+    check(Store.status("spm")?.plan == "Ultra" && Store.status("spt")?.plan == "Ultra"
+          && widgetShared.first { $0.id == "spm" }?.plan == "Ultra" && widgetShared.first { $0.id == "spt" }?.plan == "Ultra",
+          "a shared seat's plan shows on both profiles, the widget's too: \(Store.status("spt")?.plan ?? "nil")")
     mr.stop(); tr.stop()
     Store.removeStatus("spt")                                               // the widget checks below read every record
     try! Store.save([e, same])
@@ -2063,8 +2073,12 @@ MainActor.assumeIsolated {
           && signIn(mixedDock.menu),
           "the sign-in on another account than the folder's: the warning, the sign-in, the lamp off")
 
-    // another profile's account: the clash names that profile by its id (names needn't be unique), the lamp off
-    let clash = show(rec(login: u3.email, code: u3))
+    // shared seats: another profile's account in use is this profile's too, lit, no clash
+    let sharedShow = show(rec(login: u3.email, code: u3))
+    check(Store.status("show")?.resolved?.clash == nil && sharedShow.display.clash == nil && sharedShow.display.lamp,
+          "Claude Code's folder on another profile's account: a shared seat, no clash, the lamp on")
+    // an older build's clash record: the clash names that profile by its id (names needn't be unique), the lamp off
+    let clash = show(olderClash(rec(login: u3.email, code: u3), other))
     check(Store.status("show")?.resolved?.clashID == "other" && clash.display.clash == ProfileDisplay.Clash(id: "other", name: "Other")
           && !clash.display.lamp && !dockOf(e, clash).panel.activeLit,
           "Claude Code's folder on another profile's account: the clash by id (other) and name, the lamp off")
@@ -2409,14 +2423,15 @@ do {
     // another profile's account: by its id, and by its name in a record from before the id; the profile renamed since.
     // The folder's .claude.json names Other's account (u3): the key signs Terminal in to Card's own (u1), never Other's
     let ownLine = "Sign in as \(AddressSettings.words(u1.email!)) to read Card's usage."
-    let clash = card(rec(login: u3.email, code: u3), nil, "clash by id")
+    // (an older build's clash record: the resolver makes none now, shared seats)
+    let clash = card(olderClash(rec(login: u3.email, code: u3), other), nil, "clash by id")
     check(clash.row.display.clash == ProfileDisplay.Clash(id: "other", name: "Other") && clash.notice?.heading == "Terminal is signed in to Other's account"
           && clash.notice?.key == .signIn && clash.row.display.key == .logIn && clash.notice?.line == ownLine
           && clash.row.show.loginAddress == u1.email && clash.row.status?.expectedEmail == u3.email && !clash.row.lit,
           "Claude Code on Other's account (by id): red, Sign in… as Card's own u1 (never Other's u3), the lamp off: \(clash.notice?.line ?? "-")")
     // a clash has no numbers (the Reader drops a clash record's): the Dock panel's age line says there are none, never
     // "Reading usage…" (they aren't on their way)
-    let clashNone = card(rec(week: nil, five: nil, login: u3.email, code: u3), nil, "clash, no numbers")
+    let clashNone = card(olderClash(rec(week: nil, five: nil, login: u3.email, code: u3), other), nil, "clash, no numbers")
     let clashPanel = dockPanelOf(e, clashNone.row.show)         // (through the Dock app's own detailsInfo)
     check(clashNone.row.show.display.usage == nil && clashPanel.noNumbers == "No usage: Terminal is on Other's account",
           "a clash with no numbers: the Dock panel's age line says no usage here and whose account, never Reading usage…: \(clashPanel.noNumbers ?? "-")")
