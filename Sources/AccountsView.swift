@@ -30,8 +30,9 @@ struct AccountBox<Header: View, Content: View>: View {
     /// The account in use whose sign-in is wrong or gone: the selected row's treatment in red (bar outside, band across
     /// the panel, red lamp), its badge red.
     var alert = false
-    /// Where the account is signed in: the Claude app (with its Code tab) and Claude Code in Terminal. nil: not shown.
-    var marks: (app: Bool, terminal: Bool)? = nil
+    /// The split's two rows (the Claude app and Terminal on different accounts): the badge reads TERMINAL APP in place of
+    /// `badge`, this row's own half bright green and the half it is missing bright red (SplitBadge).
+    var split: SplitBadge? = nil
     /// A click anywhere on the box (a standby row selects or deselects); the address pop-up and the lit key keep their own.
     var tap: (() -> Void)? = nil
     var tapHelp: String? = nil
@@ -63,11 +64,15 @@ struct AccountBox<Header: View, Content: View>: View {
                         Text(detail).font(.system(size: 11)).foregroundStyle(face.muted)
                             .fixedSize(horizontal: false, vertical: true)       // details in full, never "…"
                     }
-                    if let marks { SignInMarks(app: marks.app, terminal: marks.terminal).padding(.top, 3) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if selected, let litBadge {
                     LitDisplay(text: litBadge, action: litAction).padding(.top, compact ? 0 : 1)
+                } else if let split {
+                    // the display's two parts, both lit: TERMINAL, then APP (DisplayWindow's text and its second part)
+                    DisplayWindow(text: SplitBadge.terminalWord, dim: SplitBadge.appWord, tone: split.terminal, height: 18, size: 9,
+                                  dimTone: split.app)
+                        .padding(.top, compact ? 0 : 1)
                 } else {
                     DisplayWindow(text: badge, tone: badgeTone, height: 18, size: 9).padding(.top, compact ? 0 : 1)
                 }
@@ -112,28 +117,17 @@ private struct BoxTap: ViewModifier {
     }
 }
 
-/// Where an account is signed in, as two small markers: the Claude app (its Code tab shares the app's sign-in) and Claude
-/// Code in Terminal (the sign-in usage is read through). Lit when signed in there.
-struct SignInMarks: View {
-    let app: Bool
-    let terminal: Bool
-    @Environment(\.face) private var face
-
-    var body: some View {
-        HStack(spacing: 5) { mark("Claude app", app); mark("Claude Code in Terminal", terminal) }
-    }
-
-    private func mark(_ t: String, _ on: Bool) -> some View {
-        HStack(spacing: 4) {
-            if on { Circle().fill(FaceTheme.ledOn).frame(width: 4, height: 4) }
-            Text(t).font(.system(size: 8.5, weight: .semibold)).tracking(0.9).textCase(.uppercase)
-                .strikethrough(!on, color: face.muted.opacity(0.5))
-        }
-        .foregroundStyle(on ? face.soft : face.muted.opacity(0.7))
-        .padding(.horizontal, 7).padding(.vertical, 2)
-        .overlay(Capsule().strokeBorder(on ? face.muted.opacity(0.5) : face.muted.opacity(0.25), lineWidth: 1))
-        .fixedSize()
-    }
+/// The badge on the split's two rows in Settings ▸ Accounts: TERMINAL then APP, always in that order. The row's own half
+/// lit bright green (the in-use green, DisplayWindow's ok), the half it is missing lit as bright in red (warn): a real
+/// problem, not an unlit segment. Terminal's account: TERMINAL green, APP red; the Claude app's: TERMINAL red, APP green.
+enum SplitBadge: Equatable {
+    case terminal, app
+    static let terminalWord = "Terminal"
+    static let appWord = "App"
+    /// TERMINAL's tone on this row.
+    var terminal: DisplayWindow.Tone { self == .terminal ? .ok : .warn }
+    /// APP's tone on this row.
+    var app: DisplayWindow.Tone { self == .app ? .ok : .warn }
 }
 
 /// The account in use's well on the dark faces (AccountBox `inUse`): near-black, a step off the display glass's teal.

@@ -1684,10 +1684,16 @@ struct AccountSettings: View {
                 // a switch of this profile running, or refused before anything: one line, the Switch page's strip words
                 SwitchStripLine(runner: model.runner(of: entry.id))
                 if let n = entry.accountNote { accountNoteRow(n) }
-                inUseBox
-                    .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
-                // Claude Code's account while the Claude app is still on another (right after a switch): its own row
-                if let code = view.codeRow { codeBox(code) }
+                if splitBand, let code = view.codeRow {
+                    // the split by hand: Terminal's account and the Claude app's in one red band, a key on each
+                    splitBandRows(code)
+                        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
+                } else {
+                    inUseBox
+                        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
+                    // Claude Code's account while the Claude app is still on another (right after a switch): its own row
+                    if let code = view.codeRow { codeBox(code) }
+                }
                 // the others, the one a full limit offers first on top (held still while one is selected); click one to
                 // select it, again to deselect
                 ForEach(standbyOrder) { s in standbyBox(s) }
@@ -1744,25 +1750,10 @@ struct AccountSettings: View {
         let notice = UsageNotice.of(row)
         let red = notice?.tone == .red
         let switching = show.display.split?.switchWaits == true
-        let readable = notice == nil || ["denied", "unreadable"].contains(status?.state ?? "")
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: red ? .warn : ok ? .ok : .warn,
                           detail: [plan].compactMap { $0 }.joined(separator: " · "), inUse: true,
-                          rest: picked != nil && !red, alert: red,
-                          // the Claude app's mark only when the app is what decides the account in use
-                          marks: (app: entry.claudeWindow && status?.resolved?.fromApp == true, terminal: readable && !split)) {
-            Menu {
-                ForEach(loginItems) { it in
-                    switch it.kind {
-                    case .divider: Divider()
-                    case .toggle(let on):
-                        Toggle(it.title, isOn: Binding(get: { on }, set: { _ in it.action() })).disabled(!it.enabled)
-                    case .item:
-                        if it.checked { Toggle(it.title, isOn: .constant(true)) }      // drawn with the menu's own tick
-                        else { Button(it.title, action: it.action).disabled(!it.enabled) }
-                    }
-                }
-            } label: { AccountBoxTitle(text: shown, tint: tint, icon: icon) }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
+                          rest: picked != nil && !red, alert: red) {
+            loginPopUp(shown, tint: tint, icon: icon)
         } content: {
             if red, let notice {
                 // the sign-in is on another account or gone: the card's heading and sentence, and the reddish Sign in…
@@ -1787,6 +1778,93 @@ struct AccountSettings: View {
                 }
             }
             if !red && !split { signInKeys(email: inUseKeyAddress) }
+            signInAgainLine
+        }
+    }
+
+    /// The in-use account's address as the pop-up it always was (the account Claude Code in the folder is signed in to,
+    /// ticked; logging back in to the profile's own; Renew sign-in): the in-use box's title, and the Claude app's row's in
+    /// the split's band.
+    func loginPopUp(_ shown: String, tint: Color? = nil, icon: String? = nil) -> some View {
+        Menu {
+            ForEach(loginItems) { it in
+                switch it.kind {
+                case .divider: Divider()
+                case .toggle(let on):
+                    Toggle(it.title, isOn: Binding(get: { on }, set: { _ in it.action() })).disabled(!it.enabled)
+                case .item:
+                    if it.checked { Toggle(it.title, isOn: .constant(true)) }      // drawn with the menu's own tick
+                    else { Button(it.title, action: it.action).disabled(!it.enabled) }
+                }
+            }
+        } label: { AccountBoxTitle(text: shown, tint: tint, icon: icon) }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: the split by hand (the Claude app and Terminal on different accounts): both rows in one red band
+
+    /// The split by hand, Terminal signed in and no switch waiting for the Claude app (the card's link says it, UsageNotice):
+    /// Terminal's account and the Claude app's sit in one red band, each with the key for the sign-in it is missing. A switch
+    /// waiting for the app, or Terminal signed out or expired, keep the rows as they were.
+    var splitBand: Bool { view.codeRow != nil && UsageNotice.of(inUseRow)?.link != nil }
+
+    /// The band: the red headline and the two muted lines once, then Terminal's account, then the Claude app's. Edge to
+    /// edge in the Claude Code panel (its corners the panel's inner radius), no bar on its left; the boxes inside stay the
+    /// normal dark. A link to the profile's Settings ▸ Accounts lands here (SettingsLink.splitBand).
+    func splitBandRows(_ code: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(SplitUsage.bandHead).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.danger)
+                Text(SplitUsage.bandWhy).font(.system(size: 11.5)).foregroundStyle(face.muted)
+                Text(SplitUsage.bandFix).font(.system(size: 11.5)).foregroundStyle(face.muted)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.bottom, 2)
+            splitTerminalBox(code)
+            splitAppBox
+        }
+        // comfortable room above the headline and under the last box, inside the band (which reaches 6 pt further)
+        .padding(.top, 8).padding(.bottom, 6)
+        .redBand(reach: 14, radius: face.moduleRadius)       // the SCard's 14 pt side padding, its inner radius
+        .padding(.top, 8).padding(.bottom, 6)                // room under the Accounts title, and above the standby rows
+        .id(SettingsLink.splitBand)
+    }
+
+    /// Terminal's account in the band: amber lamp, TERMINAL lit green and APP red, its numbers (read through Terminal's
+    /// sign-in), and "Sign the Claude app in", which opens the Switch page for it (always offered: AccountEntry.codeTarget;
+    /// the page says what's missing). Not selectable: a click on the row does nothing.
+    func splitTerminalBox(_ code: String) -> some View {
+        let own = codeStatus
+        let pick = splitSwitchTarget(code)
+        return AccountBox(lamp: FaceTheme.ledAmber, badge: "", detail: (own?.plan).map(Account.planWords), inUse: true, split: .terminal) {
+            AccountBoxTitle(text: code)
+        } content: {
+            limitsOrWhy(own, entry: entry, none: nil)
+            Button(SplitUsage.appSignInKey) { if let p = pick { model.showSwitch(AccountEntry.switchKey(entry.id, p.id)) } }
+                .buttonStyle(PillButtonStyle(tint: FaceTheme.ledRed, compact: true)).fixedSize()
+                .disabled(pick == nil)
+                .help("Opens the Switch page: the Claude window closes, its sessions move to \(AddressSettings.words(code)), and you sign the Claude app in there.")
+        }
+    }
+
+    /// The Switch page key of Terminal's account in the band: its standby entry, else Terminal's own account (codeTarget).
+    func splitSwitchTarget(_ code: String) -> StandbyAccount? {
+        entry.standby.first { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() } ?? entry.codeTarget(view)
+    }
+
+    /// The Claude app's account in the band: red lamp, TERMINAL red and APP lit green, no numbers (cl_audit reads only
+    /// through Terminal), its address as the in-use pop-up, and "Sign Terminal in": Terminal's own sign-in with the app's
+    /// address filled in (ProfileShow.loginAddress; none filled in while the app's account is known by its id only).
+    var splitAppBox: some View {
+        let v = view
+        return AccountBox(lamp: FaceTheme.ledRed, badge: "", detail: inUsePlan.map(Account.planWords), inUse: true, split: .app) {
+            loginPopUp(v.label ?? (v.recordTooLarge ? "account not known (record too large)" : "not signed in yet"))
+        } content: {
+            Button(SplitUsage.terminalSignInKey) { signInAgain(email: show.loginAddress) }
+                .buttonStyle(PillButtonStyle(tint: FaceTheme.ledRed, compact: true)).fixedSize()
+                .disabled(signingIn)
+                .help(show.loginAddress.map { "Sign Terminal in to \(AddressSettings.words($0)), the Claude app's account" }
+                      ?? "Sign Terminal in to the Claude app's account")
             signInAgainLine
         }
     }
@@ -1917,7 +1995,6 @@ struct AccountSettings: View {
         return AccountBox(lamp: nil, badge: "Standby", detail: (own?.plan).map(Account.planWords), unlit: !(switching || chosen),
                           selected: switching || chosen, litBadge: switching ? "Switching to" : "Switch account",
                           litAction: pick.map { p in { model.showSwitch(AccountEntry.switchKey(entry.id, p.id)) } },
-                          marks: (app: false, terminal: !["expired", "noLogin"].contains(own?.state ?? "")),
                           tap: switching ? nil : pick.map { p in { toggle(p) } },
                           tapHelp: switching || pick == nil ? nil : chosen ? "Click to deselect" : "Click to select, then Switch account") {
             AccountBoxTitle(text: code)

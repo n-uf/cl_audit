@@ -653,13 +653,30 @@ struct MintRow: ViewModifier {
     var barOffset: CGFloat = 6              // the bar's distance left of the box
     /// The same treatment in red: the account in use whose sign-in is wrong or gone (Settings ▸ Accounts).
     var red = false
+    /// The lit bar on the left; off for a band around several rows (the split's: never a stripe on the left edge).
+    var bar = true
+    /// The band's corners: 0, square (a row's band); the panel's inner radius for a band that reaches the panel's edges
+    /// (the split's), its hairlines soft and kept off the rounded corners.
+    var radius: CGFloat = 0
 
     func body(content: Content) -> some View {
         let c: Color = red ? .hex(0xff6b5e) : FaceTheme.mint
         let bar: [Color] = red ? [.hex(0xffd9d4), .hex(0xff6b5e)] : [.hex(0xe2fffa), .hex(0x7ff3e2)]
+        // a soft hairline: fading out towards both ends, inset by the corners' radius (a lighter red on top)
+        func hairline(_ color: Color) -> some View {
+            LinearGradient(colors: [color.opacity(0), color, color, color.opacity(0)], startPoint: .leading, endPoint: .trailing)
+                .frame(height: 1).padding(.horizontal, radius)
+        }
         return content
             .background(alignment: .leading) {
-                if on {
+                if on, radius > 0 {
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(LinearGradient(colors: [c.opacity(red ? 0.11 : 0.13), c.opacity(red ? 0.05 : 0.06)], startPoint: .top, endPoint: .bottom))
+                        .overlay(alignment: .top) { hairline((red ? Color.hex(0xffa49b) : c).opacity(0.42)) }
+                        .overlay(alignment: .bottom) { hairline(c.opacity(red ? 0.17 : 0.20)) }
+                        .padding(.horizontal, -reach).padding(.vertical, -6)
+                        .allowsHitTesting(false)
+                } else if on {
                     LinearGradient(colors: [c.opacity(red ? 0.11 : 0.13), c.opacity(red ? 0.05 : 0.06)], startPoint: .top, endPoint: .bottom)
                         .overlay(alignment: .top) { c.opacity(red ? 0.28 : 0.32).frame(height: 1) }
                         .overlay(alignment: .bottom) { c.opacity(red ? 0.17 : 0.20).frame(height: 1) }
@@ -668,7 +685,7 @@ struct MintRow: ViewModifier {
                 }
             }
             .overlay(alignment: .leading) {
-                if on {
+                if on && self.bar {
                     Capsule().fill(LinearGradient(colors: bar, startPoint: .leading, endPoint: .trailing))
                         .frame(width: 3)
                         .padding(.vertical, 8)
@@ -684,6 +701,10 @@ struct MintRow: ViewModifier {
 extension View {
     func mintRow(_ on: Bool, red: Bool = false, reach: CGFloat = 12, barOffset: CGFloat = 6) -> some View {
         modifier(MintRow(on: on, reach: reach, barOffset: barOffset, red: red))
+    }
+    /// The red band around several rows, edge to edge in a panel: no bar, its corners the panel's inner `radius`.
+    func redBand(reach: CGFloat, radius: CGFloat) -> some View {
+        modifier(MintRow(on: true, reach: reach, red: true, bar: false, radius: radius))
     }
 }
 
