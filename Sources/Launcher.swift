@@ -715,7 +715,7 @@ struct PaletteView: View {
 
             if model.filtered.isEmpty {
                 if model.rows.isEmpty {
-                    Button("Set up cl_audit…", action: actions.settings).padding(.vertical, 14)
+                    Button("Set up cl_audit", action: actions.settings).padding(.vertical, 14)
                 } else {
                     Text("No account matches.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 14)
                 }
@@ -867,7 +867,7 @@ struct MainScreenView: View {
                 if model.rows.isEmpty {
                     HStack(spacing: 10) {
                         Text("No profiles yet.").foregroundStyle(face.muted)
-                        Button("Set up cl_audit…", action: actions.settings).buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                        Button("Set up cl_audit", action: actions.settings).buttonStyle(PillButtonStyle(tint: nil, compact: true))
                     }
                 }
                 if !model.rows.isEmpty && model.shownRows.isEmpty {
@@ -1038,7 +1038,7 @@ struct AccountCard: View {
                 // the first key fixes what the notice says: Sign in… (red face key; the same sign-in as every surface)
                 // or Refresh now. A profile without a Claude window has no window key; usage only has just the menu
                 if notice?.key == .signIn {
-                    Button("Sign in…") { actions.logIn(row) }.buttonStyle(FaceKeyStyle(tint: .red))
+                    Button("Sign in") { actions.logIn(row) }.buttonStyle(FaceKeyStyle(tint: .red))
                         .help(signInHelp)
                 } else if notice?.key == .refresh {
                     Button("Refresh now") { actions.refreshAll() }.buttonStyle(.pill)

@@ -172,7 +172,7 @@ struct OldQuickChatsLine: View {
                         .help("cl_audit's own quick chat is gone.\ncl_quick is the quick chat now.\nThese are the chats the old one kept.")
                     Spacer(minLength: 6)
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(left.folders) }
-                    Button("Move to Trash…") { askTrash() }
+                    Button("Move to Trash") { askTrash() }
                 }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true))
             }

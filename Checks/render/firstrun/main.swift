@@ -130,7 +130,7 @@ for w in [CGFloat(420), 340] { for face in [Face.std, .silver] {
                 HStack(spacing: 6) {
                     Text("jane.sample@example.invalid").font(.system(size: 12))
                     Spacer()
-                    Button("Sign in…") {}.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                    Button("Sign in") {}.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 }
             }
         }

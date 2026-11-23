@@ -174,7 +174,7 @@ struct SessionsCard: View {
 
     private var exportRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Button("Export…") { model.showExport(entry.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            Button("Export") { model.showExport(entry.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 .help("Preview what an export would hold. Nothing is written until you press Export and the Save panel says where")
             Text(exportWords).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -184,7 +184,7 @@ struct SessionsCard: View {
     private var importRow: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Button("Import…") { model.showImport(entry.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                Button("Import") { model.showImport(entry.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                     .help("Choose an export (a .zip or .dmg) and preview what it would add. Nothing is written until you press Close and import, and it is built not to overwrite anything")
                 text("From an export of this profile, another profile or another Mac.")
             }
@@ -234,7 +234,7 @@ struct SessionsCard: View {
                 Text(SessionsBackup.summary(m) + (l.place.map { " · in \(tilde($0))" } ?? "")).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Restore…") { model.showRestore(RestoreKey(profile: entry.id, backup: m.id, place: placeOf(l).path)) }
+            Button("Restore") { model.showRestore(RestoreKey(profile: entry.id, backup: m.id, place: placeOf(l).path)) }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 .help("Preview what a restore would do. Nothing is written until you press Close and restore, and it is built not to overwrite anything")
             Menu {

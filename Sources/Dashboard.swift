@@ -141,7 +141,7 @@ struct DashboardSettings: View {
     }
 
     private var allowKey: some View {
-        Button("Allow…") { AlertsPermission.openSettings() }.buttonStyle(PillButtonStyle(compact: true))
+        Button("Allow") { AlertsPermission.openSettings() }.buttonStyle(PillButtonStyle(compact: true))
             .help("System Settings ▸ Notifications ▸ cl_audit")
     }
 
@@ -192,7 +192,7 @@ struct DashboardSettings: View {
                         .lineLimit(2).truncationMode(.middle).fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 8) {
-                        Button("Change…") {
+                        Button("Change") {
                             guard let p = pickFolder() else { return }
                             // never a folder that is, or holds, what is copied from (the same rule a backup applies)
                             let sources = Store.load().map { SessionsBackup.Source($0) }
@@ -289,7 +289,7 @@ struct DashboardSettings: View {
                 .font(.system(size: 12)).foregroundStyle(face.soft)
             }
             SRow(label: "Uninstall", info: "Removes every Dock icon app and its pin, the agent, saved usage, settings and caches, then moves cl_audit to the Trash. You choose per profile whether its Claude Code folder (signed out first) and its own Claude window's data go too; ~/.claude and the standard window are never deleted.") {
-                Button { UninstallUI.shared.show = true } label: { Text("Uninstall cl_audit…").foregroundStyle(face.danger) }
+                Button { UninstallUI.shared.show = true } label: { Text("Uninstall cl_audit").foregroundStyle(face.danger) }
                     .buttonStyle(PillButtonStyle(compact: true))
             }
         }

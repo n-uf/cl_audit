@@ -2144,7 +2144,7 @@ struct AccountSettings: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This account is also what the usual Claude app and the claude command in Terminal use (~/.claude), but \(entry.name.isEmpty ? "this profile" : entry.name) opens its own window, so Claude opened from the Dock shows other sessions.")
                     .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
-                Button("Default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                Button("Default profile") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                     .help("Make the default profile")
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 2)
@@ -2167,7 +2167,7 @@ struct AccountSettings: View {
     /// Terminal on the profile's folder, with the account in use's address filled in, watched like a switch
     /// (SwitchRunner.signInAgain); with no account known, a plain sign-in.
     func logInKey(email: String?) -> some View {
-        Button("Sign in…") { signInAgain(email: email) }
+        Button("Sign in") { signInAgain(email: email) }
             .buttonStyle(FaceKeyStyle(tint: .red))
             .disabled(signingIn)
     }
@@ -2206,7 +2206,7 @@ struct AccountSettings: View {
                                 .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize()
                                 .help("Keeps the folder and stops this list asking about it")
                             if f.trashable {
-                                Button("Move to Trash…") { trashLeftover(f) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                                Button("Move to Trash") { trashLeftover(f) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                             } else {
                                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: expand(f.path))]) }
                                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
@@ -2475,7 +2475,7 @@ struct AccountSettings: View {
             }
             if entry.claudeWindow { SRowLine(text: DesktopMode.opensWords(entry.desktop)) }
             if entry.claudeWindow, entry.desktop == .separate, DefaultProfile.situation(model.accounts)?.old.id == entry.id {
-                let key = Button("Default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                let key = Button("Default profile") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                     .help("Make the default profile")
                 let why = Text("Then Claude opens with these sessions.").font(.system(size: 10.5)).foregroundStyle(face.muted)
                 // one line when it fits, else the words under the key (never cut off)

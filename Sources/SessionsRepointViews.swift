@@ -56,12 +56,12 @@ struct FoldersRow: View {
                 line("→ \(tilde(p))" + (ran ? "" : ": pointed there when it is imported"), face.soft)
                 if runner.phase == .ready {
                     HStack(spacing: 8) {
-                        Button("Change…") { runner.pickFolder(s.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                        Button("Change") { runner.pickFolder(s.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                         Button("Leave it") { runner.setPick(s.id, nil) }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize()
                     }
                 }
             } else if runner.phase == .ready {
-                Button("Pick folder…") { runner.pickFolder(s.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                Button("Pick folder") { runner.pickFolder(s.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                     .help("Pick its folder on this Mac")
             }
         }
@@ -237,7 +237,7 @@ struct MissingFoldersRow: View {
                             .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Pick folder…") { runner.pick(s, entry: entry) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.busy)
+                    Button("Pick folder") { runner.pick(s, entry: entry) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.busy)
                         .help("Pick its folder on this Mac")
                 }
                 .padding(8).frame(maxWidth: .infinity, alignment: .leading)

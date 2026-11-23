@@ -160,13 +160,13 @@ struct SwitchPage: View {
             Button("Cancel") { runner.cancel() }.buttonStyle(.pill(FaceTheme.ledRed, compact: true))
         case .reached:
             if !again, let back = cameFrom {
-                Button("Switch back…") { model.showSwitch(AccountEntry.switchKey(entry.id, back.id)) }
+                Button("Switch back") { model.showSwitch(AccountEntry.switchKey(entry.id, back.id)) }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true))
                     .help("Switch back to \(AddressSettings.words(back.email))")
             }
             Button("‹ Back") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).help("Back to \(name)'s settings")
         case .other(let e):
-            Button(again ? "Sign in…" : "Sign in as \(to) again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
+            Button(again ? "Sign in" : "Sign in as \(to) again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             if runner.canUndo { undoKey }
             if !runner.canUndo {

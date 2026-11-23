@@ -18,6 +18,7 @@ the notes before updating.
   - The dashboard card and the menu bar row say "Claude window on another account" in red.
   - That line is a link to the profile's Settings ▸ Accounts, at the band.
   - On the card, Show window turns reddish.
+- Keys no longer end in "…" (Sign in, Export, Move to Trash, Pick folder). Menu items and links keep theirs.
 - The note after the standby list is tidied reads "The standby list was tidied. Each account is listed once per plan."
 - A profile's saved status and what its Dock icon shows now come from cl_kit, the code cl_audit shares with cl_quick, so both apps read and draw them the same way. Nothing you see changes, and Dock icons from earlier versions still read the new files.
 - Renew sign-in and sign-out now run Claude Code with only a known list of settings from your Mac's environment. Ones like NODE_OPTIONS, model overrides, telemetry export and cloud credentials are no longer passed on. The CLAUDE_CODE_CERT and CLIENT settings still are.

@@ -30,7 +30,7 @@ struct DefaultProfileCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(DefaultProfile.why(s)).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    Button("Default profile…") { model.showDefaultProfile() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                    Button("Default profile") { model.showDefaultProfile() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
                         .help("Make the default profile")
                     Button("Not now") { DefaultProfile.dismissed = true; model.objectWillChange.send() }
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
@@ -46,7 +46,7 @@ struct DefaultProfileCard: View {
             SRow(label: "Opens directly", first: true, stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Not \(s.old.name)'s window").font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    Button("Default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    Button("Default profile") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                         .help("Make the default profile")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -405,7 +405,7 @@ struct DefaultProfilePage: View {
                     SRowLine(text: "Its account is remembered on the default profile, signed out: switching to it signs it in on the default profile's folder. Its own folder is meant to stay as it is, with its sessions and settings.")
                 }
                 HStack(spacing: 8) {
-                    Button("Remove \(name)…") { runner.removeOld() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    Button("Remove \(name)") { runner.removeOld() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
                 SRowLine(text: runner.canKeepOldAsStandby ? "Removing signs its folder out of Claude Code, and asks about deleting it. After either choice this move can't be undone."
                          : "The default profile already has this account, so it can't stand by. Removing signs its folder out of Claude Code, and asks about deleting it. After that this move can't be undone.")

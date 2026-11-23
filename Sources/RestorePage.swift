@@ -433,7 +433,7 @@ struct RestorePage: View {
             case .done:
                 if sidebarPlanNow?.isEmpty == false, !runner.sidebarOpened {
                     Spacer(minLength: 6)
-                    Button("Arrange the sidebar…") { runner.arrangeSidebar() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                    Button("Arrange the sidebar") { runner.arrangeSidebar() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 }
             case .stopped, .undone, .left:
                 EmptyView()

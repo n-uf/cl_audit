@@ -671,7 +671,7 @@ struct ImportPage: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if let w = runner.fileWords { value(w) }
                     HStack(spacing: 8) {
-                        Button(runner.file == nil ? "Choose…" : "Choose another…") { runner.chooseFile() }
+                        Button(runner.file == nil ? "Choose" : "Choose another") { runner.chooseFile() }
                             .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.isOpening)
                         if runner.isOpening { Button("Cancel") { runner.cancelOpening() }.buttonStyle(.pill(FaceTheme.ledRed, compact: true)).fixedSize() }
                     }

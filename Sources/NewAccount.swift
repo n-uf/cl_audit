@@ -1304,7 +1304,7 @@ struct NewAccountView: View {
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding || windowDue || windowBusy)
                 .help(windowDue ? "Set up the Claude window first, or turn it off." : "Sign-in can be finished later from Settings.")
             if signedIn == nil {
-                Button("Sign in to Claude Code…") {
+                Button("Sign in to Claude Code") {
                     // the same sign-in as the address route's, followed to its end (the address typed before, if any, filled in)
                     if let c = model.requireClaude() { model.startNewSignIn(c, email: draft.email.isEmpty ? nil : draft.email) }
                 }

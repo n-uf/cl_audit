@@ -211,7 +211,7 @@ struct ClaudeMissingLine: View {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10)).foregroundStyle(face.caution)
                 Text(ClaudeInstall.missing + " ·").font(.system(size: 11)).foregroundStyle(face.caution).lineLimit(1).fixedSize()
             }
-            let install = Button("Install…") { model.showInstallHelp() }
+            let install = Button("Install") { model.showInstallHelp() }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
             // one line when it fits, else the key under the words (never cut off)
             ViewThatFits(in: .horizontal) {
@@ -446,7 +446,7 @@ struct FirstRunPage: View {
                 WellField(placeholder: "Address (optional)", text: Binding(get: { model.firstRun.email },
                                                                                    set: { model.firstRun.email = $0; model.firstRun.problem = nil }),
                           onSubmit: { model.firstRunSignIn() }, onCancel: {})
-                Button("Sign in…") { model.firstRunSignIn() }
+                Button("Sign in") { model.firstRunSignIn() }
                     .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
             }
             SRowLine(text: FirstRun.signsIntoDefaultLine)
