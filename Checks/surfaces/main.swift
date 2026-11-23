@@ -1237,7 +1237,10 @@ do {
         check(e5.seat?.same(ben) == true && !e5.standby.contains { $0.seat?.same(ben) == true } && e5.standby.contains { $0.seat?.same(ann) == true },
               "05 followed: the seat is ben's, ann on standby, ben has no standby entry")
         var rec = IconStatus(state: "ok"); rec.loginEmail = ben.email; rec.weekly = 12
-        rec.resolved = AccountResolver.resolve(e5, among: [e5, w0], app: app(ann), code: ben, loginEmail: ben.email, names: [:], now: t0)
+        // (the reading as the reader takes it: the account and its organisation by id, so Claude Code's seat is known; the
+        // Switch page's target takes the profile's seat only for that very seat)
+        rec.resolved = AccountResolver.resolve(e5, among: [e5, w0], app: app(ann), code: ben, loginEmail: ben.email, loginAccount: ben.account,
+                                               loginOrganization: ben.organization, names: [:], now: t0)
         _ = Store.writeStatus(e5.id, rec)
         let v = AccountView.of(rec)
         let target = e5.codeTarget(v)
@@ -3373,8 +3376,9 @@ do {
                                codeOrganization: teamOrg)
     var orgView = teamView; orgView.codeOrganization = h2.organization?.lowercased()
     var oldView = teamView; oldView.codeOrganization = nil
-    check(!teamView.isCodeSeat(h2) && orgView.isCodeSeat(h2) && oldView.isCodeSeat(h2),
-          "isCodeSeat: the same id on another organisation isn't Claude Code's seat; the same organisation is; not known decides by the id")
+    check(!teamView.isCodeSeat(h2) && orgView.isCodeSeat(h2) && !oldView.isCodeSeat(h2)
+          && oldView.isCodeSeat(Seat(account: h2.account, organization: nil, email: h2.email)),
+          "isCodeSeat: the same id on another organisation isn't Claude Code's seat; the same organisation is; not known fails closed (only a seat naming none)")
     // A1: a record that names an address and no id is signed in (by the address)
     let addrOnly = AccountResolver.resolve(me, among: [me], app: .unknown, code: SignedInAccount(email: h2.email, origin: .record), loginEmail: nil,
                                            names: [:], now: t0)

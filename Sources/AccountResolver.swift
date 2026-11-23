@@ -342,11 +342,13 @@ struct AccountView: Equatable {
     /// account's.
     var codeRow: String? { differs ? numbersOwner : nil }
 
-    /// This seat is Claude Code's account: its id, and its organisation where the record knows Claude Code's (a personal plan
-    /// and a Team seat share the id). One not known there (nil: an older record, a seat not known) is decided by the id.
+    /// This seat is Claude Code's account: its id, and its organisation (a personal plan and a Team seat share the id). Fails
+    /// closed: with Claude Code's organisation not known there (nil: a seat not known, an older record), only a seat that
+    /// names none itself is taken.
     func isCodeSeat(_ s: Seat) -> Bool {
         guard AccountID.same(codeAccount, s.account) else { return false }
-        return codeOrganization.map { AccountID.sameOrganization($0, s.organization) } ?? true
+        guard let o = codeOrganization else { return (s.organization ?? "").isEmpty }
+        return AccountID.sameOrganization(o, s.organization)
     }
 
     /// Claude Code's own row is this account: by its id first (a row named "account <8>" has no address), else its address

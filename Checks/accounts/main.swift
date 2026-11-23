@@ -3214,7 +3214,9 @@ do {
     AccountEntry.appLogin = { _ in AppSignIn.Login(account: annTeam.account, org: annTeam.organization, state: .known, source: "log", at: Date()) }
     SwitchEngine.settled = { ClaudeWindow.afterSwitch($0, activate: false) }
     var flRec = IconStatus(state: "ok"); flRec.loginEmail = benF.email; flRec.weekly = 12
-    flRec.resolved = AccountResolver.resolve(fl, among: [fl], app: AccountEntry.appLogin(fl), code: benF, loginEmail: benF.email, names: [:])
+    // (the reading with its account and organisation ids, so Claude Code's seat is known: the finish line's target is that seat)
+    flRec.resolved = AccountResolver.resolve(fl, among: [fl], app: AccountEntry.appLogin(fl), code: benF, loginEmail: benF.email,
+                                             loginAccount: benF.account, loginOrganization: benF.organization, names: [:])
     _ = Store.writeStatus(fl.id, flRec)
     put(entry(wdFL, annTeam, 971), #"{"sessionId":"local_\#(uuid(971))"}"#)     // the app's own scope: moves
     put(entry(wdFL, annF, 972), #"{"sessionId":"local_\#(uuid(972))"}"#)        // the standby entry's last scope: never read
