@@ -20,8 +20,8 @@ struct UsageNotice: Equatable {
     var signedOut = false
     /// The heading is a link (the split by hand: to the profile's Settings ▸ Accounts, at the red band); no line under it.
     var link: SettingsLink? = nil
-    /// The split by hand: the card's window key reddish.
-    var windowRed: Bool { link != nil }
+    /// The split by hand: the window key amber (the card's, the Dock panel's).
+    var windowAmber: Bool { link != nil }
 
     /// The notice for the card's profile, from its one value (ProfileShow): the split, the sign-in on another account than
     /// the folder's, another profile's account, expired, signed out, or not readable while there are no numbers. The key is
@@ -44,9 +44,10 @@ struct UsageNotice: Equatable {
                 return UsageNotice(tone: .amber, heading: SplitUsage.switchingHead(split.code),
                                   line: "Sign the Claude app in to \(to) to finish.", key: key)
             }
-            // the split by hand: one red line, a link to the profile's Settings ▸ Accounts at the red band, where each
-            // account has its key; no key on the card (its keys: Show window, reddish, then Terminal and ⋯)
-            return UsageNotice(tone: .red, heading: SplitUsage.windowLine, line: "", key: .none,
+            // the split by hand: a warning, not a failure (Terminal's numbers still work): one amber line, a link to the
+            // profile's Settings ▸ Accounts at the band, where each account has its key; no key on the card (its keys:
+            // Show window, amber, then Terminal and ⋯)
+            return UsageNotice(tone: .amber, heading: SplitUsage.windowLine, line: "", key: .none,
                               link: SettingsLink.split(row.entry.id))
         }
         if d.otherAccount {
@@ -83,7 +84,7 @@ struct UsageNoticeView: View {
         let strong: Color = notice.tone == .red ? face.danger : (face.light ? .hex(0xa85f00) : .hex(0xffb24a))
         VStack(alignment: .leading, spacing: 3) {
             if let link = notice.link {
-                RedLink(text: notice.heading, color: strong, size: 12.5) { open(link) }
+                LineLink(text: notice.heading, color: SplitAmber.link(face)) { open(link) }
             } else {
                 Text(notice.heading).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(strong)
                     .lineLimit(1).truncationMode(.middle)
@@ -107,18 +108,19 @@ struct SettingsLink: Equatable {
     static func split(_ profile: String) -> SettingsLink { SettingsLink(profile: profile, section: splitBand) }
 }
 
-/// A line of text that is a link, in its own colour (red stays red): on hover the pointing hand and an underline.
-struct RedLink: View {
+/// A line of text that is a link, in its own colour (the split's amber stays amber), with a " ›" after it: on hover the
+/// pointing hand and an underline. The card's, the menu bar row's and the Dock panel's.
+struct LineLink: View {
     let text: String
     let color: Color
-    var size: CGFloat = 12.5
-    var weight: Font.Weight = .semibold
+    var size: CGFloat = 11.5
+    var weight: Font.Weight = .regular
     let action: () -> Void
     @State private var hover = false
 
     var body: some View {
         Button(action: action) {
-            Text(text).font(.system(size: size, weight: weight)).foregroundStyle(color).underline(hover, color: color)
+            Text(text + " ›").font(.system(size: size, weight: weight)).foregroundStyle(color).underline(hover, color: color)
                 .lineLimit(1).truncationMode(.tail)
         }
         .buttonStyle(.plain)
@@ -182,12 +184,17 @@ struct PlanBadge: View {
 /// A face key in the cl-quick Download key's build: a coloured gradient with fine pinstripes, a light top edge, a dark rim,
 /// dark printing. Red: Sign in… (the sign-in is wrong or gone). Orange: Switch account (a limit is full).
 struct FaceKeyStyle: ButtonStyle {
-    enum Tint { case red, orange }
+    /// Amber: the window key while the window is on another account than Terminal (the split).
+    enum Tint { case red, orange, amber }
     var tint: Tint
     var width: CGFloat? = nil
+    /// The key keeps a lamp before its label (the window key: its window open).
+    var lamp = false
+    /// The card's compact height (the Dock panel's keys row).
+    var compact = false
 
     func makeBody(configuration: Configuration) -> some View {
-        FaceKeyLabel(tint: tint, width: width, pressed: configuration.isPressed) { configuration.label }
+        FaceKeyLabel(tint: tint, width: width, pressed: configuration.isPressed, lamp: lamp, compact: compact) { configuration.label }
     }
 }
 
@@ -196,20 +203,32 @@ struct FaceKeyLabel<L: View>: View {
     let tint: FaceKeyStyle.Tint
     var width: CGFloat? = nil
     var pressed = false
+    var lamp = false
+    var compact = false
     @ViewBuilder let label: () -> L
     @State private var hover = false
 
     var body: some View {
-        let (top, bottom, rim, ink): (UInt32, UInt32, UInt32, UInt32) = tint == .red
-            ? (0xf4907f, 0xdc5a4b, 0x5e170d, 0x1f0705) : (0xf4a075, 0xe47b4c, 0x5e240d, 0x1d0b04)
+        let (top, bottom, rim, ink): (UInt32, UInt32, UInt32, UInt32) = switch tint {
+        case .red: (0xf4907f, 0xdc5a4b, 0x5e170d, 0x1f0705)
+        case .orange: (0xf4a075, 0xe47b4c, 0x5e240d, 0x1d0b04)
+        case .amber: (0xf8cf7a, 0xe3a03a, 0x7a4a0a, 0x2a1a02)
+        }
         let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
         // under the full box (`width`): tighter print, and at least the box's width, never narrower than its label
-        label()
-            .font(.system(size: width == nil ? 11 : 10.5, weight: .semibold)).tracking(width == nil ? 1.1 : 0.6).textCase(.uppercase)
+        HStack(spacing: 6) {
+            if lamp {
+                Circle().fill(Color.hex(0xfff4ee)).frame(width: 6, height: 6)
+                    .overlay(Circle().stroke(Color.hex(rim), lineWidth: 1.5))
+                    .shadow(color: .white.opacity(0.7), radius: 2.5)
+            }
+            label()
+        }
+            .font(.system(size: width == nil ? (compact ? 10 : 11) : 10.5, weight: .semibold)).tracking(width == nil ? 1.1 : 0.6).textCase(.uppercase)
             .foregroundStyle(Color.hex(ink))
             .lineLimit(1).fixedSize()
-            .padding(.horizontal, width == nil ? 12 : 8)
-            .frame(minWidth: width, minHeight: 26, maxHeight: 26)
+            .padding(.horizontal, width == nil ? (compact ? 9 : 12) : 8)
+            .frame(minWidth: width, minHeight: compact ? 22 : 26, maxHeight: compact ? 22 : 26)
             .background(
                 shape.fill(LinearGradient(colors: [.hex(top), .hex(bottom)], startPoint: .top, endPoint: .bottom))
                     .overlay(Pinstripes().clipShape(shape))

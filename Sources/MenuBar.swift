@@ -435,7 +435,7 @@ struct MenuBarRow: View {
             }
             if let link = Self.splitLink(profile) {
                 // (opening Settings brings cl_audit forward, which closes the menu)
-                RedLink(text: SplitUsage.windowLine, color: Color(nsColor: .systemRed), size: 11, weight: .medium) {
+                LineLink(text: SplitUsage.windowLine, color: .hex(0xf5b54a), size: 11.5) {
                     Installer.openSettings(link)
                 }
             } else if let n = Self.lineWords(profile) {

@@ -1045,9 +1045,15 @@ struct AccountCard: View {
                 }
                 if windowInRow {
                     // on this card a lit LED means running: the key's LED lights only while the window is open
-                    Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
-                        // (reddish in the split whether or not the window is open: the window is the part out of line)
-                        .buttonStyle(.pill(windowKeyTint, lit: row.activity.desktopOpen || notice?.windowRed == true))
+                    if windowKeyAmber {
+                        // the split: the window is the part out of line, so its key is the amber face key, its lamp lit
+                        // while the window is open
+                        Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
+                            .buttonStyle(FaceKeyStyle(tint: .amber, lamp: row.activity.desktopOpen))
+                    } else {
+                        Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
+                            .buttonStyle(.pill(ProfileLED.keyTint(row.entry.ownColor) ?? ProfileLED.neutral, lit: row.activity.desktopOpen))
+                    }
                 }
                 if terminalInRow { Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill) }
                 moreMenu
@@ -1070,9 +1076,7 @@ struct AccountCard: View {
     private var windowInRow: Bool { row.entry.claudeWindow && notice?.signedOut != true }
     /// The window key's LED: the profile's own colour; reddish while the window is on another account than Terminal
     /// (the split by hand: the window is the part that's out of line). (Not private: the surfaces checks.)
-    var windowKeyTint: Color {
-        notice?.windowRed == true ? FaceTheme.ledRed : ProfileLED.keyTint(row.entry.ownColor) ?? ProfileLED.neutral
-    }
+    var windowKeyAmber: Bool { notice?.windowAmber == true }
     /// Terminal in the row only while the card is as usual or its notice has no key; otherwise (a notice with its key, or
     /// the Switch account key) it steps into ⋯ so the row stays one line at 340 pt. (Not private: the surfaces checks.)
     var terminalInRow: Bool {
