@@ -1162,13 +1162,14 @@ struct AccountTile: View {
         }
     }
 
-    /// "~/.claude", and with more than one account, the one in use: "~/.claude · ultra-1".
+    /// "~/.claude", and with more than one account, the one in use: "~/.claude · ultra-1"; a usage-only profile adds its
+    /// mode after them: "~/.claude · usage only".
     private var sub: String {
-        if entry.usageOnly { return "usage only" }
         // a profile on its own Claude window says so, so two profiles are told apart at a glance
         let own = entry.desktop == .separate && entry.claudeWindow ? " · \(DesktopMode.ownMark)" : ""
-        guard !entry.standby.isEmpty, let email = entry.seat?.email else { return entry.configDir + own }
-        return "\(entry.configDir) · \(AccountNames.short(email))" + own
+        let mode = entry.usageOnly ? " · usage only" : ""
+        guard !entry.standby.isEmpty, let email = entry.seat?.email else { return entry.configDir + mode + own }
+        return "\(entry.configDir) · \(AccountNames.short(email))" + mode + own
     }
 }
 

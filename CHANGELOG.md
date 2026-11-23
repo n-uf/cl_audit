@@ -21,6 +21,7 @@ the notes before updating.
   - The line "Claude Code's record has no address: sign in again in Claude Code." is gone; such numbers now show under Anthropic's account, or hide with the usual "Numbers for another account" line.
 - A standby account whose organisation is found later no longer carries its old week onto that seat (the week was read before the seat was known).
 - **New profile's Account pop-up** lists the other profiles' standby accounts too, as "Plan · Name's standby", after the accounts in use.
+- **A usage-only profile's tile** shows its folder again, with "usage only" after it.
 
 ## 26.11.88 — 2026-11-23
 
