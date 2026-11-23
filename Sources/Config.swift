@@ -1140,6 +1140,10 @@ enum Installer {
     }
 
     static let openSettingsNote = Notification.Name("local.usage-n-uf.open-settings")
+    /// The open-settings note's section to scroll to (SettingsLink.section), in its user info.
+    static let sectionKey = "section"
+    /// Open Settings where a link points (SettingsLink): the profile's page, at its section.
+    static func openSettings(_ link: SettingsLink) { openSettings(account: link.profile, section: link.section) }
     /// Posted after cl_audit installed, renamed or removed Dock icon apps.
     static let appsChangedNote = Notification.Name("local.usage-n-uf.apps-changed")
     /// Posted by a Dock icon app quitting normally (object: its profile id), so a window that follows it can quit too.
@@ -1164,17 +1168,19 @@ enum Installer {
         }
     }
 
-    /// Open the settings window of the "cl_audit" app (it lives next to the icon apps), on `account`'s page.
-    static func openSettings(account: String? = nil) {
+    /// Open the settings window of the "cl_audit" app (it lives next to the icon apps), on `account`'s page, scrolled to
+    /// `section` on it when given (SettingsLink: the note's "section", or `--section=` at launch).
+    static func openSettings(account: String? = nil, section: String? = nil) {
         // macOS 14+ lets an app come forward only when the active one hands over.
         if #available(macOS 14, *) { NSApp.yieldActivation(toApplicationWithBundleIdentifier: managerID) }
         if !NSRunningApplication.runningApplications(withBundleIdentifier: managerID).isEmpty {
-            DistributedNotificationCenter.default().postNotificationName(openSettingsNote, object: account, userInfo: nil,
+            DistributedNotificationCenter.default().postNotificationName(openSettingsNote, object: account,
+                                                                         userInfo: section.map { [sectionKey: $0] },
                                                                          deliverImmediately: true)
             NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == managerID }?.activate(options: [])
         } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: managerID) {
             let cfg = NSWorkspace.OpenConfiguration()
-            cfg.arguments = ["--settings"] + (account.map { ["--account=\($0)"] } ?? [])
+            cfg.arguments = ["--settings"] + (account.map { ["--account=\($0)"] } ?? []) + (section.map { ["--section=\($0)"] } ?? [])
             NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in }
         } else {
             NSSound.beep()

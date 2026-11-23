@@ -400,6 +400,9 @@ struct MenuBarRow: View {
     /// The row's one line of state: in the split its short form ("Can't read P's usage" over "Terminal: M": the row is about
     /// 300 pt of text, two lines), else the record's line.
     static func lineWords(_ p: MenuBarItems.Profile) -> String? { p.show.lineWords(short: true) }
+    /// The split by hand: the card's one red line in its place, the same link (UsageNotice's rule and SettingsLink), to the
+    /// profile's Settings ▸ Accounts at the red band. nil otherwise.
+    static func splitLink(_ p: MenuBarItems.Profile) -> SettingsLink? { UsageNotice.of(AccountRow(entry: p.entry, show: p.show))?.link }
 
     private var limits: [Limit] {
         let u = profile.usage
@@ -430,7 +433,12 @@ struct MenuBarRow: View {
                     Text(inUse).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            if let n = Self.lineWords(profile) {
+            if let link = Self.splitLink(profile) {
+                // (opening Settings brings cl_audit forward, which closes the menu)
+                RedLink(text: SplitUsage.windowLine, color: Color(nsColor: .systemRed), size: 11, weight: .medium) {
+                    Installer.openSettings(link)
+                }
+            } else if let n = Self.lineWords(profile) {
                 Text(n).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(2)
             }
             if u == nil {

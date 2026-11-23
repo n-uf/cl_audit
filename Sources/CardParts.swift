@@ -18,6 +18,10 @@ struct UsageNotice: Equatable {
     let key: Key
     /// Signed out or expired: no sign-in to show the window or Terminal on, so both wait in ⋯.
     var signedOut = false
+    /// The heading is a link (the split by hand: to the profile's Settings ▸ Accounts, at the red band); no line under it.
+    var link: SettingsLink? = nil
+    /// The split by hand: the card's window key reddish.
+    var windowRed: Bool { link != nil }
 
     /// The notice for the card's profile, from its one value (ProfileShow): the split, the sign-in on another account than
     /// the folder's, another profile's account, expired, signed out, or not readable while there are no numbers. The key is
@@ -40,9 +44,10 @@ struct UsageNotice: Equatable {
                 return UsageNotice(tone: .amber, heading: SplitUsage.switchingHead(split.code),
                                   line: "Sign the Claude app in to \(to) to finish.", key: key)
             }
-            // (no key when the app's account is known by its id only: the key only fills in the app's own address)
-            return UsageNotice(tone: .red, heading: "Terminal is signed in to \(AddressSettings.words(split.code))",
-                              line: d.key == nil ? split.hint.map { $0 + "." } ?? signIn(nil) : signIn(address), key: key)
+            // the split by hand: one red line, a link to the profile's Settings ▸ Accounts at the red band, where each
+            // account has its key; no key on the card (its keys: Show window, reddish, then Terminal and ⋯)
+            return UsageNotice(tone: .red, heading: SplitUsage.windowLine, line: "", key: .none,
+                              link: SettingsLink.split(row.entry.id))
         }
         if d.otherAccount {
             return UsageNotice(tone: .red, heading: "Terminal is signed in to another account", line: signIn(address), key: key)
@@ -67,20 +72,62 @@ struct UsageNotice: Equatable {
     }
 }
 
-/// The notice in the limits' place: the heading (one line) over the sentence, tinted by its tone.
+/// The notice in the limits' place: the heading (one line) over the sentence, tinted by its tone. A notice with a link
+/// (the split by hand) is its heading alone, as a link (`open`).
 struct UsageNoticeView: View {
     let notice: UsageNotice
+    var open: (SettingsLink) -> Void = { _ in }
     @Environment(\.face) private var face
 
     var body: some View {
         let strong: Color = notice.tone == .red ? face.danger : (face.light ? .hex(0xa85f00) : .hex(0xffb24a))
         VStack(alignment: .leading, spacing: 3) {
-            Text(notice.heading).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(strong)
-                .lineLimit(1).truncationMode(.middle)
-            Text(notice.line).font(.system(size: 12)).foregroundStyle(strong.opacity(face.light ? 0.85 : 0.78))
-                .fixedSize(horizontal: false, vertical: true)
+            if let link = notice.link {
+                RedLink(text: notice.heading, color: strong, size: 12.5) { open(link) }
+            } else {
+                Text(notice.heading).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(strong)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            if !notice.line.isEmpty {
+                Text(notice.line).font(.system(size: 12)).foregroundStyle(strong.opacity(face.light ? 0.85 : 0.78))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Where a link opens Settings: a profile's page, scrolled to a section on it (SettingsModel.scrollTo, the section's view
+/// carrying the same id). Every surface's link goes through the one open-settings path ("Profile settings…"'s).
+struct SettingsLink: Equatable {
+    let profile: String
+    var section: String? = nil
+    /// Settings ▸ the profile ▸ Claude Code ▸ Accounts, at the red band around the split's two rows.
+    static let splitBand = "accounts-split-band"
+    static func split(_ profile: String) -> SettingsLink { SettingsLink(profile: profile, section: splitBand) }
+}
+
+/// A line of text that is a link, in its own colour (red stays red): on hover the pointing hand and an underline.
+struct RedLink: View {
+    let text: String
+    let color: Color
+    var size: CGFloat = 12.5
+    var weight: Font.Weight = .semibold
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(text).font(.system(size: size, weight: weight)).foregroundStyle(color).underline(hover, color: color)
+                .lineLimit(1).truncationMode(.tail)
+        }
+        .buttonStyle(.plain)
+        .onHover { on in
+            hover = on
+            if on { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+        .onDisappear { if hover { NSCursor.pop(); hover = false } }
+        .help("Open Settings ▸ Accounts")
     }
 }
 

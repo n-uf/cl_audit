@@ -166,7 +166,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 pendingSwitch = nil; manager.showSwitch(key)
             } else if CommandLine.arguments.contains("--settings") {
                 let account = CommandLine.arguments.first { $0.hasPrefix("--account=") }.map { String($0.dropFirst("--account=".count)) }
-                manager.showMain(page: .settings, account: account)
+                let section = CommandLine.arguments.first { $0.hasPrefix("--section=") }.map { String($0.dropFirst("--section=".count)) }
+                manager.showMain(page: .settings, account: account, section: section)
             } else if plan == .quiet {
                 quietLaunch = true; quitIfQuiet()          // an alert's Stay or Later: nothing to show
             } else if plan == .waitForAlert {
@@ -254,7 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// From the menu (no account) or an icon app's "Settings…" and gear (its account id as the object).
     @objc func showSettingsWindow(_ note: Any?) {
         manager.closePalette()
-        manager.showMain(page: .settings, account: (note as? Notification)?.object as? String)
+        let n = note as? Notification
+        manager.showMain(page: .settings, account: n?.object as? String, section: n?.userInfo?[Installer.sectionKey] as? String)
     }
     @objc func showMainScreen() { manager.showMain() }
     /// A Dock icon's or the menu bar icon's "Switch to …" (object: "<profile>~<standby account>").

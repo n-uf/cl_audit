@@ -386,6 +386,8 @@ struct LauncherActions {
     var startUsage: (AccountRow) -> Void = { _ in }       // start, or reinstall when the app is missing
     var quitUsage: (AccountRow) -> Void = { _ in }
     var profileSettings: (AccountRow) -> Void = { _ in }
+    /// A link to a section of a profile's settings (SettingsLink): Profile settings…'s path, scrolled to the section.
+    var settingsLink: (SettingsLink) -> Void = { _ in }
     var moveProfile: ([String]) -> Void = { _ in }         // a card dropped: the profiles in this order (saved)
     var switchAccount: (String) -> Void = { _ in }         // the Switch page for "<profile>~<standby account>" (Switch.swift)
     var newAccount: (AccountRow) -> Void = { _ in }        // Claude Code's sign-in on the profile's folder, no address filled in
@@ -1024,7 +1026,7 @@ struct AccountCard: View {
             if let notice {
                 ZStack(alignment: .topLeading) {
                     CardLimits(limits: row.limits, design: prefs.cardStyle).hidden()
-                    UsageNoticeView(notice: notice)
+                    UsageNoticeView(notice: notice, open: actions.settingsLink)
                 }
             } else {
                 CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
@@ -1044,7 +1046,7 @@ struct AccountCard: View {
                 if windowInRow {
                     // on this card a lit LED means running: the key's LED lights only while the window is open
                     Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
-                        .buttonStyle(.pill(ProfileLED.keyTint(row.entry.ownColor) ?? ProfileLED.neutral, lit: row.activity.desktopOpen))
+                        .buttonStyle(.pill(windowKeyTint, lit: row.activity.desktopOpen))
                 }
                 if terminalInRow { Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill) }
                 moreMenu
@@ -1065,6 +1067,11 @@ struct AccountCard: View {
     private var showsSwitch: Bool { notice == nil && row.full != nil }
     /// Signed out or expired: no window key in the row (it waits in ⋯ with Terminal).
     private var windowInRow: Bool { row.entry.claudeWindow && notice?.signedOut != true }
+    /// The window key's LED: the profile's own colour; reddish while the window is on another account than Terminal
+    /// (the split by hand: the window is the part that's out of line). (Not private: the surfaces checks.)
+    var windowKeyTint: Color {
+        notice?.windowRed == true ? FaceTheme.ledRed : ProfileLED.keyTint(row.entry.ownColor) ?? ProfileLED.neutral
+    }
     /// Terminal in the row only while the card is as usual or its notice has no key; otherwise (a notice with its key, or
     /// the Switch account key) it steps into ⋯ so the row stays one line at 340 pt. (Not private: the surfaces checks.)
     var terminalInRow: Bool {
@@ -1229,6 +1236,7 @@ final class ManagerUI {
             Installer.running(r.entry).forEach { $0.terminate() }
         },
         profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) },
+        settingsLink: { [weak self] l in self?.showMain(page: .settings, account: l.profile, section: l.section) },
         moveProfile: { [weak self] ids in                       // the tile bar's own save; not saved: the cards go back
             if self?.settings.setOrder(ids) == false { withAnimation { self?.model.reload() } }
         },
@@ -1418,7 +1426,7 @@ final class ManagerUI {
         settings.showSwitch(key)
     }
 
-    func showMain(page: MainPage = .dashboard, account: String? = nil) {
+    func showMain(page: MainPage = .dashboard, account: String? = nil, section: String? = nil) {
         var page = page
         if page == .dashboard && settings.isFirstRun { page = .settings }       // nothing to show yet: "Set up cl_audit" first
         // the periodic look for Claude Code runs only while Settings is on screen (SettingsModel.watchClaude)
@@ -1435,8 +1443,10 @@ final class ManagerUI {
         nav.page = page
         if page == .settings {
             // From an icon: that account's page. From inside the app: the Dashboard tile.
-            if let account, settings.accounts.contains(where: { $0.id == account }) { settings.reloadIfClean(); settings.selection = account }
-            else { settings.openDefault() }
+            if let account, settings.accounts.contains(where: { $0.id == account }) {
+                settings.reloadIfClean(); settings.selection = account
+                settings.scrollTo = section                 // a link's section on that page (SettingsLink), scrolled to
+            } else { settings.openDefault() }
         }
         if mainWindow == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 820),

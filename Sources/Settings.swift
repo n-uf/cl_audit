@@ -19,6 +19,9 @@ final class SettingsModel: ObservableObject {
         }
     }
     static let dashboardID = "__dashboard__"
+    /// A section of the selected profile's page to scroll to once it is drawn (a link's: SettingsLink.section, the view's
+    /// id); cleared once scrolled.
+    @Published var scrollTo: String?
     @Published var message = ""
     @Published var tick = 0                 // bumped every few seconds so icon status re-reads
     private(set) var saved: [AccountEntry]
@@ -987,7 +990,7 @@ struct SettingsPage: View {
             if model.selection == SettingsModel.newID, model.draft != nil {
                 // The add-account page scrolls itself, so its action bar can stay pinned at the bottom.
                 NewAccountView(draft: Binding(get: { model.draft ?? NewAccountDraft() }, set: { model.draft = $0 }), model: model)
-            } else { GeometryReader { geo in ScrollView {
+            } else { GeometryReader { geo in ScrollViewReader { proxy in ScrollView {
                 let w = geo.size.width - 32
                 if model.selection == SettingsModel.dashboardID {
                     DashboardSettings(width: w, model: model).padding(.horizontal, 16).padding(.vertical, 14)
@@ -1013,6 +1016,15 @@ struct SettingsPage: View {
                 } else {
                     Text("Add a profile with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
                 }
+            }
+            // a link's section (SettingsLink): scrolled to once the profile's page is drawn, then forgotten
+            .task(id: model.scrollTo) {
+                guard let id = model.scrollTo else { return }
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
+                model.scrollTo = nil
+            }
             } }
             } // the setting note floats over the whole window (MainWindowView), so the Emails key shows it on the dashboard too
         }

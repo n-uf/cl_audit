@@ -184,16 +184,27 @@ struct SplitUsage: Equatable {
                    code: r.codeName ?? r.numbersFor ?? "Claude Code's account", switched: switched)
     }
 
-    /// "cl_audit can't read P@…'s usage: Claude Code in Terminal is signed in to M@…" (Claude Code inside the Claude app runs
-    /// on the app's own sign-in, so the app's account is the one in use; only Terminal's login, the one cl_audit reads with,
-    /// is on M); a switch waiting for the app, the card's words on every surface (Settings, menu bar, widget, Dock panel):
-    /// "Switching to M@…: one step left. Sign the Claude app in to M@… to finish."
+    /// The split by hand in two names only, the Claude app and Terminal: Settings ▸ Accounts' band headline, and the line on
+    /// every surface that says it in full (Claude Code inside the Claude app runs on the app's own sign-in, so the app's
+    /// account is the one in use; only Terminal's sign-in, the one cl_audit reads with, is on another). No address: the rows
+    /// under it name the accounts. A switch waiting for the app, the card's words on every surface (Settings, menu bar,
+    /// widget, Dock panel): "Switching to M@…: one step left. Sign the Claude app in to M@… to finish."
     var line: String { line(blur: nil) }
     /// `line` for a given "Show emails" setting (nil: the app's own): what a check hands in.
     func line(blur: Bool?) -> String {
         switched ? "\(Self.switchingHead(code, blur: blur)). Sign the Claude app in to \(AddressSettings.words(code, blur: blur)) to finish."
-                 : "cl_audit can't read \(AddressSettings.words(app, blur: blur))'s usage: Claude Code in Terminal is signed in to \(AddressSettings.words(code, blur: blur))."
+                 : Self.bandHead
     }
+    /// Settings ▸ Accounts' red band around both rows of the split: its red headline and the two muted lines under it.
+    static let bandHead = "The Claude app and Terminal are signed in to different accounts."
+    static let bandWhy = "cl_audit can read usage only through Terminal's sign-in, so the Claude app's account shows no numbers."
+    static let bandFix = "Use the key on either account to put both on the same account."
+    /// The one red line on the dashboard card and the menu bar row while the split is by hand: a link to the band.
+    static let windowLine = "Claude window on another account"
+    /// The keys of the band's two rows: on Terminal's account (it opens the Switch page) and on the Claude app's (Terminal's
+    /// own sign-in, the app's address filled in when known).
+    static let appSignInKey = "Sign the Claude app in"
+    static let terminalSignInKey = "Sign Terminal in"
     /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…"; a switch waiting for the app:
     /// its first clause, "Switching to M@…: one step left".
     var shortLine: String {
@@ -204,18 +215,19 @@ struct SplitUsage: Equatable {
     /// Under the line, in place of "No numbers yet": what gives the numbers. Nil while a switch waits for the app (nothing
     /// to sign in to then).
     var numbersHint: String? {
-        switched ? nil : "Sign Claude Code in Terminal in to \(loginEmail.map { AddressSettings.words($0) } ?? "the Claude app's account") to see its numbers."
+        switched ? nil : "Sign Terminal in to \(loginEmail.map { AddressSettings.words($0) } ?? "the Claude app's account") to see its numbers."
     }
-    /// The key: the existing Sign in (Claude Code's own sign-in in Terminal, with the app's address filled in). Not a switch.
-    /// None while a switch waits for the app, and none when the app's account is known by its id only: the key only ever
-    /// names and fills in the app's own address (never Claude Code's), so then `hint` says what to do instead.
-    var key: String? { loginEmail.map { "Sign Claude Code in Terminal in to \(AddressSettings.words($0))…" } }
+    /// The key: the existing Sign in (Claude Code's own sign-in in Terminal, with the app's address filled in), the Claude
+    /// app's row's key in Settings ▸ Accounts. Not a switch. None while a switch waits for the app, and none when the app's
+    /// account is known by its id only: the key only ever fills in the app's own address (never Claude Code's), so then
+    /// `hint` says what to do instead.
+    var key: String? { loginEmail.map { _ in Self.terminalSignInKey } }
     /// The key where space is short (the Dock panel's fixed width): "Sign in to P@… in Terminal", as long as the old key.
     var shortKey: String? { loginEmail.map { "Sign in to \(AddressSettings.words($0)) in Terminal…" } }
     /// The address the login fills in: the app's own, when it is known (not while a switch waits for the app).
     var loginEmail: String? { !switched && app.contains("@") ? app : nil }
     /// In place of the key when the app's address isn't known.
-    var hint: String? { !switched && loginEmail == nil ? "Sign Claude Code in Terminal in to the Claude app's account" : nil }
+    var hint: String? { !switched && loginEmail == nil ? "Sign Terminal in to the Claude app's account" : nil }
 }
 
 /// What every surface shows of a profile's account, from its status record only (never a file, a log or a seat).
