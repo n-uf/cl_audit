@@ -48,6 +48,8 @@ struct DetailsInfo {
     var splitLink: SettingsLink? = nil
     /// The profile's Claude window is open (the window key's lamp, its words: Show window or Open window).
     var windowOpen = false
+    /// After the account line's address, muted: "· Terminal" in the split (the address is Terminal's account).
+    var activeWho: String? = nil
 }
 
 extension DetailsInfo {
@@ -75,6 +77,8 @@ extension DetailsInfo {
         // the split by hand: the card's amber line and its link in place of the old two lines, and the compact Sign in
         if let link = UsageNotice.of(AccountRow(entry: e, show: s))?.link {
             info.splitLink = link; info.activeNote = nil
+            // the account line names Terminal's account (the one read), with "· Terminal" and the amber lamp
+            if let code = s.splitWords?.code { info.active = code; info.activeWho = "· Terminal" }
             if case .logInCode = d.key { info.splitKey = SplitUsage.panelSignInKey }
         }
         info.windowOpen = e.claudeWindow && DockTile.windowOpen(e.id)
@@ -177,6 +181,7 @@ struct DetailsView: View {
                                 .shadow(color: lampColor.opacity(info.activeLit || info.splitLink != nil ? 0.7 : 0), radius: 2)
                             // no label: the address with its lamp says it's in use
                             AccountValue(text: line.text, size: 10).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            if let who = info.activeWho { Text(who).font(.caption).foregroundStyle(.secondary).lineLimit(1).fixedSize() }
                         }
                     } else {
                         // the sign-in's address (blurred while hidden), or "No Claude Code sign-in"
