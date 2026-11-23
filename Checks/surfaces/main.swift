@@ -12,6 +12,7 @@
 import AddressPrivacy
 import AppKit
 import ClaudeAuth
+import MenuRows
 import ProfileCore
 import Runs
 import SwiftUI
@@ -3524,18 +3525,6 @@ MainActor.assumeIsolated {
             || s.localizedCaseInsensitiveContains(domain) || s.contains("•")
     }
     func clean(_ s: String) -> Bool { !addrs.contains { leaks(s, of: $0) } }
-    func picture(_ v: NSView) -> Data? {
-        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return nil }
-        v.cacheDisplay(in: v.bounds, to: rep)
-        return rep.representation(using: .png, properties: [:])
-    }
-    /// Some pixel of the picture is drawn (not transparent): the hidden row is never blank.
-    func inked(_ v: NSView) -> Bool {
-        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return false }
-        v.cacheDisplay(in: v.bounds, to: rep)
-        for y in 0..<rep.pixelsHigh { for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.02 { return true } }
-        return false
-    }
     AddressPrivacy.shared.apply(blur: true)
     defer { AddressPrivacy.shared.apply(blur: false); try? Store.save([]); Store.removeStatus("pa") }
 
@@ -3649,7 +3638,7 @@ MainActor.assumeIsolated {
     let alertShown = AccountSettings.forgetAlert(standby, profile: "Work", blur: false)
     check(alertShown.messageText == "Forget \(a3)?" && alertShown.accessoryView == nil, "Forget…: shown, the address is in the text, no accessory")
 
-    // the switch menus: the rows of several hidden accounts are drawn (AddressMenuRow), their words are the same for all
+    // the switch menus: the rows of several hidden accounts are drawn (the kit's MenuAccountRowView), their words are the same for all
     var e = profile("pa", "~/.claude-pa", seat(41, a1)); e.claudeWindow = false
     e.standby = [StandbyAccount(email: a2, seat: seat(42, a2), id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400)),
                  StandbyAccount(email: a3, seat: seat(43, a3), id: "k3", plan: "Max", lastInUse: now.addingTimeInterval(-2 * 86400))]
@@ -3661,19 +3650,19 @@ MainActor.assumeIsolated {
     _ = Store.writeStatus("pa", rec)
     let show = ProfileShow.load(e, now: now)
     func all(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(all) ?? []) } }
-    // the menu bar's menu (this process draws it): the account in use and the standby accounts are AddressMenuRows
+    // the menu bar's menu (this process draws it): the account in use and the standby accounts are the kit's account rows
     let barMenu = menuBarMenu(show)
-    let rows = all(barMenu).compactMap { i in (i.view as? AddressMenuRow).map { (i, $0) } }
+    let rows = all(barMenu).compactMap { i in (i.view as? MenuAccountRowView).map { (i, $0) } }
     let keys = rows.compactMap { $0.0.representedObject as? String }
     check(rows.count == 3 && Set(keys) == [DockTileMenu.object(.switchTo, "pa~k2"), DockTileMenu.object(.switchTo, "pa~k3")],
-          "hidden, the menu bar icon's menu: the account in use and the standby accounts are AddressMenuRows, each standby one naming its Switch page: \(keys)")
+          "hidden, the menu bar icon's menu: the account in use and the standby accounts are the kit's account rows, each standby one naming its Switch page: \(keys)")
     check(rows.allSatisfy { clean($0.0.title) && clean($0.1.accessibilityLabel() ?? "") && $0.0.title.contains("hidden address") && $0.1.accessibilityLabel() == $0.0.title }
           && titles(barMenu).allSatisfy(clean),
           "hidden, the menu bar icon's menu: no title or accessibility label holds any part of any address: \(titles(barMenu))")
     let standbyRows = rows.filter { $0.0.state != .on }, tickedRow = rows.first { $0.0.state == .on }
     check(Set(standbyRows.map { $0.1.naturalWidth }).count == 1 && standbyRows.count == 2 && standbyRows.allSatisfy { $0.0.title == "hidden address" },
           "hidden, the menu bar icon's menu: the two standby rows (a short and a long address) are the same width")
-    check(tickedRow?.1.ticked == true && tickedRow?.0.title == "hidden address" && tickedRow?.1.prefix == "",
+    check(tickedRow?.1.row.inUse == true && tickedRow?.0.title == "hidden address" && tickedRow?.1.row.prefix == "",
           "hidden, the menu bar icon's menu: the account in use ticks as the native rows do (its state, a mark in the margin), "
           + "no \"✓\" in its words, its address in the standby rows' column")
     // the Dock icon's menu (the Dock draws it, no item views): no account rows at all (the panel has them), so nothing of
@@ -3687,40 +3676,16 @@ MainActor.assumeIsolated {
     let probe = PickProbe()
     let pickRow = DockTileMenu.AddressRow(address: a2, act: .switchTo, target: "pa~k2")
     let pickItem = DockTileMenu.item(pickRow, views: true, target: probe, action: #selector(PickProbe.pick(_:)))
-    (pickItem.view as? AddressMenuRow)?.fire()
-    check(pickItem.view is AddressMenuRow && pickItem.title == "hidden address" && probe.got == DockTileMenu.object(.switchTo, "pa~k2")
+    (pickItem.view as? MenuAccountRowView)?.fire()
+    check(pickItem.view is MenuAccountRowView && pickItem.title == "hidden address" && probe.got == DockTileMenu.object(.switchTo, "pa~k2")
           && pickItem.representedObject as? String == DockTileMenu.object(.switchTo, "pa~k2"),
-          "hidden: a standby row is an AddressMenuRow whose Return and click send the action with its Switch page's key: \(pickItem.title) \(probe.got ?? "nil")")
+          "hidden: a standby row is the kit's account row whose Return and click send the action with its Switch page's key: \(pickItem.title) \(probe.got ?? "nil")")
     // shown: native items with the whole address
     AddressPrivacy.shared.apply(blur: false)
     let shownItem = DockTileMenu.item(pickRow, views: true, target: probe, action: #selector(PickProbe.pick(_:)))
     check(shownItem.view == nil && shownItem.title == DockTileMenu.fit(a2), "shown: a native item with the whole address: \(shownItem.title)")
     AddressPrivacy.shared.apply(blur: true)
-
-    // AddressMenuRow itself: words, width and picture
-    let short = AddressMenuRow(prefix: "Switch to ", address: "wu@example.com", suffix: "…", enabled: true) {}
-    let long = AddressMenuRow(prefix: "Switch to ", address: a3, suffix: "…", enabled: true) {}
-    let other = AddressMenuRow(prefix: "Switch to ", address: a2, suffix: "…", enabled: true) {}
-    for r in [short, long, other] { r.frame.size.width = r.naturalWidth }
-    check(short.title == "Switch to hidden address…" && long.title == short.title && short.accessibilityLabel() == short.title
-          && clean(long.title) && clean(long.accessibilityLabel() ?? ""),
-          "AddressMenuRow: the title and the accessibility label are \"Switch to hidden address…\" for every address, nothing of it")
-    check(short.naturalWidth == long.naturalWidth && long.naturalWidth == other.naturalWidth && short.drawnAddress == AddressText.standIn && long.drawnAddress == AddressText.standIn,
-          "AddressMenuRow: as wide as the stand-in and no wider, whatever the address (a short and a long one): \(short.naturalWidth) \(long.naturalWidth)")
-    check(picture(short) != nil && picture(short) == picture(other) && picture(other) == picture(long),
-          "AddressMenuRow: two hidden addresses (a short, a long, another) draw the very same picture")
-    check(inked(short), "AddressMenuRow: the hidden picture is not blank")
-    long.highlighted = true; short.highlighted = true
-    check(long.drawnAddress == a3 && picture(long) != picture(short) && inked(long), "AddressMenuRow: lit by the menu, the address itself is drawn (two addresses then differ)")
-    long.highlighted = false; short.highlighted = false
-    long.blur = false
-    check(long.title == "Switch to \(a3)…" && long.drawnAddress == a3 && long.naturalWidth > short.naturalWidth,
-          "AddressMenuRow: the blur: override reaches its words and its picture (here shown, while the setting is hidden)")
-    long.blur = true
-    check(long.title == "Switch to hidden address…" && picture(long) == picture(short), "AddressMenuRow: the override back to hidden")
-    let off = AddressMenuRow(prefix: "", address: "wu@example.com", suffix: "", enabled: false) {}
-    check(!off.lit && AddressMenuRow.item(address: a1, enabled: false) {}.action == nil && AddressMenuRow.item(address: a1) {}.isEnabled,
-          "AddressMenuRow: a dimmed row is never lit and has no action")
+    // (the row itself, its words, width, picture, override and a disabled row, is the kit's: cl_kit's menurows suite)
 
     // ---- S4, the hidden pass: the suites above read addresses in clear (the setting is applied "shown" at the top), and many of
     // their expectations are written "…\(AddressSettings.words(x))…", which reads the address back while shown: a raw address in
@@ -3781,18 +3746,18 @@ MainActor.assumeIsolated {
         let cardMenu = card.switchAccountMenu.menu()
         check(titles(cardMenu).allSatisfy(clean) && titles(cardMenu).contains("Sign in to another account…"), "hidden: the card's Switch account menu titles: \(titles(cardMenu))")
 
-        // D2: the card's Switch account menu is an NSMenu: the ticked account, a divider, its standby accounts as AddressMenuRows, a
+        // D2: the card's Switch account menu is an NSMenu: the ticked account, a divider, its standby accounts as the kit's rows, a
         // divider, "Sign in to another account…", in that order, each doing what it did
         var chosen: [String] = [], signIns = 0
         func perform(_ i: NSMenuItem?) { if let i, let a = i.action { NSApp.sendAction(a, to: i.target, from: i) } }
         let dm = SwitchAccountMenu(label: a1, plan: "max", standby: [.init(key: "pm~k2", address: a2), .init(key: "pm~k3", address: a3)],
                                    pick: { chosen.append($0) }, newAccount: { signIns += 1 })
         let dmenu = dm.menu()
-        let dRows = dmenu.items.compactMap { i in (i.view as? AddressMenuRow).map { (i, $0) } }
+        let dRows = dmenu.items.compactMap { i in (i.view as? MenuAccountRowView).map { (i, $0) } }
         check(dmenu.items.count == 6 && dmenu.items[0].state == .on && dmenu.items[0].title == "hidden address  " + Account.planWords("max") && dmenu.items[1].isSeparatorItem
-              && dRows.count == 2 && dmenu.items[2].view is AddressMenuRow && dmenu.items[3].view is AddressMenuRow && dmenu.items[4].isSeparatorItem
+              && dRows.count == 2 && dmenu.items[2].view is MenuAccountRowView && dmenu.items[3].view is MenuAccountRowView && dmenu.items[4].isSeparatorItem
               && dmenu.items[5].title == "Sign in to another account…",
-              "D2: the Switch account menu: the ticked account with its plan, a divider, the standby accounts (AddressMenuRows), a divider, Sign in to another account…: \(dmenu.items.map(\.title))")
+              "D2: the Switch account menu: the ticked account with its plan, a divider, the standby accounts (the kit's rows), a divider, Sign in to another account…: \(dmenu.items.map(\.title))")
         check(titles(dmenu).allSatisfy(clean) && dRows.allSatisfy { $0.1.accessibilityLabel() == "hidden address" && $0.0.title == "hidden address" && $0.1.drawnAddress == AddressText.standIn }
               && Set(dRows.map { $0.1.naturalWidth }).count == 1,
               "D2: hidden, no title or accessibility label holds any part of any address, both rows draw the same stand-in at the same width: \(titles(dmenu))")
@@ -3802,7 +3767,7 @@ MainActor.assumeIsolated {
         check(chosen == ["pm~k2", "pm~k3"] && signIns == 1, "D2: a row picks its Switch page key, Sign in to another account… signs in: \(chosen) \(signIns)")
         AddressPrivacy.shared.apply(blur: false)
         let shownMenu = dm.menu()
-        check(shownMenu.items[0].title == a1 + "  " + Account.planWords("max") && (shownMenu.items[2].view as? AddressMenuRow)?.title == a2 && (shownMenu.items[3].view as? AddressMenuRow)?.drawnAddress == a3,
+        check(shownMenu.items[0].title == a1 + "  " + Account.planWords("max") && (shownMenu.items[2].view as? MenuAccountRowView)?.title == a2 && (shownMenu.items[3].view as? MenuAccountRowView)?.drawnAddress == a3,
               "D2: shown, the same menu holds the addresses: \(shownMenu.items.map(\.title))")
         AddressPrivacy.shared.apply(blur: true)
 

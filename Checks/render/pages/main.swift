@@ -1,5 +1,6 @@
 import AddressPrivacy
 import AppKit
+import MenuRows
 import ProfileCore
 import SwiftUI
 // Stage B1 renders: Settings ▸ a profile ▸ Sessions card, General ▸ Backups; the one-folder model's Switch page in each
@@ -139,15 +140,15 @@ MainActor.assumeIsolated {
         SwitchAccountMenu(label: usual, plan: "max",
                           standby: [.init(key: "pa~k2", address: short), .init(key: "pa~k3", address: long)], pick: { _ in }, newAccount: {}).menu()
     }
-    func addressRows(_ m: NSMenu) -> [AddressMenuRow] { m.items.compactMap { $0.view as? AddressMenuRow } }
-    func rowPicture(_ r: AddressMenuRow, _ name: String) -> Data? {
+    func addressRows(_ m: NSMenu) -> [MenuAccountRowView] { m.items.compactMap { $0.view as? MenuAccountRowView } }
+    func rowPicture(_ r: MenuAccountRowView, _ name: String) -> Data? {
         guard let rep = r.bitmapImageRepForCachingDisplay(in: r.bounds) else { return nil }
         r.cacheDisplay(in: r.bounds, to: rep)
         let d = rep.representation(using: .png, properties: [:])
         try? d?.write(to: URL(fileURLWithPath: out + "/\(name).png")); print(name)
         return d
     }
-    func rowInked(_ r: AddressMenuRow) -> Bool {
+    func rowInked(_ r: MenuAccountRowView) -> Bool {
         guard let rep = r.bitmapImageRepForCachingDisplay(in: r.bounds) else { return false }
         r.cacheDisplay(in: r.bounds, to: rep)
         for y in 0..<rep.pixelsHigh { for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.02 { return true } }
@@ -161,7 +162,7 @@ MainActor.assumeIsolated {
         let h1 = rowPicture(hr[0], "pa-switch-menu-hidden-short"), h2 = rowPicture(hr[1], "pa-switch-menu-hidden-long")
         if h1 == nil || h1 != h2 { bad.append("hidden Switch account menu: two accounts' rows draw different pixels") }
         if !rowInked(hr[0]) { bad.append("hidden Switch account menu: the row is blank") }
-        let said = hm.items.flatMap { [$0.title, ($0.view as? AddressMenuRow)?.accessibilityLabel() ?? ""] }
+        let said = hm.items.flatMap { [$0.title, ($0.view as? MenuAccountRowView)?.accessibilityLabel() ?? ""] }
         if [short, usual, long].contains(where: { a in parts(a).contains(where: { p in said.joined(separator: " | ").localizedCaseInsensitiveContains(p) }) }) {
             bad.append("hidden Switch account menu: a title or accessibility label holds part of an address: \(said)")
         }
