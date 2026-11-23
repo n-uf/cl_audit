@@ -7,8 +7,12 @@
 // The rule:
 // - the active account is the Claude app's signed-in account (AppSignIn: its config.json names it, its log after its
 //   launch gives the organisation and whether it signed out), shown with the green lamp and "in use";
-// - with the app signed out or not readable (or no Claude window), Claude Code's folder account is the active one, and for
-//   a profile with a window a muted line says why;
+// - with the app signed out or not readable (or no Claude window), Claude Code's account is the active one, and for a
+//   profile with a window a muted line says why;
+// - Claude Code's account is cl_kit's one answer (ClaudeAuth's FolderSignIn.answer, the platform's account rule): the
+//   folder's .claude.json is only a guess, and a verified word beats it, Anthropic's reply for the Keychain sign-in the
+//   numbers were read with between asks, or a short-lived claude's own `initialize` account when the reader asked it
+//   (UsageReader.considerAsk); the Claude app's account stays this app's own question (two names, A4);
 // - the numbers are Claude Code's (they are read through its sign-in), and say whose when that isn't the active account
 //   ("Usage: Claude Code on <account>": the record keeps only the fact and the account, `codeUsageLine` and `codeName`, and
 //   ResolvedAccount.lineText builds the sentence when a surface shows it, so it follows Show emails);
@@ -18,95 +22,123 @@
 //   account with the active one (by the ids where both are known, else the addresses), so a read from just before a
 //   sign-in changed and the resolver always agree.
 
+import ClaudeAuth
 import Foundation
 import ProfileCore
 
 // (ResolvedAccount, what the resolver decided as the status record keeps it: StatusRecord.swift)
 
+/// Claude Code's record as the resolver takes it: the one folder reader's account (Account.codeRecord: an account id or an
+/// address, A1), or a saved seat (a check's, a profile's: always with its id).
+protocol CodeRecord {
+    /// The account the record names, as a guess; nil when it names nobody.
+    var recordAccount: SignedInAccount? { get }
+}
+
+extension SignedInAccount: CodeRecord {
+    var recordAccount: SignedInAccount? {
+        guard names else { return nil }
+        var r = self; r.origin = .record
+        return r
+    }
+}
+
+extension Seat: CodeRecord {
+    var recordAccount: SignedInAccount? { SignedInAccount(self).recordAccount }
+}
+
 enum AccountResolver {
-    /// The answer for one profile. `app`: the Claude app's sign-in (AppSignIn); `code`: Claude Code's folder account;
+    /// The answer for one profile. `app`: the Claude app's sign-in (AppSignIn); `code`: Claude Code's folder record (a guess);
     /// `loginEmail`: the account the numbers were read for, from that very reading (the token's own profile), or nil when
     /// the reading doesn't say (the status line file); `loginAccount`: that account's id, when the reading's lookup gave
     /// one (nil in a record from before it); `loginOrganization`: its organisation's id, when the reply gave one with the
     /// account's (nil: not known); `names`: addresses by account id (AccountList).
+    /// `readingVerified`: the reading's sign-in is still the one the folder keeps, so Anthropic's reply for it is a verified
+    /// word (false: after a sign-in change, a sign-in gone, or a window answering without the agent's reader).
+    /// `process`: a short-lived claude's own `initialize` account (UsageReader's short ask), when it came after the reading.
     /// `recordTooLarge`: Claude Code's .claude.json is there but too large to read (Account.recordTooLarge).
     /// `newestSwitch`: the profile's newest switch receipt (SwitchEngine.receipts), for a split that is a switch waiting
     /// for the Claude app (`switchWaits`).
-    static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: Seat?, loginEmail: String?,
-                        loginAccount: String? = nil, loginOrganization: String? = nil, names: [String: String], recordTooLarge: Bool = false,
+    static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: (any CodeRecord)?, loginEmail: String?,
+                        loginAccount: String? = nil, loginOrganization: String? = nil, readingVerified: Bool = true,
+                        process: SignedInAccount? = nil, names: [String: String], recordTooLarge: Bool = false,
                         newestSwitch: SwitchReceipt? = nil, now: Date = Date()) -> ResolvedAccount {
-        // whose the numbers are: only ever the account the reading itself was for (never .claude.json, never a cached
-        // answer). When Claude Code's folder has since signed in to another account (a switch, a log-in), the reading is
-        // stale: its numbers are dropped (Store.status) until a read for the folder's account, and the folder's account is
-        // the one Claude Code is on (for the rows and lines)
-        // (every "the same account" below is the one owner rule, AccountIdentity.sameAccount: a reading with its account's
-        // id is known by the id, and then the ids decide, never the addresses; a reading without one by its address; the
-        // Claude app's account by its id only, `byID`).
-        // A folder record with an id but no address (nil, as with an empty one) can't be compared with a reading known by
-        // its address only: whose the numbers are isn't known (`ownerUnknown`, said so), so the reading is stale too (never
-        // the profile's numbers), and a stale reading's address never names the folder's account (`readName`).
-        // A guard on the ids: should the profile reply's account.uuid ever differ from .claude.json's accountUuid for one
-        // account, every reading would go stale; so two ids that differ over two known addresses that are the same keep
-        // the reading (the address, the proof before the ids). Another id and another address: stale.
-        // The seat too: one login's personal and Team seats share the account id and the address, so only the organisation
-        // tells them apart (the Keychain still on the old seat for a moment after a switch between them). The reading's
-        // organisation (the profile reply's organization.uuid, kept with its account id) and the folder's (.claude.json's
-        // organizationUuid, which Claude Code writes from that same reply) both known and not the same: stale, whatever the
-        // address says. Either one not known (nil or empty): never a mismatch.
+        // Claude Code's account is ClaudeAuth's one answer (FolderSignIn.answer, the platform's account rule): the folder's
+        // record (only a guess) under a verified word. The verified word: a short-lived claude's own `initialize` account
+        // (`process`, which the caller passes only when it came after the reading), else Anthropic's reply for the Keychain
+        // sign-in the numbers were read with (the reading's own account), while that sign-in is the one kept
+        // (`readingVerified`). Signed in by an account id or an address (A1); a personal plan and a Team seat on one address
+        // are two seats, told apart by the organisation (A2); a verified word beats the record, which may then name another
+        // account (A3); organisation names in any case (A5). The Claude app's account is this app's own question, asked
+        // apart below (A4).
+        let record = code?.recordAccount
         let readID = loginAccount.flatMap { $0.isEmpty ? nil : $0 }
+        // (the reading's organisation only with its account's id, as the reader keeps it)
         let readOrg = readID == nil ? nil : loginOrganization.flatMap { $0.isEmpty ? nil : $0 }
-        let otherSeat = readOrg.map { o in (code?.organization).map { !$0.isEmpty && !AccountID.sameOrganization(o, $0) } ?? false } ?? false
-        let idMatch = code.flatMap { c in readID.map { byID($0).sameAccount(known(c)) } }
-        let stale: Bool
-        if otherSeat { stale = true }
-        else if loginEmail != nil, let match = idMatch {
-            let addressMatch = loginEmail.map { l in !l.isEmpty && !(code?.email ?? "").isEmpty && sameAddress(code?.email ?? "", l) } ?? false
-            stale = !match && !addressMatch
-        } else { stale = loginEmail.map { l in code.map { !sameAddress($0.email ?? "", l) } ?? false } ?? false }
-        let ownerUnknown = stale && readID == nil && (code?.email ?? "").isEmpty && !(loginEmail ?? "").isEmpty
+        let read = SignedInAccount(accountID: readID, email: loginEmail, organizationID: readOrg, origin: .server)
+        let reading = read.names ? read : nil
+        let word = process.flatMap { $0.names && $0.origin != .record ? $0 : nil } ?? (readingVerified ? reading : nil)
+        let answer = FolderSignIn.answer(record: record, verified: word)
+        // Claude Code's account. A seat not known (only one side names an organisation) is still the same account: its id
+        // and address are the account's (both seats share them), but no organisation is taken from the other side
+        var codeAccount = answer.account
+        if answer.verdict == .seatNotKnown, let r = answer.record, var c = codeAccount {
+            c.accountID = c.accountID ?? r.accountID
+            c.email = c.email ?? r.email
+            codeAccount = c
+        }
+        // the record names Claude Code's very account (the same seat, or one not known): its address is the one shown
+        let recordNamesIt = (answer.verdict == .verified && answer.record != nil) || answer.verdict == .seatNotKnown
+        // Whose the numbers are is only ever the reading's own account (numbers belong to the source that gave them, never
+        // to the record's account). They are stale only while Claude Code's account is another one than the reading's: a
+        // newer verified word (the short ask) names another account, or the reading's sign-in isn't the kept one any more
+        // and the record names another account. Stale numbers show nowhere (Store.status) until a read for Claude Code's
+        // account, and a stale reading's address never names Claude Code's account (`readName`).
+        let stale = reading.map { r in codeAccount.map { r.match($0) == .different } ?? false } ?? false
         let readName = stale ? nil : loginEmail
-        let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
-        // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
+        let codeLabel = (stale ? nil : reading?.email) ?? codeAccount?.email ?? codeAccount?.accountID.map { "account \($0.prefix(8))" }
+        let codeEmail = (recordNamesIt ? answer.record?.email : nil) ?? codeAccount?.email
+        // without the app: Claude Code's account is the active one (its record's address, else the verified word's)
         // (ids as AccountID keeps them: one normal form, one comparison)
-        var r = ResolvedAccount(account: code.map { AccountID.normal($0.account) }, email: code?.email ?? readName, fromApp: false,
-                                numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: nil, at: now,
-                                codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
+        var r = ResolvedAccount(account: codeAccount?.accountID.map(AccountID.normal), email: codeEmail ?? readName, fromApp: false,
+                                numbersFor: loginEmail, differs: false, line: nil, lit: codeAccount != nil, clash: nil, at: now,
+                                codeAccount: codeAccount?.accountID.map(AccountID.normal), codeName: codeLabel, readStale: stale ? true : nil,
                                 clashID: nil)
-        // the folder's organisation in three states, so a reader of the record knows the seat in full: its id; "" when the
-        // record names the seat with none (no organizationUuid, null or empty: ClaudeFiles.Record keeps each as nil or "");
-        // nil only with no seat (and in a record from before this field): not known
-        r.codeOrganization = code.map { AccountID.normal($0.organization ?? "") }
+        // the seat's organisation in three states, so a reader of the record knows the seat in full: its id; "" when the
+        // record names that very seat with none (no organizationUuid, null or empty); nil when it isn't known (a seat not
+        // known, a verified word that names none, no account)
+        r.codeOrganization = codeAccount.flatMap { c in
+            if let o = c.organizationID { return AccountID.normal(o) }
+            let recordsTheSeat = answer.verdict == .guessed || (answer.verdict == .verified && answer.record != nil)
+            return recordsTheSeat && c.organizationName == nil ? "" : nil
+        }
         if e.claudeWindow, app.state == .known, let id = app.account.map(AccountID.normal) {
-            let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { byID(id).sameAccount(known($0)) }
+            let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { byID(id).sameAccount(AccountIdentity($0).withoutOrganization) }
             r.account = id
-            r.email = mine?.email ?? (code.map { byID(id).sameAccount(known($0)) } == true ? (code?.email ?? readName) : nil) ?? names[id]
+            r.email = mine?.email ?? (codeAccount.map { byID(id).sameAccount(known($0)) } == true ? (codeEmail ?? readName) : nil) ?? names[id]
             r.fromApp = true
             r.lit = true
         }
-        // in every case: the reading's own id against the active account's when both are known and the id isn't one the
-        // folder's record disagrees with (the guard above); a stale reading is the folder's account's, so its id against
-        // the active account's; else the numbers' own address when both are known; else the folder's id
-        if !stale, idMatch != false, let n = readID, let a = r.account { r.differs = !byID(a).sameAccount(byID(n)) }
-        else if stale, let c = code, !c.account.isEmpty, let a = r.account { r.differs = !byID(a).sameAccount(known(c)) }
-        else if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !sameAddress(n, a) }
-        else if r.fromApp, let id = r.account { r.differs = code.map { !byID(id).sameAccount(known($0)) } ?? false }
-        if ownerUnknown {
-            // the numbers are hidden (stale) and nothing else says why: the one line, on every surface that shows it
-            r.line = ownerUnknownWords
-        } else if r.differs, codeLabel != nil {
+        // the numbers aren't the active account's: the reading's own account (a stale reading's: Claude Code's, whose they
+        // will be after its read; with no reading, the status line's numbers: Claude Code's) against the active one, by the
+        // ids where both are known, else the addresses
+        if let n = stale ? codeAccount : (reading ?? codeAccount), let same = sameAccount(account: r.account, email: r.email, n) {
+            r.differs = !same
+        }
+        if r.differs, codeLabel != nil {
             // (the sentence is built when a surface shows it, ResolvedAccount.lineText: the record holds no address text and
             // the line follows Show emails; codeName is the account)
             r.codeUsageLine = true
         } else if stale {
-            // the numbers are hidden (read for another account than the folder's record names: just after a switch, or the
-            // Keychain's sign-in on another account) and nothing else says why: the way back, on every surface that shows the line
+            // the numbers are hidden (read for another account than Claude Code's now: just after a sign-in, or the Keychain's
+            // sign-in left behind) and nothing else says why: the way back, on every surface that shows the line
             r.line = staleWords
-        } else if e.claudeWindow, !r.fromApp, code != nil {
+        } else if e.claudeWindow, !r.fromApp, codeAccount != nil {
             // short enough for the card at 340; only when Claude Code has an account to show
             r.line = "Claude app signed out: Claude Code's account shows."
         }
-        // its record too large to read: not known, and said so (never as signed out)
-        if code == nil, recordTooLarge {
+        // its record too large to read and no verified word naming the account: not known, and said so (never as signed out)
+        if codeAccount == nil, recordTooLarge {
             r.recordTooLarge = true
             r.line = "Claude Code's .claude.json is too large to read: its account isn't known here."
         }
@@ -114,21 +146,25 @@ enum AccountResolver {
         // rule as Settings' Claude Code row, AccountSettings.switchTarget), and the app is still on the account it left
         // (a switch linked more than a day ago waits no more: then it's a split by hand)
         if r.fromApp, r.differs, let n = newestSwitch, let id = r.account,
-           AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code.map { AccountID.normal($0.account) }, now: now) != nil,
+           AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: r.codeAccount, now: now) != nil,
            byID(id).sameAccount(byID(n.from.account)), n.linkedLately(now: now) ?? true {
             r.switchWaits = true
         }
         return r
     }
 
-    /// The line while Claude Code's record names its account without an address and the reading by its address only: the
-    /// numbers are hidden, and this says why and what fixes it (a sign-in writes the address again).
-    static let ownerUnknownWords = "Claude Code's record has no address: sign in again in Claude Code."
-
-    /// The line while the reading is for another account than the one Claude Code's record names (stale): the numbers are
-    /// hidden, and this says the way back. True both right after a switch (the new sign-in's first read is on its way) and
-    /// when the Keychain's sign-in stays on another account (only a sign-in helps then).
+    /// The line while the numbers are another account's than Claude Code's (stale): they are hidden, and this says the way
+    /// back. True right after a sign-in (the new sign-in's first read is on its way) and when the Keychain's sign-in stays on
+    /// another account than Claude Code's (only a sign-in helps then).
     static let staleWords = "Numbers for another account: if this stays, sign in to read again."
+
+    /// The active account (its id, its address) and an account a source names are the same: by the ids where both have
+    /// one, else by the addresses (sameAddress); nil when neither pair is known.
+    static func sameAccount(account: String?, email: String?, _ n: SignedInAccount) -> Bool? {
+        if let a = account, let id = n.accountID { return byID(a).sameAccount(byID(id)) }
+        if let a = email, let ne = n.email { return sameAddress(ne, a) }
+        return nil
+    }
 
     /// Two addresses (a reading's, an account's) name one account: the one owner rule's address-only part; with either
     /// empty, the plain comparison as before (two empty addresses are not "another account", so nothing goes stale).
@@ -140,8 +176,8 @@ enum AccountResolver {
     /// organisation), compared by the one owner rule.
     static func byID(_ id: String?) -> AccountIdentity { AccountIdentity(account: id, email: nil, organization: nil, source: .verified) }
 
-    /// A seat as compared with an account named by its id only: its organisation left out (one not known there isn't "none").
-    static func known(_ s: Seat) -> AccountIdentity { AccountIdentity(s).withoutOrganization }
+    /// An account as compared with one named by its id only: its organisation left out (one not known there isn't "none").
+    static func known(_ a: SignedInAccount) -> AccountIdentity { AccountIdentity(account: a.accountID, email: a.email, organization: nil, source: .guessed) }
 }
 
 extension ResolvedAccount {

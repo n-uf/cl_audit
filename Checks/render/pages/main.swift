@@ -672,7 +672,9 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
                         .frame(width: 460).fixedSize(horizontal: false, vertical: true), 460), "split-card-switched-std-w460", 492, 1000)
     // signed out, the last reading's account (mo) kept: the card says Terminal is signed out, never "signed in to mo"
     var signedOut = rec; signedOut.state = "noLogin"
-    signedOut.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: nil, loginEmail: mo.email, names: [:], now: now)
+    // (the sign-in gone: its last reading is no verified word, cl_kit's rule)
+    signedOut.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: nil, loginEmail: mo.email, readingVerified: false,
+                                                 names: [:], now: now)
     _ = Store.writeStatus("main", signedOut)
     let outShow = ProfileShow.load(e, now: now)
     print("signed out:", outShow.display.split != nil ? "split kept" : "no split", "| notice:", UsageNotice.of(cardRow(e, now: now))?.heading ?? "none",

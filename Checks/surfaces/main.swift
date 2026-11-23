@@ -297,7 +297,9 @@ do {
           "shared seats: Claude Code's folder on another profile's account in use: its numbers are this profile's too, no clash, lamp on")
     // a read from just before the folder's sign-in changed: the app signed out, the folder already on a free account, the
     // numbers still u1's: labelled with the address they were read for
-    let late = res(main, appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
+    // (the read from before the sign-in changed: its sign-in isn't the kept one, so Anthropic's reply for it is no verified word)
+    let late = AccountResolver.resolve(main, among: [main, other], app: appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"),
+                                       loginEmail: u1.email, readingVerified: false, names: [:], now: t0)
     var lateRec = IconStatus(state: "ok"); lateRec.loginEmail = u1.email; lateRec.weekly = 94; lateRec.resolved = late
     // (B8: numbersFor is only ever the reading's own account: u1's here, and the reading is stale, so they show nowhere)
     check(!late.fromApp && late.email == "free@example.com" && !late.differs && late.numbersFor == u1.email && late.readStale == true
@@ -910,7 +912,8 @@ do {
         ("Config.swift", "static func startLogin(", ".startSignIn(", "login"),
         ("SignInWindow.swift", "static func start(", "run.start(", "the sign-in window"),            // (ClaudeSignIn: the guard once, then its own)
         ("Launcher.swift", "static func openClaude(", "openApplication(", "the Claude window"),
-        ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal")]
+        ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal"),
+        ("Reader.swift", "private func ask(generation", "Self.askSeam(", "the short ask")]
     for (f, a, launch, what) in launchers {
         let b = body(f, from: a, until: launch)
         check(!b.isEmpty && b.contains("FolderGuard.mayLaunch("), "\(what): FolderGuard is asked before it launches")
@@ -1740,7 +1743,8 @@ do {
     _ = Store.writeStatus("spl", record(app: appPat, code: mo, reading: mo.email, weekly: 100))
 
     // numbersFor comes from the reading itself: a .claude.json naming another account changes whose they are not
-    let staleCode = AccountResolver.resolve(e, among: [e], app: appPat, code: pat, loginEmail: mo.email, names: [:], now: now)
+    // (a reading whose sign-in isn't the kept one: the record decides Claude Code's account, cl_kit's rule with no verified word)
+    let staleCode = AccountResolver.resolve(e, among: [e], app: appPat, code: pat, loginEmail: mo.email, readingVerified: false, names: [:], now: now)
     check(staleCode.numbersFor == mo.email && staleCode.readStale == true && staleCode.codeName == pat.email,
           "the folder names pat, the reading was mo's: numbersFor stays mo (the reading's), and the reading is stale: \(staleCode.numbersFor ?? "-")")
     var staleRec = record(app: appPat, code: pat, reading: mo.email, weekly: 40); staleRec.resolved = staleCode
@@ -1848,7 +1852,8 @@ do {
     check(renamedRec.resolved?.readStale == nil && Store.status(for: same, now: now)?.weekly == 40 && w.first { $0.id == "spm" }?.week == 40,
           "the widget: the seat's id read under another address shows, as on the card (no seat address of its own)")
     var otherRec = renamedRec
-    otherRec.resolved = AccountResolver.resolve(same, among: [same], app: .unknown, code: mo, loginEmail: "else@example.com", names: [:], now: now)
+    otherRec.resolved = AccountResolver.resolve(same, among: [same], app: .unknown, code: mo, loginEmail: "else@example.com", readingVerified: false,
+                                                names: [:], now: now)
     otherRec.loginEmail = "else@example.com"; otherRec.numbersOwner = otherRec.loginEmail; otherRec.numbersAccount = nil
     _ = Store.writeStatus("spm", otherRec)
     w = AgentFiles.load(from: Store.folder, now: now)
@@ -1876,15 +1881,28 @@ do {
     check(Store.status(for: same)?.weekly == 100 && hr.heldReading?.key == "k2", "a token refresh: the last owned numbers stay (no flapping) until its owner is known")
     hr.profileFound(mo.email!, key: "k2"); hr.save()
     check(Store.status(for: same)?.weekly == 50 && Store.status("spm")?.resolved?.numbersFor == mo.email, "…then the new reading's, the same account")
-    // the token on mo, the folder's .claude.json naming pat: never decided from the folder; once the reading's owner is
-    // known (mo), the folder has left it: stale, shown nowhere
+    // the token on mo, the folder's .claude.json naming pat: never decided from the folder alone. Once the reading's owner is
+    // known (mo), Anthropic's reply for the kept sign-in is the verified word (cl_kit's rule, A3): Claude Code is on mo, the
+    // record a guess. The record and the reply disagree, so the reader asks Claude Code itself (the short ask, once): a
+    // running claude that says pat means the Keychain moved on, so the reading is stale, shown nowhere, read again
     signIn(same.configDir, pat)
     hr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: hr.generation, key: "k3")
     check(Store.status(for: same)?.weekly != 100, "token mo, folder pat, owner not yet known: the new reading isn't shown")
+    var asks: [String] = []
+    UsageReader.askSeam = { folder in asks.append(folder.path); return SignedInAccount(email: pat.email, origin: .process) }
     hr.profileFound(mo.email!, key: "k3"); hr.save()
     let mixed = Store.status("spm")
-    check(mixed?.resolved?.numbersFor == mo.email && mixed?.resolved?.readStale == true && Store.status(for: same)?.weekly == nil,
-          "…its owner known: numbersFor mo (the reading's), the folder on pat: stale, no numbers shown: \(mixed?.resolved?.numbersFor ?? "-")")
+    check(mixed?.resolved?.numbersFor == mo.email && mixed?.resolved?.readStale == nil && mixed?.resolved?.codeName == mo.email
+          && Store.status(for: same)?.weekly == 100,
+          "A3: …its owner known (mo, Anthropic's word for the kept sign-in): Claude Code is on mo, the folder's pat only a guess, the numbers show: \(mixed?.resolved?.codeName ?? "-")")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+    let told = Store.status("spm")
+    check(asks == [expand(same.configDir)] && told?.resolved?.readStale == true && told?.resolved?.codeName == pat.email
+          && Store.status(for: same)?.weekly == nil,
+          "the short ask, once, in the profile's own folder: Claude Code says pat, so mo's reading is stale, shown nowhere: \(asks.count) ask(s)")
+    hr.save(); RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    check(asks.count == 1, "…and not again for the same state (never on every save or tick)")
+    UsageReader.askSeam = { _ in nil }
     hr.stop()
 
     // a lookup outage: a token whose account was confirmed keeps it (its numbers stay current); a new token's reading is
@@ -3150,8 +3168,11 @@ do {
     let empty = Seat(account: h2.account, organization: h2.organization, email: "")
     let bothEmpty = AccountResolver.resolve(me, among: [me], app: .unknown, code: empty, loginEmail: "", names: [:], now: t0)
     check(bothEmpty.readStale == nil && !bothEmpty.differs, "an empty reading address and an empty folder address: not stale, no split")
-    let oneEmpty = AccountResolver.resolve(me, among: [me], app: .unknown, code: empty, loginEmail: h2.email, names: [:], now: t0)
-    check(oneEmpty.readStale == true, "one address empty, the other not: stale, as before")
+    let oneEmpty = AccountResolver.resolve(me, among: [me], app: .unknown, code: empty, loginEmail: h2.email, readingVerified: false, names: [:], now: t0)
+    check(oneEmpty.readStale == true, "one address empty, the other not, the reading not verified: stale, as before")
+    let oneEmptyV = AccountResolver.resolve(me, among: [me], app: .unknown, code: empty, loginEmail: h2.email, names: [:], now: t0)
+    check(oneEmptyV.readStale == nil && oneEmptyV.email == h2.email && oneEmptyV.codeName == h2.email,
+          "A3: one address empty, the reading verified: Anthropic's word names Claude Code's account, not stale")
     check(AccountResolver.sameAddress("", "") && !AccountResolver.sameAddress("", "x@example.com") && AccountResolver.sameAddress("X@example.com", "x@example.com"),
           "sameAddress: empty ones by the plain comparison, else the address-only rule")
     // Claude Code's record names an id but no address (ClaudeFiles.Record.seat keeps a missing emailAddress as nil). A reading
@@ -3169,18 +3190,25 @@ do {
     let short8 = "account \(h2.account.prefix(8))"
     let own = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: h2.email, loginAccount: h2.account.uppercased(),
                                       names: [:], now: t0)
-    check(own.readStale == nil && !own.differs && own.email == h2.email && own.line != AccountResolver.ownerUnknownWords
+    check(own.readStale == nil && !own.differs && own.email == h2.email && own.line != AccountResolver.staleWords
           && shownWeekly(own, id: h2.account.uppercased()) == 40,
           "folder {id, no address} + a reading with the folder's id (any case): the profile's numbers show, named by the reading's address")
-    let elseID = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, loginAccount: otherAcct, names: [:], now: t0)
-    check(elseID.readStale == true && elseID.email == nil && elseID.line != AccountResolver.ownerUnknownWords
+    let elseID = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, loginAccount: otherAcct, readingVerified: false,
+                                         names: [:], now: t0)
+    check(elseID.readStale == true && elseID.email == nil && elseID.line == AccountResolver.staleWords
           && shownWeekly(elseID, id: otherAcct) == nil,
-          "folder {id, no address} + a reading with another id: stale, shown nowhere (another account, said as before)")
+          "folder {id, no address} + a reading with another id, not verified: stale, shown nowhere (another account, said as before)")
+    // A3: the same reading verified (its sign-in is the kept one): Anthropic's word is Claude Code's account, the record a guess
+    let elseIDv = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, loginAccount: otherAcct, names: [:], now: t0)
+    check(elseIDv.readStale == nil && elseIDv.email == foreign && elseIDv.codeAccount == otherAcct && elseIDv.line != AccountResolver.staleWords
+          && shownWeekly(elseIDv, id: otherAcct) == 40,
+          "A3: folder {id, no address} + a verified reading with another id: Claude Code is on the reading's account, its numbers show")
     let sameAddrOtherID = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: h2.email, loginAccount: otherAcct, names: [:], now: t0)
     check(sameAddrOtherID.readStale == nil && !sameAddrOtherID.differs && sameAddrOtherID.email == h2.email
-          && sameAddrOtherID.line != AccountResolver.ownerUnknownWords && shownWeekly(sameAddrOtherID, id: otherAcct) == 40,
-          "the ids' guard: folder {id, address} + a reading for that address with another id: the same address keeps it (no split)")
-    let bothOther = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, loginAccount: otherAcct, names: [:], now: t0)
+          && sameAddrOtherID.line != AccountResolver.staleWords && shownWeekly(sameAddrOtherID, id: otherAcct) == 40 && sameAddrOtherID.codeAccount == otherAcct,
+          "folder {id, address} + a verified reading for that address with another id: no split, the reading's id is Claude Code's (the ids decide)")
+    let bothOther = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, loginAccount: otherAcct, readingVerified: false,
+                                            names: [:], now: t0)
     check(bothOther.readStale == true && bothOther.codeName == h2.email && shownWeekly(bothOther, id: otherAcct) == nil,
           "…another id and another address: stale, shown nowhere")
     // …and the way back shows where the reason does: the card, the Dock panel and menu, the menu bar row (its record is the
@@ -3192,14 +3220,21 @@ do {
           && MenuBarRow.lineWords(MenuBarItems.Profile(show: staleShow)) == staleLine && staleLine.contains("sign in to read again") && staleLine.count <= 70
           && staleAge == "Not read for this account",
           "a stale reading: \"\(staleLine)\" on the card, in the Dock panel (not the Dock menu: no states there), on the menu bar row; the age line: \(staleAge ?? "-")")
-    let lone = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, names: [:], now: t0)
+    // (a record that names its account by id alone against a reading known by its address alone: whose the numbers are isn't
+    // known from the record; with the reading not verified they are stale, said by the one stale line, as every other
+    // reading for another account is; the record's own line for it went with the kit's rule)
+    let lone = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, readingVerified: false, names: [:], now: t0)
     let loneWeekly = shownWeekly(lone), loneShow = ProfileShow.load(me, now: t0)
     let (loneNote, loneMenu) = MainActor.assumeIsolated { let d = dockOf(me, loneShow); return (d.panel.activeNote, titles(d.menu)) }
-    let words = AccountResolver.ownerUnknownWords
+    let words = AccountResolver.staleWords
     check(lone.readStale == true && !lone.differs && lone.email == nil && lone.account == h2.account && lone.numbersFor == foreign
           && lone.codeName == short8 && lone.line == words && loneWeekly == nil
           && AccountView.of(Store.status(for: me, now: t0)).label == short8,
-          "folder {id, no address} + a reading with an address and no id, no app: stale, numbers shown nowhere, never labelled with the reading's address")
+          "folder {id, no address} + an unverified reading with an address and no id, no app: stale, numbers shown nowhere, never labelled with the reading's address")
+    // A3: verified, the reading's address is Claude Code's account (Anthropic's word), the record's id alone only a guess
+    let loneV = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, names: [:], now: t0)
+    check(loneV.readStale == nil && loneV.email == foreign && loneV.codeName == foreign && loneV.line != words && loneV.lit,
+          "A3: folder {id, no address} + a verified reading by its address: Claude Code's account is the reading's")
     // (the Dock menu, stale or not: only the kept items, the same as one built from the profile alone)
     let keptTitles = titles(DockTileMenu.menu(DockTileMenu.dockRows(me, windowOpen: false, appRunning: true), light: nil, views: false,
                                               target: NSObject(), action: Selector(("x:"))))
@@ -3209,7 +3244,7 @@ do {
           && MenuBarRow.lineWords(MenuBarItems.Profile(show: loneShow)) == words && words.contains("sign in")
           && words.count <= "Claude Code's .claude.json is too large to read: its account isn't known here.".count,
           "…and the reason shows: on the card, in the Dock panel (not the Dock menu), on the menu bar row (sign in, the sweep's verb), no longer than the too-large line those rows show")
-    let appOnIt = AccountResolver.resolve(me, among: [me], app: appH2, code: idOnly, loginEmail: foreign, names: [:], now: t0)
+    let appOnIt = AccountResolver.resolve(me, among: [me], app: appH2, code: idOnly, loginEmail: foreign, readingVerified: false, names: [:], now: t0)
     check(appOnIt.readStale == true && !appOnIt.differs && appOnIt.fromApp && appOnIt.email == h2.email && appOnIt.line == words
           && shownWeekly(appOnIt) == nil,
           "…the Claude app on the folder's account: stale too, no split with the reading's numbers, the same reason")
@@ -3223,24 +3258,45 @@ do {
     let bothIDs = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: h2.email, loginAccount: h2.account, names: [:], now: t0)
     check(bothIDs.readStale == nil && !bothIDs.differs && bothIDs.email == h2.email && shownWeekly(bothIDs, id: h2.account) == 40,
           "folder {id, address} + a reading with that id and address: the profile's numbers")
-    let moved = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, names: [:], now: t0)
-    check(moved.readStale == true && moved.email == h2.email && moved.codeName == h2.email && moved.line != words && shownWeekly(moved) == nil,
-          "folder {id, address} + another address's reading: stale, as before")
+    let moved = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, readingVerified: false, names: [:], now: t0)
+    check(moved.readStale == true && moved.email == h2.email && moved.codeName == h2.email && moved.line == words && shownWeekly(moved) == nil,
+          "folder {id, address} + another address's reading, not verified: stale, as before")
+    let movedV = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, names: [:], now: t0)
+    check(movedV.readStale == nil && movedV.email == foreign && movedV.codeName == foreign && movedV.account == nil && shownWeekly(movedV) == 40,
+          "A3: folder {id, address} + another address's verified reading: Claude Code is on the reading's account (no ids from the record)")
     let noSeat = AccountResolver.resolve(me, among: [me], app: .unknown, code: nil, loginEmail: foreign, names: [:], now: t0)
-    check(noSeat.readStale == nil && noSeat.email == foreign && noSeat.numbersFor == foreign && shownWeekly(noSeat) == 40,
-          "no folder seat, a reading's address only: the reading names the account, as before")
+    check(noSeat.readStale == nil && noSeat.email == foreign && noSeat.numbersFor == foreign && shownWeekly(noSeat) == 40 && noSeat.lit,
+          "no folder seat, a verified reading's address only: the reading names Claude Code's account, lit (A3: the record signed out is only a guess)")
+    let noSeatOut = AccountResolver.resolve(me, among: [me], app: .unknown, code: nil, loginEmail: foreign, readingVerified: false, names: [:], now: t0)
+    check(noSeatOut.readStale == nil && noSeatOut.email == foreign && !noSeatOut.lit,
+          "…the reading's sign-in gone: nobody is Claude Code's account (not lit), the reading only labels its numbers, as before")
+    // the record too large to read: not known, said so; a verified reading names the account all the same
+    let hugeV = AccountResolver.resolve(me, among: [me], app: .unknown, code: nil, loginEmail: foreign, names: [:], recordTooLarge: true, now: t0)
+    let hugeOut = AccountResolver.resolve(me, among: [me], app: .unknown, code: nil, loginEmail: nil, names: [:], recordTooLarge: true, now: t0)
+    check(hugeV.recordTooLarge == nil && hugeV.email == foreign && hugeOut.recordTooLarge == true && hugeOut.line?.contains("too large") == true,
+          "a .claude.json too large to read: not known with no reading; a verified reading names Claude Code's account")
     // the seat by the reading's organisation (the profile reply's organization.uuid): one login's personal and Team seats share
     // the account id and the address, so another organisation, both known, is another seat: stale, whatever the address
     // says; the id proof stays as it was; one organisation not known on either side never makes a mismatch
     let teamOrg = "00000000-0000-4000-8000-0000000000c2"
-    func orgRead(_ code: Seat?, _ org: String?, account: String? = h2.account) -> ResolvedAccount {
+    func orgRead(_ code: Seat?, _ org: String?, account: String? = h2.account, verified: Bool = true) -> ResolvedAccount {
         AccountResolver.resolve(me, among: [me], app: .unknown, code: code, loginEmail: h2.email, loginAccount: account, loginOrganization: org,
-                                names: [:], now: t0)
+                                readingVerified: verified, names: [:], now: t0)
     }
-    let otherSeatRead = orgRead(h2, teamOrg)
+    let otherSeatRead = orgRead(h2, teamOrg, verified: false)
     check(otherSeatRead.readStale == true && !otherSeatRead.differs && otherSeatRead.line == AccountResolver.staleWords
           && otherSeatRead.email == h2.email && shownWeekly(otherSeatRead, id: h2.account) == nil,
-          "folder {id, org, address} + a reading with that id and address on another organisation: stale (the other seat), shown nowhere, the way back said")
+          "folder {id, org, address} + an unverified reading with that id and address on another organisation: stale (the other seat), shown nowhere, the way back said")
+    // A2 + A3: verified, the reading's seat (the Team one) is Claude Code's; the record's personal seat only a guess, no
+    // organisation of it borrowed
+    let otherSeatV = orgRead(h2, teamOrg)
+    check(otherSeatV.readStale == nil && otherSeatV.codeOrganization == teamOrg && otherSeatV.codeAccount == h2.account
+          && shownWeekly(otherSeatV, id: h2.account) == 40,
+          "A2/A3: a verified reading on the other seat of the record's account: that seat is Claude Code's, its numbers show")
+    // a seat not known (the reading names no organisation, the record does): the same account, its organisation not known
+    let notKnown = orgRead(h2, nil)
+    check(notKnown.codeAccount == h2.account && notKnown.codeOrganization == nil && notKnown.readStale == nil,
+          "A2: one side names no organisation: the account, with no organisation taken from the record (not known)")
     let sameSeat = orgRead(h2, h2.organization!.uppercased())
     check(sameSeat.readStale == nil && !sameSeat.differs && shownWeekly(sameSeat, id: h2.account) == 40,
           "…on the folder's organisation (any case): the profile's numbers")
@@ -3262,12 +3318,47 @@ do {
     // differs on a stale reading: the folder's account against the app's by the ids, never the addresses (an address
     // changed on the same id is no split; another id with the app's address is one)
     let renamed = Seat(account: h2.account, organization: h2.organization, email: "renamed-2@example.com")
-    let staleSameID = AccountResolver.resolve(me, among: [me], app: appH2, code: renamed, loginEmail: foreign, names: [:], now: t0)
+    let staleSameID = AccountResolver.resolve(me, among: [me], app: appH2, code: renamed, loginEmail: foreign, readingVerified: false, names: [:], now: t0)
     check(staleSameID.readStale == true && staleSameID.fromApp && !staleSameID.differs,
           "a stale reading, the app on the folder's id under another address: no split (by the ids)")
     let otherIDSameAddr = Seat(account: otherAcct, organization: h2.organization, email: h2.email)
-    let staleOtherID = AccountResolver.resolve(me, among: [me], app: appH2, code: otherIDSameAddr, loginEmail: foreign, names: [:], now: t0)
+    let staleOtherID = AccountResolver.resolve(me, among: [me], app: appH2, code: otherIDSameAddr, loginEmail: foreign, readingVerified: false,
+                                               names: [:], now: t0)
     check(staleOtherID.readStale == true && staleOtherID.differs, "…the folder on another id with the app's address: a split (by the ids)")
+    // the short ask's word (a running claude's own initialize account: an address and an organisation name, no ids)
+    let word = SignedInAccount(email: h2.email, organizationName: "Team Two", origin: .process)
+    let recNamed = SignedInAccount(accountID: h2.account, email: h2.email, organizationID: h2.organization, organizationName: "team two", origin: .record)
+    let confirmed = AccountResolver.resolve(me, among: [me], app: .unknown, code: recNamed, loginEmail: h2.email, loginAccount: h2.account,
+                                            loginOrganization: h2.organization, process: word, names: [:], now: t0)
+    check(confirmed.readStale == nil && confirmed.codeAccount == h2.account && confirmed.codeOrganization == h2.organization?.lowercased()
+          && confirmed.email == h2.email,
+          "A3/A5: the short ask names the record's seat (its organisation's name in another case): the same seat, its ids from the record, the numbers stand")
+    let asked = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, loginAccount: otherAcct,
+                                        process: SignedInAccount(email: h2.email, origin: .process), names: [:], now: t0)
+    check(asked.readStale == true && asked.line == AccountResolver.staleWords && asked.codeName == h2.email && shownWeekly(asked, id: otherAcct) == nil,
+          "A3: the short ask names another account than the reading's (the Keychain moved on): Claude Code's account is the process's, the reading stale, shown nowhere")
+    let askedSame = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, loginAccount: otherAcct,
+                                            process: SignedInAccount(email: foreign, origin: .process), names: [:], now: t0)
+    check(askedSame.readStale == nil && askedSame.email == foreign && askedSame.line != AccountResolver.staleWords,
+          "A3: the short ask confirms the reading's account over the record: the record is stale, the numbers stand")
+    // A1: a record that names an address and no id is signed in (by the address)
+    let addrOnly = AccountResolver.resolve(me, among: [me], app: .unknown, code: SignedInAccount(email: h2.email, origin: .record), loginEmail: nil,
+                                           names: [:], now: t0)
+    check(addrOnly.lit && addrOnly.email == h2.email && addrOnly.account == nil && addrOnly.codeName == h2.email,
+          "A1: a record with an address and no id: Claude Code is on that address (lit), no id known")
+    // the short ask's rule: only on a sign-in change or a disagreement, each state once, at most every ShortAsk.floor
+    let s0 = ShortAsk.State(generation: 0, reading: "a"), s1 = ShortAsk.State(generation: 1, reading: "a")
+    let long = t0.addingTimeInterval(-ShortAsk.floor - 1), lately = t0.addingTimeInterval(-60)
+    func due(_ last: ShortAsk.State?, _ now: ShortAsk.State, differs: Bool = false, lastAsk: Date = .distantPast, asking: Bool = false,
+             ready: Bool = true) -> Bool {
+        ShortAsk.due(last: last, now: now, differs: differs, lastAsk: lastAsk, at: t0, asking: asking, folderReady: ready)
+    }
+    check(!due(nil, s0) && due(nil, s0, differs: true), "the short ask: the first look asks only when the record and the reply disagree")
+    check(!due(s0, s0) && !due(s0, s0, differs: true), "…never twice about one state (not on every tick)")
+    check(due(s0, s1) && due(s0, s1, lastAsk: long) && !due(s0, s1, lastAsk: lately), "…a sign-in change asks, at most once every \(Int(ShortAsk.floor / 60)) minutes")
+    check(due(s0, ShortAsk.State(generation: 0, reading: "b"), differs: true) && !due(s0, ShortAsk.State(generation: 0, reading: "b")),
+          "…another reading that disagrees with the record asks; one that agrees doesn't")
+    check(!due(s0, s1, asking: true) && !due(s0, s1, ready: false), "…never while one runs, never on a folder that isn't there")
     // the record's new field: an older record (no numbersAccount) decodes, with no id; a new one keeps it
     let olderRec = StatusCodec.decode(Data(#"{"state":"ok","numbersOwner":"hex-2@example.com","weekly":40}"#.utf8))
     var withID = IconStatus(state: "ok"); withID.numbersOwner = h2.email; withID.numbersAccount = h2.account

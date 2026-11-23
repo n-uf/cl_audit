@@ -698,20 +698,159 @@ final class UsageReader {
             send(.written)
             lastStatus = Store.writeStatus(id, status)
         }
+        considerAsk()
     }
 
-    /// The account answer for what this reader sees now (AccountResolver), with the numbers' own reading as their account.
+    /// The account answer for what this reader sees now (AccountResolver): Claude Code's account by cl_kit's rule (the
+    /// folder's record through the one folder reader, under the verified word: the short ask's, else the reading's own
+    /// account while its sign-in is the kept one), with the numbers' own reading as their account.
     private func answer() -> ResolvedAccount {
         let list = Store.loadChecked() ?? []
         let me = list.first { $0.id == id } ?? entry
+        let look = Account.codeRecord(configDir: me.configDir)
+        let verified = readingVerified(look)
         return AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
-                                       code: Account.signedInSeat(configDir: me.configDir), loginEmail: machine.numbersOwner,
+                                       code: look.account, loginEmail: machine.numbersOwner,
                                        loginAccount: machine.numbersAccount, loginOrganization: machine.numbersOrganization,
+                                       readingVerified: verified, process: standingWord(look),
                                        names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir),
                                        newestSwitch: SwitchEngine.receipts(profile: me.id).first)
     }
 
+    // MARK: Claude Code's own word (the short ask)
+
+    /// The reading's sign-in as this reader first saw it: its key (the token's short hash), the record's generation then
+    /// (Account.records), and when.
+    private var readingSeen: (key: String, generation: Int, at: Date)?
+    /// The short ask's answer: a short-lived claude's own `initialize` account on this folder, the record's generation it
+    /// was asked at, the folder, and when it came.
+    private var processWord: (word: SignedInAccount, generation: Int, folder: String, at: Date)?
+    private var asking = false
+    private var lastAsk = Date.distantPast
+    /// What the last ask (or the first look) was about.
+    private var askedAbout: ShortAsk.State?
+
+    /// The reading's own account as Anthropic's reply named it (the profile lookup for its token); nil: no reading of this
+    /// run (none, the status line's, or one adopted from the last run, whose token wasn't read here).
+    private var readingAccount: SignedInAccount? {
+        guard machine.numbersKey != nil else { return nil }
+        let a = SignedInAccount(accountID: machine.numbersAccount, email: machine.numbersOwner,
+                                organizationID: machine.numbersAccount == nil ? nil : machine.numbersOrganization, origin: .server)
+        return a.names ? a : nil
+    }
+
+    /// Anthropic's reply for the reading's sign-in is a verified word (between asks) while that sign-in is the one the folder
+    /// keeps: a reading of this run, the sign-in not gone, and the record naming nobody else since the reading's sign-in
+    /// was first seen (a sign-in or a switch since: not verified until the new sign-in is read).
+    private func readingVerified(_ look: FolderRecordReader.Look) -> Bool {
+        guard let key = machine.numbersKey, readingAccount != nil, machine.state != .noLogin else { return false }
+        if readingSeen?.key != key { readingSeen = (key, look.generation, Date()) }
+        return readingSeen?.generation == look.generation
+    }
+
+    /// The short ask's word while it stands: asked on this folder at the record's generation now, and newer than the
+    /// reading's sign-in (a sign-in read after it is the newer word).
+    private func standingWord(_ look: FolderRecordReader.Look) -> SignedInAccount? {
+        guard let p = processWord, p.folder == account.configDir, p.generation == look.generation else { return nil }
+        if let seen = readingSeen, seen.at > p.at { return nil }
+        return p.word
+    }
+
+    /// After each save: the short ask, when its rule says so (ShortAsk.due): only when the sign-in changed (the record names
+    /// someone else since the last ask) or the record and Anthropic's reply disagree, each state asked once, at most once
+    /// every ShortAsk.floor, never while one runs, and only in the profile's own folder (a profile is one folder; a standby
+    /// account has none and is never asked).
+    private func considerAsk(now: Date = Date()) {
+        guard !machine.stopped else { return }
+        let look = Account.codeRecord(configDir: account.configDir)
+        let reading = readingVerified(look) ? readingAccount : nil
+        let state = ShortAsk.State(generation: look.generation, reading: reading.flatMap { AccountKey($0)?.text })
+        let differs = reading != nil && FolderSignIn.answer(record: look.account, verified: reading).verdict == .differs
+        // (a record that names nobody, signed out: nothing to ask about)
+        guard look.account != nil, ShortAsk.due(last: askedAbout, now: state, differs: differs, lastAsk: lastAsk, at: now, asking: asking,
+                                                folderReady: FolderGuard.folderReady(account.configDir)) else {
+            if askedAbout == nil { askedAbout = state }        // the first look: nothing changed yet
+            return
+        }
+        askedAbout = state; lastAsk = now
+        ask(generation: look.generation)
+    }
+
+    /// Asks Claude Code itself, off the main thread: a short-lived claude on the profile's own folder, its `initialize`
+    /// account and nothing else (ClaudeAsk: no model message, traceless, nothing kept, a timeout). Its word stands until the
+    /// record names someone else or a newer sign-in is read; one that names another account than Anthropic's reply has the
+    /// sign-in read again (the Keychain has moved on).
+    private func ask(generation gen: Int) {
+        let folder = account.authFolder, dir = account.configDir
+        // (never a folder that isn't there as a plain folder: nothing is made)
+        guard FolderGuard.mayLaunch("ask", dir) else { return }
+        asking = true
+        agentLog.log("reader \(self.id, privacy: .public): asking Claude Code which account it is on (a short claude, no message)")
+        DispatchQueue.global(qos: .utility).async {
+            let word = Self.askSeam(folder)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.asking = false
+                guard !self.machine.stopped, self.account.configDir == dir else { return }
+                guard let word else {
+                    agentLog.log("reader \(self.id, privacy: .public): Claude Code didn't say which account it is on")
+                    return
+                }
+                self.processWord = (word, gen, dir, Date())
+                if let r = self.readingAccount, r.match(word) == .different {
+                    agentLog.log("reader \(self.id, privacy: .public): Claude Code is on another account than the sign-in read; reading the sign-in again")
+                    self.forceFresh = true
+                    self.send(.refreshRequested)
+                } else {
+                    agentLog.log("reader \(self.id, privacy: .public): Claude Code confirmed its account")
+                }
+                self.save()
+            }
+        }
+    }
+
+    /// How the short ask runs: a check build never runs `claude` (CL_AUDIT_CHECKS: no word), and a check gives its own.
+#if CL_AUDIT_CHECKS
+    nonisolated(unsafe) static var askSeam: (AuthFolder) -> SignedInAccount? = { _ in nil }
+#else
+    nonisolated(unsafe) static var askSeam: (AuthFolder) -> SignedInAccount? = { askClaude($0) }
+#endif
+
+    /// The short ask on a folder (blocks up to ClaudeAsk's timeout and its stop: off the main thread): `claude` found, run on
+    /// the folder alone (its environment: ClaudeAuth's allow-list, traceless), its `initialize` account as a running
+    /// claude's own word; nil when it isn't installed or said nothing.
+    static func askClaude(_ folder: AuthFolder) -> SignedInAccount? {
+        guard let claude = ClaudeCLI.find() else { return nil }
+        let env = folder.environment(ProcessInfo.processInfo.environment, claude: claude, traceless: true)
+        let a = ClaudeAsk.ask(claude: claude, environment: env, folder: folder.path, usage: false, timeout: 20)
+        return SignedInAccount.process(a.account.map { $0 as [String: Any] })
+    }
+
     static func when(_ d: Date) -> String { TimeWords.when(d) }
+}
+
+/// The short ask's rule (UsageReader.considerAsk), pure for the checks. A short-lived claude costs a second or two and a
+/// Node process, so it runs only when the sign-in changed or the record and Anthropic's reply disagree, never on a tick.
+enum ShortAsk {
+    /// At most one ask per profile this often.
+    static let floor: TimeInterval = 10 * 60
+
+    /// What an ask is about: the record's generation (the one folder reader's count of who it named) and the reading's
+    /// account (its saved key's text; nil: no verified reading).
+    struct State: Equatable {
+        var generation: Int
+        var reading: String?
+    }
+
+    /// Ask now? `last`: what the last ask, or the first look, was about (nil: nothing looked at yet); `now`: the state now;
+    /// `differs`: the record and the verified reading name another account or seat. Yes only for a state not asked about
+    /// yet whose record changed since (a sign-in, a switch, a sign-out) or that disagrees, at least `floor` after the last
+    /// ask, none running, on a folder that is there. The first look asks only when it disagrees.
+    static func due(last: State?, now: State, differs: Bool, lastAsk: Date, at: Date, asking: Bool, folderReady: Bool) -> Bool {
+        guard !asking, folderReady, at.timeIntervalSince(lastAsk) >= floor else { return false }
+        guard let last else { return differs }
+        return last != now && (now.generation != last.generation || differs)
+    }
 }
 
 /// Which account a profile's folder is signed in to, looked at on every tick: its .claude.json names a seat. ClaudeAuth's

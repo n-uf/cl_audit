@@ -234,9 +234,10 @@ final class SettingsModel: ObservableObject {
         for e in list {
             let stamp = Store.stamp(e.id)            // before the read: a write landing meanwhile is the agent's, newer
             let s = Store.status(e.id)
-            var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
+            // (no reader here keeps the reading's sign-in: the saved reading isn't a verified word, the record decides)
+            var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.codeRecord(configDir: e.configDir).account,
                                             loginEmail: s?.readingOwner, loginAccount: s?.readingAccount,
-                                            loginOrganization: s?.readingOrganization, names: AccountList.names(),
+                                            loginOrganization: s?.readingOrganization, readingVerified: false, names: AccountList.names(),
                                             recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
                                             newestSwitch: SwitchEngine.receipts(profile: e.id).first)
             if var old = s?.resolved { old.at = r.at; if old == r { continue } }
@@ -253,9 +254,10 @@ final class SettingsModel: ObservableObject {
         guard let e = accounts.first(where: { $0.id == id }) else { return }
         let stamp = Store.stamp(id)                  // before the read: a write landing meanwhile is the agent's, newer
         let s = Store.status(id)
-        var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
+        // (the saved reading is from before the switch or log-in: its sign-in isn't the kept one, so not a verified word)
+        var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.codeRecord(configDir: e.configDir).account,
                                         loginEmail: s?.readingOwner, loginAccount: s?.readingAccount,
-                                        loginOrganization: s?.readingOrganization, names: AccountList.names(),
+                                        loginOrganization: s?.readingOrganization, readingVerified: false, names: AccountList.names(),
                                         recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
                                         newestSwitch: SwitchEngine.receipts(profile: e.id).first)
         r.at = Date()
