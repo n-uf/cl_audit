@@ -179,11 +179,12 @@ do {
     dirs = ["~/.claude": u2]
     let found = note([byAddress])[0]
     check(found.seat.map { $0.same(u2) } == true && found.standby.map(\.email) == [u1.email!], "an account remembered by its address leaves standby once it signs in (by its address, any case)")
-    // not linked yet: the first profile signed in to it takes it
+    // not linked yet: every profile signed in to it takes it (shared seats: an account may be in several profiles)
     let a = profile("a", "~/.claude-a", nil), b = profile("b", "~/.claude-b", nil)
     dirs = ["~/.claude-a": u4, "~/.claude-b": u4]
     let linked = note([a, b])
-    check(linked[0].seat.map { $0.same(u4) } == true && linked[1].seat == nil && linked[0].standby.isEmpty, "not linked yet: the first profile signed in to it takes it, no standby made")
+    check(linked[0].seat.map { $0.same(u4) } == true && linked[1].seat.map { $0.same(u4) } == true
+          && linked[0].standby.isEmpty && linked[1].standby.isEmpty, "not linked yet: both profiles signed in to it take it (shared seat), no standby made")
 }
 
 // ============ 4. the account book: which standby account a full limit offers ============
@@ -1349,9 +1350,10 @@ do {
     let a1 = after.first { $0.id == "n1" }, a2 = after.first { $0.id == "n2" }
     check(a1?.seat.map { $0.same(u2) } == true && a1?.standby.contains { $0.seat.map { $0.same(u1) } == true } == true,
           "the agent: n1 follows its folder to ultra-2, ultra-1 stands by on it (saved under the lock)")
-    check(a2?.standby.isEmpty == true && a2?.accountNote?.kind == .standsBy && a2?.accountNote?.profile == "N1",
-          "the remembered entry on n2 goes, and n2 says why: \(a2?.accountNote?.words ?? "no note")")
-    check(a2?.accountNote?.words.contains("stands by on N1 now") == true, "…in words")
+    // (shared seats: one account may stand by in several profiles, so n2 keeps its entry for ultra-1 and has nothing to say)
+    check(a2?.standby.map(\.email) == [u1.email!] && a2?.accountNote == nil,
+          "the remembered entry on n2 stays (ultra-1 stands by on n1 too, shared seats), and n2 says nothing: \(a2?.accountNote?.words ?? "no note")")
+    check(a2?.seat.map { $0.same(u3) } == true && a1?.accountNote == nil, "…n2 on its own account, n1 said nothing either")
     let lock = Store.folder.appendingPathComponent("accounts.lock").path
     check(fm.fileExists(atPath: lock), "the profiles file's lock was taken")
     for d in ["~/.claude-n1", "~/.claude-n2"] { sign(d, nil) }
@@ -1589,9 +1591,12 @@ do {
     // in use): Main's file with the nine seats, one of them twice (P under o1), and a leftover folder loads as the nine,
     // the twice-listed seat once with its newer last use; saved once, said once
     var nine = mainB
+    // (last uses from a fixed past: a saved date later than now plus a day is dropped when the file is read, AccountBook.sane, and t0
+    // is in the future until 2027-01)
+    let usedFrom = Date(timeIntervalSince1970: 1_700_000_000)
     nine.standby = pairs.map { (a, o, ago) in
-        StandbyAccount(email: "", seat: Seat(account: a, organization: o, email: nil), id: "s\(Int(-ago))", lastInUse: t0.addingTimeInterval(ago * 3600))
-    } + [StandbyAccount(email: "", seat: Seat(account: P, organization: o1, email: nil), id: "s45", lastInUse: t0.addingTimeInterval(-45 * 3600))]
+        StandbyAccount(email: "", seat: Seat(account: a, organization: o, email: nil), id: "s\(Int(-ago))", lastInUse: usedFrom.addingTimeInterval(ago * 3600))
+    } + [StandbyAccount(email: "", seat: Seat(account: P, organization: o1, email: nil), id: "s45", lastInUse: usedFrom.addingTimeInterval(-45 * 3600))]
     nine.leftoverFolders = ["~/.claude-old-b2"]
     let before13 = try! JSONEncoder().encode(ConfigFile(accounts: [nine, workB]))
     try! before13.write(to: Store.configURL)
@@ -1603,7 +1608,7 @@ do {
     let loaded = Store.loadChecked() ?? []
     let mainL = loaded.first { $0.id == "b2main" }
     let pO1 = mainL?.standby.filter { $0.seat?.account == P && $0.seat?.organization == o1 } ?? []
-    check(mainL?.standby.count == 9 && pO1.count == 1 && pO1.first?.lastInUse == t0.addingTimeInterval(-40 * 3600)
+    check(mainL?.standby.count == 9 && pO1.count == 1 && pO1.first?.lastInUse == usedFrom.addingTimeInterval(-40 * 3600)
           && Set(mainL?.standby.compactMap { $0.seat?.account } ?? []) == [P, M, S],
           "per seat: the ten entries load as the nine seats (S's too: Work's account in use stands by here, shared seats), P under o1 once, its newer use: \(mainL?.standby.map { "\($0.seat?.account.suffix(2) ?? "-")/\($0.seat?.organization?.suffix(2) ?? "-")" } ?? [])")
     check(mainL?.leftoverFolders == ["~/.claude-old-b2"] && mainL?.accountNote?.kind == .tidied && writes == 1,
