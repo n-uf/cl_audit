@@ -9,9 +9,13 @@
 #   scripts/release.sh --nobump    the same without changing VERSION
 #   scripts/release.sh --push      also push main and the tag, and publish the GitHub Release with a
 #                                  ready-built cl_audit.zip and cl_audit.dmg for direct download
+#   scripts/release.sh --check-signing   the code signing plan (identity, notary profile, what it would sign), nothing else
+# Signing: ad hoc, unless CL_SIGN_ID names a Developer ID identity; with CL_NOTARY_PROFILE too, the zip's app and the
+# disk image are notarized and stapled before anything is pushed (scripts/signing.sh, docs/signing.md).
 # Test overrides: CALENDAR_VERSION_TODAY=YYYY-MM-DD, CALENDAR_VERSION_CURRENT=YY.M.R
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. scripts/signing.sh
 
 # Numbers never to use again (for example a tag that was pushed and then deleted). None yet.
 BURNED=" "
@@ -22,6 +26,7 @@ for a in "$@"; do
     --dry-run) dry=1 ;;
     --nobump) nobump=1 ;;
     --push) push=1 ;;
+    --check-signing) check_signing; exit 0 ;;
     *) echo "unknown option $a" >&2; exit 1 ;;
   esac
 done
@@ -54,6 +59,16 @@ if git rev-parse -q --verify "refs/tags/v$next" >/dev/null; then echo "v$next is
 if [ $push = 1 ]; then
   git fetch -q origin main || { echo "couldn't fetch origin's main" >&2; exit 1; }
   git merge-base --is-ancestor origin/main HEAD || { echo "origin/main has commits this main doesn't: pull (rebase) first" >&2; exit 1; }
+  # the signing set-up, found out now too, before the release commit (scripts/release.sh --check-signing shows it)
+  if [ -n "$notary_profile" ] && [ -z "$sign_id" ]; then
+    echo "CL_NOTARY_PROFILE needs CL_SIGN_ID: Apple notarizes Developer ID signatures only" >&2; exit 1
+  fi
+  if [ -n "$sign_id" ] && ! sign_id_found; then
+    echo "CL_SIGN_ID isn't among this Mac's code signing identities (security find-identity -v -p codesigning)" >&2; exit 1
+  fi
+  if [ -n "$notary_profile" ] && ! notary_profile_found; then
+    echo "the notary profile \"$notary_profile\" doesn't answer (xcrun notarytool store-credentials; see docs/signing.md)" >&2; exit 1
+  fi
 fi
 notes="$(awk '/^## Unreleased/{f=1; next} /^## /{f=0} f' CHANGELOG.md | sed '/^[[:space:]]*$/d')"
 if [ -z "$notes" ] || [ "$notes" = "Nothing pending." ]; then
@@ -101,12 +116,41 @@ if [ $push = 1 ]; then
   /usr/bin/lockf -k /private/tmp/cl_audit-build.lock bash -c './build.sh --no-install >/dev/null && ditto build/cl_audit.app "$1/cl_audit.app"' _ "$stage"
   mkdir -p dist && rm -f dist/cl_audit.zip dist/cl_audit.dmg
   ditto -c -k --keepParent "$stage/cl_audit.app" dist/cl_audit.zip
+  if [ -n "$sign_id" ]; then
+    # a Developer ID build: the signature is the Developer ID's, with the hardened runtime (what notarization needs)
+    sig="$(codesign -dvv "$stage/cl_audit.app" 2>&1 || true)"
+    grep -q '^Authority=Developer ID Application' <<<"$sig" && grep -qE '^CodeDirectory .*flags=0x[0-9a-f]*\(.*runtime' <<<"$sig" \
+      || { echo "the app isn't signed with a Developer ID and the hardened runtime" >&2; exit 1; }
+  fi
+  if [ -n "$notary_profile" ]; then
+    # Apple notarizes the app (the zip is what goes to it); its ticket is stapled into the app, and the zip made again
+    # from the stapled app, so the download opens without a network check too
+    notarize dist/cl_audit.zip || exit 1
+    xcrun stapler staple -q "$stage/cl_audit.app"
+    rm -f dist/cl_audit.zip
+    ditto -c -k --keepParent "$stage/cl_audit.app" dist/cl_audit.zip
+  fi
 
   # The same app as a disk image (releases/latest/download/cl_audit.dmg): the app and an Applications shortcut to drag
   # it onto. The app inside must be the zip's app, checked by its code directory hash.
   ln -s /Applications "$stage/Applications"
   hdiutil create -quiet -volname "cl_audit $next" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 dist/cl_audit.dmg
+  if [ -n "$sign_id" ]; then
+    # the image signed too (made from the stapled app), then notarized and stapled itself
+    codesign --force --sign "$sign_id" --timestamp dist/cl_audit.dmg
+    if [ -n "$notary_profile" ]; then
+      notarize dist/cl_audit.dmg || exit 1
+      xcrun stapler staple -q dist/cl_audit.dmg
+    fi
+  fi
   hdiutil verify -quiet dist/cl_audit.dmg
+  if [ -n "$notary_profile" ]; then
+    # what a downloader's Mac will say: Gatekeeper accepts both, and each carries its ticket
+    spctl -a -vv -t exec "$stage/cl_audit.app" || { echo "Gatekeeper rejects the app" >&2; exit 1; }
+    xcrun stapler validate -q "$stage/cl_audit.app" || { echo "the app's notarization ticket doesn't validate" >&2; exit 1; }
+    spctl -a -vv -t open --context context:primary-signature dist/cl_audit.dmg || { echo "Gatekeeper rejects the disk image" >&2; exit 1; }
+    xcrun stapler validate -q dist/cl_audit.dmg || { echo "the disk image's notarization ticket doesn't validate" >&2; exit 1; }
+  fi
   mkdir "$stage/mnt"
   hdiutil attach -quiet -nobrowse -readonly -noautoopen -mountpoint "$stage/mnt" dist/cl_audit.dmg
   zip_cd="$(codesign -dvvv "$stage/cl_audit.app" 2>&1 | grep '^CDHash=' || true)"
@@ -130,13 +174,19 @@ if [ $push = 1 ]; then
   # files to publish, so a release published by hand says the same. Written (and the by-hand lines made) before anything is
   # pushed: a write that fails stops here, under the trap above, with nothing pushed
   notes_file="$PWD/dist/release-notes-v$next.md"
+  # a notarized app opens like any other; an ad hoc one needs Open Anyway once
+  if [ -n "$notary_profile" ]; then
+    first_open="It is signed with a Developer ID and notarized by Apple, so it opens like any other app."
+  else
+    first_open="The first time, macOS says it can't verify the app: open System Settings ▸ Privacy & Security and click **Open Anyway** (once)."
+  fi
   printf '%s\n' "$section
 
 ---
 
 $checked
 
-**Download:** \`cl_audit.zip\` below (Apple silicon, macOS 13 or later). Unzip it, move **cl_audit** to Applications and open it. The first time, macOS says it can't verify the app: open System Settings ▸ Privacy & Security and click **Open Anyway** (once). Or build it from source, see the README.
+**Download:** \`cl_audit.zip\` below (Apple silicon, macOS 13 or later). Unzip it, move **cl_audit** to Applications and open it. $first_open Or build it from source, see the README.
 
 Also as a disk image: \`cl_audit.dmg\` below. Open it and drag cl_audit onto Applications.
 
