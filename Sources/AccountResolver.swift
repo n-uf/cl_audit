@@ -60,7 +60,8 @@ enum AccountResolver {
     /// `newestSwitch`: the profile's newest switch receipt (SwitchEngine.receipts), for a split that is a switch waiting
     /// for the Claude app (`switchWaits`).
     static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: (any CodeRecord)?, loginEmail: String?,
-                        loginAccount: String? = nil, loginOrganization: String? = nil, readingVerified: Bool = true,
+                        loginAccount: String? = nil, loginOrganization: String? = nil, loginOrganizationName: String? = nil,
+                        readingVerified: Bool = true,
                         process: SignedInAccount? = nil, names: [String: String], recordTooLarge: Bool = false,
                         newestSwitch: SwitchReceipt? = nil, now: Date = Date()) -> ResolvedAccount {
         // Claude Code's account is ClaudeAuth's one answer (FolderSignIn.answer, the platform's account rule): the folder's
@@ -75,7 +76,9 @@ enum AccountResolver {
         let readID = loginAccount.flatMap { $0.isEmpty ? nil : $0 }
         // (the reading's organisation only with its account's id, as the reader keeps it)
         let readOrg = readID == nil ? nil : loginOrganization.flatMap { $0.isEmpty ? nil : $0 }
-        let read = SignedInAccount(accountID: readID, email: loginEmail, organizationID: readOrg, origin: .server)
+        // (its organisation's name too, where the reader kept it: the short ask's word names its organisation by name only)
+        let read = SignedInAccount(accountID: readID, email: loginEmail, organizationID: readOrg,
+                                   organizationName: readID == nil ? nil : loginOrganizationName, origin: .server)
         let reading = read.names ? read : nil
         let word = process.flatMap { $0.names && $0.origin != .record ? $0 : nil } ?? (readingVerified ? reading : nil)
         let answer = FolderSignIn.answer(record: record, verified: word)
@@ -94,7 +97,28 @@ enum AccountResolver {
         // newer verified word (the short ask) names another account, or the reading's sign-in isn't the kept one any more
         // and the record names another account. Stale numbers show nowhere (Store.status) until a read for Claude Code's
         // account, and a stale reading's address never names Claude Code's account (`readName`).
-        let stale = reading.map { r in codeAccount.map { r.match($0) == .different } ?? false } ?? false
+        // With no verified word (the reading's sign-in not the kept one) the ids' guard stays: a reading for the record's
+        // address under another id is the same account (both ids and addresses known, no two organisations that differ),
+        // kept as before, should the profile reply's account id ever differ from the record's for one account.
+        let guarded: Bool = {
+            guard word == nil, let r = reading, let c = codeAccount, let ri = r.accountID, let ci = c.accountID, !AccountID.same(ri, ci),
+                  let re = r.email, let ce = c.email, re.lowercased() == ce.lowercased() else { return false }
+            if let ro = r.organizationID, let co = c.organizationID { return AccountID.same(ro, co) }
+            return true
+        }()
+        // Against a running claude's own word the seat must be told apart: a reading whose seat can't be (the word names its
+        // organisation by name only, the reading by id only) isn't counted as that seat's, so a personal plan's numbers
+        // never show for a Team seat on its address, or the other way round (the reader then reads the sign-in again).
+        let processSaid = word?.origin == .process
+        let stale = reading.map { r in
+            codeAccount.map { a in
+                switch r.match(a) {
+                case .seat: return false
+                case .seatNotKnown: return processSaid
+                case .different: return !guarded
+                }
+            } ?? false
+        } ?? false
         let readName = stale ? nil : loginEmail
         let codeLabel = (stale ? nil : reading?.email) ?? codeAccount?.email ?? codeAccount?.accountID.map { "account \($0.prefix(8))" }
         let codeEmail = (recordNamesIt ? answer.record?.email : nil) ?? codeAccount?.email
@@ -104,9 +128,10 @@ enum AccountResolver {
                                 numbersFor: loginEmail, differs: false, line: nil, lit: codeAccount != nil, clash: nil, at: now,
                                 codeAccount: codeAccount?.accountID.map(AccountID.normal), codeName: codeLabel, readStale: stale ? true : nil,
                                 clashID: nil)
-        // the seat's organisation in three states, so a reader of the record knows the seat in full: its id; "" when the
-        // record names that very seat with none (no organizationUuid, null or empty); nil when it isn't known (a seat not
-        // known, a verified word that names none, no account)
+        // the seat's organisation in three states, so a reader of the record knows the seat in full: its id, Claude Code's
+        // account's own (the verified word's when it names one, also when the record names none: the word knows the seat);
+        // "" when the record names that very seat with none (no organizationUuid, null or empty); nil when it isn't known
+        // (the word names no organisation id while the record names one: a seat not known; no account)
         r.codeOrganization = codeAccount.flatMap { c in
             if let o = c.organizationID { return AccountID.normal(o) }
             let recordsTheSeat = answer.verdict == .guessed || (answer.verdict == .verified && answer.record != nil)
@@ -122,7 +147,8 @@ enum AccountResolver {
         // the numbers aren't the active account's: the reading's own account (a stale reading's: Claude Code's, whose they
         // will be after its read; with no reading, the status line's numbers: Claude Code's) against the active one, by the
         // ids where both are known, else the addresses
-        if let n = stale ? codeAccount : (reading ?? codeAccount), let same = sameAccount(account: r.account, email: r.email, n) {
+        // (a guarded reading is the record's account by its address: Claude Code's account stands for it)
+        if let n = stale || guarded ? codeAccount : (reading ?? codeAccount), let same = sameAccount(account: r.account, email: r.email, n) {
             r.differs = !same
         }
         if r.differs, codeLabel != nil {

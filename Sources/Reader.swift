@@ -62,6 +62,8 @@ final class UsageReader {
         account = Account(e)
         self.defaults = defaults
         machine = ReaderMachine(rules: .clAudit, timing: Self.timing(e), linked: e.seat, firstFetch: Date().addingTimeInterval(startIn))
+        // (the first short ask no sooner than the profile's first read: the profiles' asks are staggered as their reads are)
+        lastAsk = Date().addingTimeInterval(startIn - ShortAsk.floor)
         adoptSaved()                             // the numbers don't blank while the agent restarts
         Self.adoptOldMarks(e.id, into: defaults)
         lookAtFolder(follow: false)              // the first look: what the folder is signed in to now
@@ -137,6 +139,7 @@ final class UsageReader {
             // account's and show now), the old one's numbers, sign-in and marks go (no "is back" from the switch itself)
             // and the new one's are read afresh (the machine's .lookAfresh); then a tick
             send(.relinked(folderMoved: folderMoved, now: Date()))
+            forgetWords()
             return
         }
         if followFolder() || pollChanged { forceFresh = true; send(.readNow); tick(); return }
@@ -159,6 +162,7 @@ final class UsageReader {
         account = want
         send(.folderMoved(now: now))
         signIn = SignInWatch(); lookAtFolder(follow: false)
+        forgetWords()
         return true
     }
 
@@ -229,6 +233,10 @@ final class UsageReader {
         let acct = account
         // the folder's sign-in record as it was before the read: a change after it is read again (watchSignIn)
         let stamp = SignInWatch.stamp(configDir: acct.configDir)
+        // and who the record named as the read starts (the one folder reader's generation): Anthropic's reply for this sign-in
+        // is a verified word only while the record names nobody else since (readingVerified), so a reply for a sign-in read
+        // before a sign-in or a switch never counts for the account after it
+        let recordGeneration = Account.codeRecord(configDir: acct.configDir).generation
         DispatchQueue.global(qos: .utility).async {
             let login = Login.read(acct)
             DispatchQueue.main.async { [weak self] in
@@ -237,6 +245,7 @@ final class UsageReader {
                 self.send(.signInRead(Self.described(login), generation: gen, now: Date())) {
                     self.cachedLogin = login
                     self.loginStamp = stamp
+                    if case let .token(token, _, _) = login { self.keptSignIn = (Account.sha8(token), acct.configDir, recordGeneration) }
                 }
             }
         }
@@ -330,8 +339,11 @@ final class UsageReader {
             let account = ok ? data.flatMap(UsageParser.accountID) : nil
             // (and its organisation's: one login's personal and Team seats are told apart by it)
             let organization = ok ? data.flatMap(UsageParser.organizationID) : nil
+            // (and its name: a running claude names its organisation by name only, so the short ask's word is compared by it)
+            let organizationName = ok ? data.flatMap(Self.organizationName) : nil
             DispatchQueue.main.async {
                 guard let self else { return }
+                self.readingOrganizationName = (req.key, organizationName)
                 self.send(.lookupAnswer(email: email, key: req.key, asked: req.asked, generation: req.generation,
                                         expected: self.expectedEmail, now: Date(), account: account, organization: organization))
             }
@@ -712,6 +724,7 @@ final class UsageReader {
         return AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
                                        code: look.account, loginEmail: machine.numbersOwner,
                                        loginAccount: machine.numbersAccount, loginOrganization: machine.numbersOrganization,
+                                       loginOrganizationName: readingAccount?.organizationName,
                                        readingVerified: verified, process: standingWord(look),
                                        names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir),
                                        newestSwitch: SwitchEngine.receipts(profile: me.id).first)
@@ -726,25 +739,53 @@ final class UsageReader {
     /// was asked at, the folder, and when it came.
     private var processWord: (word: SignedInAccount, generation: Int, folder: String, at: Date)?
     private var asking = false
+    /// When the last ask started (set at start-up so the first asks of the profiles come at their staggered first reads).
     private var lastAsk = Date.distantPast
     /// What the last ask (or the first look) was about.
     private var askedAbout: ShortAsk.State?
+    /// The state whose ask came back with no word and was tried once more (a failed ask is tried again once, after the floor).
+    private var askRetried: ShortAsk.State?
+    /// The kept sign-in as it was read: its key (the token's short hash), its folder, and the record's generation as the read
+    /// started (readSignIn).
+    private var keptSignIn: (key: String, folder: String, generation: Int)?
+    /// The organisation's name in Anthropic's reply for a sign-in (its key): the short ask's word names its organisation by
+    /// name only, so it is compared by it.
+    private var readingOrganizationName: (key: String, name: String?)?
 
-    /// The reading's own account as Anthropic's reply named it (the profile lookup for its token); nil: no reading of this
-    /// run (none, the status line's, or one adopted from the last run, whose token wasn't read here).
+    /// Forgets every word about the folder (another folder, another account linked): asked afresh.
+    private func forgetWords() {
+        readingSeen = nil; processWord = nil; askedAbout = nil; askRetried = nil; keptSignIn = nil; readingOrganizationName = nil
+    }
+
+    /// The organisation's name in Anthropic's profile reply (organization.name), when it gives one.
+    static func organizationName(_ data: Data) -> String? {
+        guard let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let n = (j["organization"] as? [String: Any])?["name"] as? String else { return nil }
+        let t = n.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    /// The reading's own account as Anthropic's reply named it (the profile lookup for its token: the account and its
+    /// organisation by id, and by name when the reply gave one); nil: no reading of this run (none, the status line's, or
+    /// one adopted from the last run, whose token wasn't read here).
     private var readingAccount: SignedInAccount? {
-        guard machine.numbersKey != nil else { return nil }
+        guard let key = machine.numbersKey else { return nil }
+        let withID = machine.numbersAccount != nil
         let a = SignedInAccount(accountID: machine.numbersAccount, email: machine.numbersOwner,
-                                organizationID: machine.numbersAccount == nil ? nil : machine.numbersOrganization, origin: .server)
+                                organizationID: withID ? machine.numbersOrganization : nil,
+                                organizationName: withID && readingOrganizationName?.key == key ? readingOrganizationName?.name : nil,
+                                origin: .server)
         return a.names ? a : nil
     }
 
     /// Anthropic's reply for the reading's sign-in is a verified word (between asks) while that sign-in is the one the folder
-    /// keeps: a reading of this run, the sign-in not gone, and the record naming nobody else since the reading's sign-in
-    /// was first seen (a sign-in or a switch since: not verified until the new sign-in is read).
+    /// keeps: read by this reader from this folder (not adopted from the last run, not another profile's shared reading),
+    /// not gone, and the record naming nobody else since the Keychain read STARTED (a sign-in or a switch landing between
+    /// the read and its lookup's answer: not verified, so the old account's reply never counts for the new one).
     private func readingVerified(_ look: FolderRecordReader.Look) -> Bool {
-        guard let key = machine.numbersKey, readingAccount != nil, machine.state != .noLogin else { return false }
-        if readingSeen?.key != key { readingSeen = (key, look.generation, Date()) }
+        guard let key = machine.numbersKey, readingAccount != nil, machine.state != .noLogin,
+              let kept = keptSignIn, kept.key == key, kept.folder == account.configDir else { return false }
+        if readingSeen?.key != key { readingSeen = (key, kept.generation, Date()) }
         return readingSeen?.generation == look.generation
     }
 
@@ -761,7 +802,8 @@ final class UsageReader {
     /// every ShortAsk.floor, never while one runs, and only in the profile's own folder (a profile is one folder; a standby
     /// account has none and is never asked).
     private func considerAsk(now: Date = Date()) {
-        guard !machine.stopped else { return }
+        // (never while a renewal runs: two claudes never refresh one folder's sign-in at once)
+        guard !machine.stopped, !machine.renewing else { return }
         let look = Account.codeRecord(configDir: account.configDir)
         let reading = readingVerified(look) ? readingAccount : nil
         let state = ShortAsk.State(generation: look.generation, reading: reading.flatMap { AccountKey($0)?.text })
@@ -773,14 +815,14 @@ final class UsageReader {
             return
         }
         askedAbout = state; lastAsk = now
-        ask(generation: look.generation)
+        ask(generation: look.generation, about: state)
     }
 
     /// Asks Claude Code itself, off the main thread: a short-lived claude on the profile's own folder, its `initialize`
     /// account and nothing else (ClaudeAsk: no model message, traceless, nothing kept, a timeout). Its word stands until the
     /// record names someone else or a newer sign-in is read; one that names another account than Anthropic's reply has the
     /// sign-in read again (the Keychain has moved on).
-    private func ask(generation gen: Int) {
+    private func ask(generation gen: Int, about state: ShortAsk.State) {
         let folder = account.authFolder, dir = account.configDir
         // (never a folder that isn't there as a plain folder: nothing is made)
         guard FolderGuard.mayLaunch("ask", dir) else { return }
@@ -794,10 +836,16 @@ final class UsageReader {
                 guard !self.machine.stopped, self.account.configDir == dir else { return }
                 guard let word else {
                     agentLog.log("reader \(self.id, privacy: .public): Claude Code didn't say which account it is on")
+                    // tried once more after the floor (a state no look has: due again), then left until the state changes
+                    if self.askRetried != state, self.askedAbout == state {
+                        self.askRetried = state
+                        self.askedAbout = ShortAsk.State(generation: -1, reading: nil)
+                    }
                     return
                 }
                 self.processWord = (word, gen, dir, Date())
-                if let r = self.readingAccount, r.match(word) == .different {
+                // (another account, or a seat that can't be told from the reading's: the Keychain may have moved on)
+                if let r = self.readingAccount, r.match(word) != .seat {
                     agentLog.log("reader \(self.id, privacy: .public): Claude Code is on another account than the sign-in read; reading the sign-in again")
                     self.forceFresh = true
                     self.send(.refreshRequested)

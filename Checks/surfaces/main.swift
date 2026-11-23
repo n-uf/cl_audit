@@ -1881,10 +1881,11 @@ do {
     check(Store.status(for: same)?.weekly == 100 && hr.heldReading?.key == "k2", "a token refresh: the last owned numbers stay (no flapping) until its owner is known")
     hr.profileFound(mo.email!, key: "k2"); hr.save()
     check(Store.status(for: same)?.weekly == 50 && Store.status("spm")?.resolved?.numbersFor == mo.email, "…then the new reading's, the same account")
-    // the token on mo, the folder's .claude.json naming pat: never decided from the folder alone. Once the reading's owner is
-    // known (mo), Anthropic's reply for the kept sign-in is the verified word (cl_kit's rule, A3): Claude Code is on mo, the
-    // record a guess. The record and the reply disagree, so the reader asks Claude Code itself (the short ask, once): a
-    // running claude that says pat means the Keychain moved on, so the reading is stale, shown nowhere, read again
+    // the token on mo, the folder's .claude.json naming pat (signed in since that token was read): never decided from the
+    // folder alone, and the reply for a sign-in read before the record changed is no verified word (UsageReader seeds it
+    // with the record's generation as the Keychain read started; this token wasn't read after the change): its owner known
+    // (mo), the reading is stale, shown nowhere. The sign-in changed, so the reader asks Claude Code itself (the short ask,
+    // once): a running claude that says pat confirms the folder moved on; the reading stays stale and is read again
     signIn(same.configDir, pat)
     hr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: hr.generation, key: "k3")
     check(Store.status(for: same)?.weekly != 100, "token mo, folder pat, owner not yet known: the new reading isn't shown")
@@ -1892,14 +1893,14 @@ do {
     UsageReader.askSeam = { folder in asks.append(folder.path); return SignedInAccount(email: pat.email, origin: .process) }
     hr.profileFound(mo.email!, key: "k3"); hr.save()
     let mixed = Store.status("spm")
-    check(mixed?.resolved?.numbersFor == mo.email && mixed?.resolved?.readStale == nil && mixed?.resolved?.codeName == mo.email
-          && Store.status(for: same)?.weekly == 100,
-          "A3: …its owner known (mo, Anthropic's word for the kept sign-in): Claude Code is on mo, the folder's pat only a guess, the numbers show: \(mixed?.resolved?.codeName ?? "-")")
+    check(mixed?.resolved?.numbersFor == mo.email && mixed?.resolved?.readStale == true && mixed?.resolved?.codeName == pat.email
+          && Store.status(for: same)?.weekly == nil,
+          "…its owner known (mo), read before the folder moved to pat: not a verified word, stale, no numbers shown: \(mixed?.resolved?.codeName ?? "-")")
     RunLoop.main.run(until: Date().addingTimeInterval(0.8))
     let told = Store.status("spm")
     check(asks == [expand(same.configDir)] && told?.resolved?.readStale == true && told?.resolved?.codeName == pat.email
           && Store.status(for: same)?.weekly == nil,
-          "the short ask, once, in the profile's own folder: Claude Code says pat, so mo's reading is stale, shown nowhere: \(asks.count) ask(s)")
+          "the short ask, once, in the profile's own folder (the sign-in changed): Claude Code says pat, mo's reading stays stale, shown nowhere: \(asks.count) ask(s)")
     hr.save(); RunLoop.main.run(until: Date().addingTimeInterval(0.3))
     check(asks.count == 1, "…and not again for the same state (never on every save or tick)")
     UsageReader.askSeam = { _ in nil }
@@ -3341,6 +3342,39 @@ do {
                                             process: SignedInAccount(email: foreign, origin: .process), names: [:], now: t0)
     check(askedSame.readStale == nil && askedSame.email == foreign && askedSame.line != AccountResolver.staleWords,
           "A3: the short ask confirms the reading's account over the record: the record is stale, the numbers stand")
+    // A2 with the short ask: its word names the organisation by name only. A reading that names its organisation by id
+    // only can't be told from the other seat on the address: not that seat's numbers (stale, read again). With the
+    // reply's organisation name the two are told apart: the same name stands, another name is the other seat
+    let personalWord = SignedInAccount(email: h2.email, organizationName: "Personal Two", origin: .process)
+    func teamReading(_ name: String?, word: SignedInAccount) -> ResolvedAccount {
+        AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: h2.email, loginAccount: h2.account,
+                                loginOrganization: teamOrg, loginOrganizationName: name, process: word, names: [:], now: t0)
+    }
+    let unbridged = teamReading(nil, word: personalWord)
+    check(unbridged.readStale == true && unbridged.line == AccountResolver.staleWords && shownWeekly(unbridged, id: h2.account) == nil,
+          "A2: the short ask names a seat by name, the reading its seat by id only: the seat can't be told, stale, shown nowhere")
+    check(teamReading("Personal Two", word: personalWord).readStale == nil
+          && teamReading("Team Two", word: personalWord).readStale == true,
+          "A2/A5: with the reply's organisation name: the same name (any case) stands, another name (the Team seat) is stale")
+    // the ids' guard on the unverified path: a reading for the record's address under another id is the same account
+    let guardedRead = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: h2.email, loginAccount: otherAcct,
+                                              readingVerified: false, names: [:], now: t0)
+    let guardedOtherSeat = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: h2.email, loginAccount: otherAcct,
+                                                   loginOrganization: teamOrg, readingVerified: false, names: [:], now: t0)
+    check(guardedRead.readStale == nil && !guardedRead.differs && guardedRead.codeAccount == h2.account && shownWeekly(guardedRead, id: otherAcct) == 40
+          && guardedOtherSeat.readStale == true,
+          "the ids' guard, reading not verified: the record's address under another id keeps the reading (no split); another organisation still stales")
+    // codeOrganization the other way: the record names no organisation, the verified reading does: the reading's seat
+    let readingOrgOnly = orgRead(Seat(account: h2.account, organization: nil, email: h2.email), teamOrg)
+    check(readingOrgOnly.codeOrganization == teamOrg && readingOrgOnly.readStale == nil,
+          "a record with no organisation, a verified reading with one: Claude Code's seat is the reading's (its organisation)")
+    // the Switch page's target for Terminal's account: the profile's seat only when it is Claude Code's very seat
+    let teamView = AccountView(label: h1.email, numbersOwner: h2.email, lit: true, account: h1.account, differs: true, codeAccount: h2.account,
+                               codeOrganization: teamOrg)
+    var orgView = teamView; orgView.codeOrganization = h2.organization?.lowercased()
+    var oldView = teamView; oldView.codeOrganization = nil
+    check(!teamView.isCodeSeat(h2) && orgView.isCodeSeat(h2) && oldView.isCodeSeat(h2),
+          "isCodeSeat: the same id on another organisation isn't Claude Code's seat; the same organisation is; not known decides by the id")
     // A1: a record that names an address and no id is signed in (by the address)
     let addrOnly = AccountResolver.resolve(me, among: [me], app: .unknown, code: SignedInAccount(email: h2.email, origin: .record), loginEmail: nil,
                                            names: [:], now: t0)
