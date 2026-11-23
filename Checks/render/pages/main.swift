@@ -762,10 +762,12 @@ if ProcessInfo.processInfo.environment["TWONAMES_ONLY"] != nil { print("done"); 
 
 // ==================================================================== New profile (NEWPROFILE_ONLY=1)
 // New profile's page in each state of its sign-in: unnamed (every Sign in off, one grey line), named, signing in (waiting
-// for the browser, amber), signed in without a Claude window (Create green), the Claude window step (its look at the
-// desktop app: this Mac's own process table, so held or not as it is), done. Std, 1180 wide (three columns). Files
+// for the browser, amber), signed in without a Claude window (Create green), the Claude window step held by the desktop
+// app (a stand-in process list, RunsMonitor.preview: never this Mac's own), done. Std, 1180 wide (three columns). Files
 // newprofile-<state>-std-w1180.png. Sample names and addresses only.
 @MainActor func newProfileRenders() {
+    RunsMonitor.preview = []                          // nothing runs, unless a state says otherwise
+    defer { RunsMonitor.preview = nil }
     let wu = Seat(account: uuid(46), organization: uuid(86), email: "wu@example.com")
     let model = SettingsModel(); model.accounts = []
     let face = FaceTheme.of(.std)
@@ -786,7 +788,9 @@ if ProcessInfo.processInfo.environment["TWONAMES_ONLY"] != nil { print("done"); 
     page(off, "signed-in-no-window")
     NewAccountSetup.discard(off, claude: nil)
     var w = d; try! NewAccountSetup.createCode(&w); sign(w.configDir, wu)
+    RunsMonitor.preview = [ClaudeRun(id: 9911, kind: .desktop, folder: FolderKey.standardDataDir)]   // the desktop app open
     page(w, "window-step")
+    RunsMonitor.preview = []
     try! NewAccountSetup.makeWindowFolder(&w)
     try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": wu.account]).write(to: URL(fileURLWithPath: expand(w.dataDir) + "/config.json"))
     page(w, "done")

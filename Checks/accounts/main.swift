@@ -3086,8 +3086,10 @@ do {
 
     // ---- Cancel on a new profile: only the window started on the window folder it made quits, never the usual one
     stand[keyU] = [standIn()]
+    // (New profile's order: Sign in's Claude Code folder, then the window step's folder after its look)
     var dA = NewAccountDraft(); dA.name = "Discard"
-    try! NewAccountSetup.createOrConnect(&dA)
+    try! NewAccountSetup.createCode(&dA)
+    _ = NewAccountSetup.windowStepLook(&dA, accounts: [], runs: [])
     guard let ownA = NewAccountSetup.ownWindow(dA), let madeA = dA.createdDataDir else { check(false, "a new profile's window folder is made"); exit(1) }
     let keyA = Launcher.dataDirKey(of: ownA)
     stand[keyA] = [standIn()]
@@ -3127,7 +3129,11 @@ do {
     // an existing Claude Code folder connected: its window still quits before the window folder it made goes
     try? fm.createDirectory(atPath: expand("~/.claude-dexist"), withIntermediateDirectories: true)
     var dB = NewAccountDraft(); dB.name = "Dexist"; dB.source = .existing; dB.existingDir = "~/.claude-dexist"
-    try! NewAccountSetup.createOrConnect(&dB)
+    try! NewAccountSetup.createCode(&dB)
+    check(dB.connected && dB.createdConfigDir == nil && dB.createdDataDir == nil && !fm.fileExists(atPath: expand(dB.dataDir))
+          && NewAccountSetup.windowStepDue(dB) && !dB.locked,
+          "an existing folder connected (createCode): connected only, no window folder, the window step due, nothing locked (another choice can replace it)")
+    _ = NewAccountSetup.windowStepLook(&dB, accounts: [], runs: [])
     guard let ownB = NewAccountSetup.ownWindow(dB) else { check(false, "the connected profile's window folder is made"); exit(1) }
     stand[Launcher.dataDirKey(of: ownB)] = [standIn()]
     watchDir = expand(dB.createdDataDir ?? "")
@@ -3198,8 +3204,68 @@ do {
     check(fm.fileExists(atPath: expand(dS.configDir)) && dS.createdConfigDir == dS.configDir && dS.createdDataDir == nil && !fm.fileExists(atPath: expand(dS.dataDir))
           && NewAccountSetup.windowStepDue(dS) && !NewAccountSetup.foldersReady(dS),
           "…createCode makes the Claude Code folder alone: the window step is due, the profile not ready yet")
-    check(NewAccountSetup.windowStepLook(&dS, accounts: [], runs: openNow)?.hasPrefix("The desktop app is open") == true && dS.createdDataDir == nil,
-          "…the window step's look holds the window's folder while the desktop app is open")
+    check(NewAccountSetup.windowStepLook(&dS, accounts: [], runs: openNow)?.hasPrefix("The desktop app is open") == true && dS.createdDataDir == nil
+          && !dS.continueAnyway,
+          "…the window step's look holds the window's folder while the desktop app is open, and leaves no Continue anyway behind")
+    // the window turned on again asks about the desktop app again, whatever an earlier Continue anyway said
+    var again = dS; again.continueAnyway = true
+    NewAccountSetup.windowOn(&again)
+    check(again.claudeWindow && !again.continueAnyway, "windowOn: Continue anyway is reset")
+    // the gates the page and the model share: the name first, then the red lines; where a sign-in may run; Create
+    var gate = NewAccountDraft()
+    check(NewAccountSetup.signInWait(gate, accounts: []) == "Name the profile first.", "no name: Sign in waits for the name")
+    gate.name = "Main"
+    let mainEntry = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude-mainx")
+    check(NewAccountSetup.signInWait(gate, accounts: [mainEntry]) == "Fix the red lines first." && NewAccountSetup.signInWait(gate, accounts: []) == nil,
+          "a name clash: Sign in waits for the red line; a free name: it can go")
+    let unnamedNext = NewAccountSetup.forSignIn(NewAccountDraft(), email: "")
+    check(NewAccountSetup.signInWait(unnamedNext, accounts: []) != nil && !unnamedNext.started && !fm.fileExists(atPath: expand(unnamedNext.newConfigDir)),
+          "no name: the sign-in's draft waits, and nothing is made")
+    check(NewAccountSetup.signInAllowed(NewAccountDraft()), "nothing made: a sign-in may run (in a new folder)")
+    try? fm.createDirectory(atPath: expand("~/.claude-gatesigned"), withIntermediateDirectories: true)
+    sign("~/.claude-gatesigned", u2)
+    var signedConn = NewAccountDraft(); signedConn.name = "Gatesigned"; signedConn.source = .existing; signedConn.existingDir = "~/.claude-gatesigned"
+    try! NewAccountSetup.createCode(&signedConn)
+    let toNew = NewAccountSetup.forSignIn(signedConn, email: "")
+    check(toNew.source == .new && !toNew.connected && NewAccountSetup.signInAllowed(signedConn),
+          "a connected folder that's signed in, nothing made: a sign-in from Account goes to a new folder, never into it")
+    _ = NewAccountSetup.windowStepLook(&signedConn, accounts: [], runs: [])
+    check(signedConn.locked && !NewAccountSetup.signInAllowed(signedConn),
+          "…once its window's folder is made: no sign-in in the connected folder, ever (it is used as it is)")
+    NewAccountSetup.discard(signedConn, claude: nil)
+    try? fm.createDirectory(atPath: expand("~/.claude-gateempty"), withIntermediateDirectories: true)
+    var emptyConn = NewAccountDraft(); emptyConn.name = "Gateempty"; emptyConn.source = .existing; emptyConn.existingDir = "~/.claude-gateempty"
+    try! NewAccountSetup.createCode(&emptyConn)
+    _ = NewAccountSetup.windowStepLook(&emptyConn, accounts: [], runs: [])
+    let stays = NewAccountSetup.forSignIn(emptyConn, email: "")
+    check(NewAccountSetup.emptyConnected(emptyConn) && NewAccountSetup.signInAllowed(emptyConn) && stays.source == .existing && stays.connected,
+          "a connected folder with no account yet: its first sign-in runs there")
+    NewAccountSetup.discard(emptyConn, claude: nil)
+    try? fm.removeItem(atPath: expand("~/.claude-gatesigned")); try? fm.removeItem(atPath: expand("~/.claude-gateempty"))
+    // Create's gate (the page's key and SettingsModel.finishNew): ready folders, no red line, nothing under way
+    var fin = NewAccountDraft(); fin.name = "Gatefin"; fin.claudeWindow = false
+    check(!NewAccountSetup.canFinish(fin, accounts: [], discarding: false, windowBusy: false), "Create: not before the Claude Code folder")
+    try! NewAccountSetup.createCode(&fin)
+    check(NewAccountSetup.canFinish(fin, accounts: [], discarding: false, windowBusy: false)
+          && !NewAccountSetup.canFinish(fin, accounts: [], discarding: true, windowBusy: false)
+          && !NewAccountSetup.canFinish(fin, accounts: [], discarding: false, windowBusy: true),
+          "Create: its folders ready, it can; not while Cancel or the window switch removes something")
+    var finRunning = fin; finRunning.signInRunning = true
+    let gatefinEntry = AccountEntry(id: "gf", name: "Gatefin", label: "GF", configDir: "~/.claude-gfother")
+    check(!NewAccountSetup.canFinish(finRunning, accounts: [], discarding: false, windowBusy: false)
+          && !NewAccountSetup.canFinish(fin, accounts: [gatefinEntry], discarding: false, windowBusy: false),
+          "Create: not while a sign-in runs, nor with a red line (the name taken)")
+    var finWin = fin; NewAccountSetup.windowOn(&finWin)
+    check(!NewAccountSetup.canFinish(finWin, accounts: [], discarding: false, windowBusy: false), "Create: with the window on, not before its folder")
+    NewAccountSetup.discard(fin, claude: nil)
+    // Continue anyway: the look made with it makes the window's folder while the desktop app is open, and keeps the answer
+    var dCA = NewAccountDraft(); dCA.name = "Anyway"
+    try! NewAccountSetup.createCode(&dCA)
+    check(NewAccountSetup.windowStepLook(&dCA, accounts: [], runs: openNow, anyway: true) == nil && dCA.createdDataDir == dCA.dataDir
+          && fm.fileExists(atPath: expand(dCA.dataDir)) && dCA.continueAnyway,
+          "Continue anyway: the window's folder is made with the desktop app open, and recorded for Cancel")
+    check(NewAccountSetup.discard(dCA, claude: nil) && !fm.fileExists(atPath: expand(dCA.dataDir)) && !fm.fileExists(atPath: expand(dCA.configDir)),
+          "…Cancel then removes both folders it made")
     check(NewAccountSetup.discardSummary(dS).contains("~/.claude-signfirst") && !NewAccountSetup.discardSummary(dS).contains("desktop data folder"),
           "…Cancel's summary names the Claude Code folder and no window folder: \(NewAccountSetup.discardSummary(dS))")
     check(NewAccountSetup.discard(dS, claude: nil) && !fm.fileExists(atPath: expand(dS.configDir)) && !fm.fileExists(atPath: expand(dS.dataDir)),
