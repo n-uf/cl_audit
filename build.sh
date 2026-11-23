@@ -3,6 +3,7 @@
 # per-account Dock icon apps up to date from the local account list.
 #   ./build.sh               build, install, update the icons
 #   ./build.sh --no-install  build into ./build only
+# Signed ad hoc, unless CL_SIGN_ID names a Developer ID identity (scripts/signing.sh, docs/signing.md).
 # Accounts are set up in the app's window and saved on this Mac in
 # ~/Library/Application Support/usage-n-uf/accounts.json (see accounts.example.json).
 set -euo pipefail
@@ -13,6 +14,8 @@ dest="/Applications"   # Spotlight finds apps here; earlier versions used ~/Appl
 name="cl_audit"
 install=1
 [ "${1:-}" = "--no-install" ] && install=0
+# --check-signing: the signing plan (identity, notary profile, what it would sign in order), building and signing nothing
+if [ "${1:-}" = "--check-signing" ]; then . "$here/scripts/signing.sh"; check_signing; exit 0; fi
 # YY.M.R from VERSION (set by scripts/release.sh); the build number counts commits, so it only grows.
 version="$(tr -d '[:space:]' < "$here/VERSION")"
 build="$(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 1)"
@@ -25,6 +28,9 @@ rm -rf "$out"; mkdir -p "$out"
 # Auth/Keychain.swift, the read-only Keychain read; the app and the Dock tile plug-in link it, the widget doesn't).
 repo="$here"
 . "$here/scripts/modules.sh"
+# sign(): ad hoc, or the Developer ID with the hardened runtime when CL_SIGN_ID is set; inside out, in sign_plan's order
+. "$here/scripts/signing.sh"
+ent=(); while IFS= read -r f; do ent+=("$f"); done < <(dev_entitlements "$here")   # (none for an ad hoc build)
 echo "compiling the shared modules (cl_kit $modules_tag)…"
 build_modules "$out" keychain -O
 # and AddressPrivacy (cl_kit's Privacy/: how an account address is hidden on screen), a fourth, standalone one: the app links
@@ -126,8 +132,8 @@ PLIST
 # out byte for byte the same, so an update doesn't change it and macOS goes on accepting it without a new notice.
 mkdir -p "$app/Contents/Helpers"
 clang -O2 -arch arm64 -mmacosx-version-min=13.0 -o "$app/Contents/Helpers/cl_audit-agent" "$here/Launcher/main.c"
-codesign --force --sign - --identifier local.usage-n-uf-agent-launcher "$app/Contents/Helpers/cl_audit-agent" 2>/dev/null
-codesign --force --sign - "$helper" 2>/dev/null
+sign "$app/Contents/Helpers/cl_audit-agent" --identifier local.usage-n-uf-agent-launcher
+sign "$helper" ${ent[@]+"${ent[@]}"}
 
 # The widget (Widget/Widget.swift): every profile's limits on the desktop or in Notification Center. A sandboxed
 # extension that may only read the agent's folder (one read-only exception, Widget/widget.entitlements). macOS 14
@@ -156,7 +162,7 @@ cat > "$wx/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-codesign --force --sign - --entitlements "$here/Widget/widget.entitlements" "$wx" 2>/dev/null
+sign "$wx" --entitlements "$here/Widget/widget.entitlements"
 
 # The Dock tile plug-in (DockTile/Plugin.swift): the Dock draws a profile's tile with it while its Dock icon app isn't
 # running. Unused in cl_audit.app (which names no Dock tile plug-in); each Dock icon app gets its own copy, named for
@@ -179,8 +185,8 @@ cat > "$tile/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-codesign --force --sign - "$tile" 2>/dev/null
-codesign --force --sign - "$app" 2>/dev/null
+sign "$tile"
+sign "$app" ${ent[@]+"${ent[@]}"}
 echo "built $name $version ($build)"
 
 if [ $install = 1 ]; then

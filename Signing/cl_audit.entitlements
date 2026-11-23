@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Used only when cl_audit.app and its agent are signed with a Developer ID (CL_SIGN_ID, docs/signing.md), which turns
+       on the hardened runtime. The hardened runtime blocks sending Apple Events unless this is set; cl_audit sends one:
+       the "open location" event a restore hands to the profile's own Claude window (WindowLink, SwitchSidebar.swift),
+       still behind macOS's Automation prompt. Nothing else the app does needs an entitlement: running claude and
+       other tools, reading Claude Code's Keychain item (through /usr/bin/security), the login item, notifications and
+       the widget's reloads are all allowed under the hardened runtime as they are. -->
+  <key>com.apple.security.automation.apple-events</key><true/>
+</dict>
+</plist>
