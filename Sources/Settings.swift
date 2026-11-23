@@ -1162,14 +1162,17 @@ struct AccountTile: View {
         }
     }
 
-    /// "~/.claude", and with more than one account, the one in use: "~/.claude · ultra-1"; a usage-only profile adds its
-    /// mode after them: "~/.claude · usage only".
-    private var sub: String {
-        // a profile on its own Claude window says so, so two profiles are told apart at a glance
+    private var sub: String { Self.subtitle(entry) }
+
+    /// The tile's second line: "~/.claude", and with more than one account, the one in use: "~/.claude · ultra-1"; a
+    /// usage-only profile adds its mode after them ("~/.claude · usage only"), a profile on its own Claude window says so
+    /// last, so two profiles are told apart at a glance. `shown`: a test's Show emails (nil: the app's).
+    static func subtitle(_ entry: AccountEntry, shown: Bool? = nil) -> String {
         let own = entry.desktop == .separate && entry.claudeWindow ? " · \(DesktopMode.ownMark)" : ""
         let mode = entry.usageOnly ? " · usage only" : ""
-        guard !entry.standby.isEmpty, let email = entry.seat?.email else { return entry.configDir + mode + own }
-        return "\(entry.configDir) · \(AccountNames.short(email))" + mode + own
+        guard !entry.standby.isEmpty, let email = entry.seat?.email, !email.isEmpty else { return entry.configDir + mode + own }
+        let short = shown.map { AccountNames.shortName(email, shown: $0) } ?? AccountNames.short(email)
+        return "\(entry.configDir) · \(short)" + mode + own
     }
 }
 
