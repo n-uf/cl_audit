@@ -136,7 +136,9 @@ in Keychain Access, and cl_audit never touches them.
 
 - **Profile:** one Claude setup in cl_audit: its Claude Code folder and sign-in, and, if you want them, a Dock
   icon and a Claude window. **Account** means only the claude.ai account a profile is signed in to: each
-  profile is linked to one account seat (account and organisation), and no two profiles share one.
+  profile is linked to one account seat (account and organisation). Since 26.11.88 a seat can be in several profiles
+  (each shows the same numbers, with an amber note naming the other); only the same seat twice in one profile is
+  blocked.
 - **In use / standby:** a profile's folder holds one signed-in account at a time, the one **in use**; the profile's
   other accounts are **standby**: remembered on it, signed out, never read. A **switch** signs Claude Code in again on
   the same folder as one of them.
@@ -188,7 +190,8 @@ works: it refreshes, starts the agent first, or (paused) starts it now.
 ### Which account is in use
 
 Each profile has one **active account**, shown with a green lamp and "in use" on every screen: the menu bar icon's
-menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the profile ▸ Accounts and the Switch page.
+menu, the Dock icon's panel, the dashboard card, Settings ▸ the profile ▸ Accounts and the Switch page. (The Dock
+icon's right-click menu names no account: see [A profile's Dock icon](#a-profiles-dock-icon).)
 
 - **The Claude app's signed-in account comes first.** The app's settings file names the account
   (`lastKnownAccountUuid` in its `config.json`); its log gives the organisation and whether it signed out. The log is the
@@ -202,7 +205,11 @@ menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the p
 - **Then Claude Code's.** With the app signed out or not readable (or a profile without a Claude window), the account
   Claude Code's folder is signed in to (its `.claude.json`) is the active one, and a muted line says why.
 - **The numbers say whose they are.** They come through Claude Code's sign-in in the profile's folder. When that isn't
-  the active account: "Usage: Claude Code on b…@example.com".
+  the active account: "Usage: Claude Code on b…@example.com". Numbers read for another account than Claude Code's now
+  (just after a sign-in, or the Keychain's sign-in left on another account) are hidden: "Numbers for another account:
+  if this stays, sign in to read again." Numbers that are Claude Code's account's, while its seat isn't known yet (a
+  running claude names its organisation by name, the reading by id alone), are held back until a read brings the
+  name: "Numbers held back. Terminal's account isn't fully known yet." They are never shown as another account's.
 - **Live:** the folders that hold `.claude.json` and `config.json`, and the app's logs, are watched; a sign-in changed
   in Terminal or the Claude app shows within a few seconds, without restarting anything.
 - **One answer:** cl_audit's background agent decides this once per profile (`Sources/AccountResolver.swift`) and writes
@@ -222,9 +229,9 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   never makes up a time.
 - At the reset the agent reads that profile again right away, and the card goes back to its usual layout. With
   nothing full, the card is as always: no box.
-- The same box is in the details panel; the launcher shows the countdown; the Dock icon's menu starts with "5-hour
-  full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
-  it, a crimson frame).
+- The same box is in the details panel; the launcher shows the countdown; the menu bar icon's menu has "5-hour
+  full · in 1h 42m" beside the profile's name; the Dock icon itself becomes the countdown (the time large, "5H FULL"
+  under it, a crimson frame).
 - **Another account.** A profile is one Claude Code folder, and the folder holds one signed-in account at a time: the
   one **in use**. The profile's other accounts (Settings ▸ the profile ▸ Claude Code ▸ Accounts) are **found on this
   Mac by themselves**, the way claude-transplant finds them: the Claude window's `claude-code-sessions/<account>/<org>` and
@@ -234,22 +241,21 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   read, never a token. There is no Add account: **Forget…** takes one off for good, and **Sign in with another
   account…** runs Claude Code's sign-in with no address for a brand-new one. They stay **signed out**: no folder or
   Keychain item of their own, nothing reads them, so they show no usage. The card shows
-  them as **unlit trays** under its limits, one line each: the address, STANDBY, then its plan and when it was last in
-  use ("Ultra · last in use 3 days ago"). They come in the order a full limit offers them: those not known to be full
+  them as **unlit trays** under its limits, one line each: the address, STANDBY, then its plan and when it was last
+  used ("Ultra · last used 3 days ago"). They come in the order a full limit offers them: those not known to be full
   first, the least used by the week they left with, then the most recently in use (that week is kept only for this
   order, never shown). **While a limit is full, the first is selected already**: its
   row lights mint across the card with the lit bar, and its STANDBY display becomes the lit **Switch account** key,
   which opens the Switch page with that account picked; a click on another tray picks it instead. **With room left
   nothing is selected**: a click selects a tray, a second click deselects it (as in Settings). The alert adds "You can
   switch to another of its accounts: Claude Code signs in again on this profile's folder." with **Switch account…** (and Later): alerts
-  reach the lock screen, so they never name an account by its address or any part of it. **The menus** (the menu bar
-  icon's and the Dock icon's, with the same items) show the account in use under the profile's name with a lit green
-  lamp ("ultra-1 · in use"; the Dock menu's first line reads "Claude Main · ultra-1 in use") and have **Switch account
-  ›**, a submenu with the account in use ticked ("in use · week 94%") and every other account in the same order, each
-  with when it was last in use ("3 days ago"). While a limit is full, the first one not known to be full
-  also sits on the top level, "Switch to ultra-3…": right under the full line in the Dock menu, first in the menu bar
-  menu's actions. All of them open the **Switch page** in cl_audit. A short name is the address before the @, its first
-  letter only while emails are hidden (and in the menus).
+  reach the lock screen, so they never name an account by its address or any part of it. **The menu bar icon's menu**
+  shows the account in use under the profile's name with a lit green lamp ("ultra-1"), then the accounts, one row
+  each: the account in use ticked, every other account by its address in the same order (a click opens the **Switch
+  page** in cl_audit with it picked), and **Sign in to another account…**. While emails are hidden, a row draws the
+  hidden address, and the address itself only with the pointer on the row. The Dock icon's menus have no account rows
+  (see [A profile's Dock icon](#a-profiles-dock-icon)). A short name is the address before the @, its first letter
+  only while emails are hidden.
 - **The Switch page.** The account in use (NOW, lit, with its limits) and, under TO, the account picked (in mint) and the
   profile's other accounts below it (click another to switch to it instead); **What changes**: Claude Code in Terminal
   and editors using the profile's folder moves to that account, sessions running now included; the Claude window's
@@ -331,13 +337,13 @@ once when the look changes.
 
 Max and Ultra plans and premium Team and Enterprise seats also have a **weekly limit of Fable's own**: Fable may use
 up to a share of the week (half, today). Pro and standard seats pay for Fable with usage credits instead, so they
-have no such row. When Anthropic's reply has it, the cards, the panels and the Dock icon's menu show a third row, "Fable"
+have no such row. When Anthropic's reply has it, the cards, the panels and the menu bar icon's menu show a third row, "Fable"
 ("Fable · week" in the large panel). Full, the row turns crimson and says when it's back ("full · back Thu 09:00"); it
 doesn't take the full-limit box or the countdown face, because the profile can still work with the other models. The
 Dock icon keeps its two bars.
 
 **Usage credits** carry a profile on past its plan limits, and they're paid for. While a profile is spending them (credits
-on and a limit full, or the amount spent went up within the hour), its card, panels and Dock menu say so: "Using usage
+on and a limit full, or the amount spent went up within the hour), its card, panels and menu bar menu say so: "Using usage
 credits · $4.20 spent". At other times nothing about credits is shown.
 
 Below the cards, **Usage history** (24 h / 7 d / 30 d) is read from the session files Claude Code writes
@@ -372,8 +378,12 @@ cl_audit stays in the Dock as a launcher:
 |---|---|
 | Click | The profile's click action; by default its usage for 3 s while its Claude window opens |
 | Double-click or ⌥-click | The details panel: both limits with bars and reset times, the sign-in, Open Claude, Sign in, Refresh, Settings |
-| Press and hold | The details panel next to a short Dock menu (on by default, per profile) |
-| Right-click | The menu: numbers, reset times, the sign-in, and actions (Switch account › with each of the profile's other accounts and when it was last in use (and, while a limit is full, Switch to … for the one offered first), Quick chat, Open or Show Claude window, Quit Claude window, Refresh now, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
+| Press and hold | The details panel next to the Dock menu (on by default, per profile) |
+| Right-click | The menu, six plain items: the profile ("Claude Main"), **Claude window ▸** (Open, or Show and Quit, and Quit and keep when the window follows the Dock icon), **Quick chat**, **Refresh now**, **Dashboard**, **Profile settings…** |
+
+The Dock menu has no account rows, numbers or states: macOS draws a Dock menu as plain titles and passes no hover to
+the app, so a hidden address could only be cut text there. The accounts, numbers and states are in the Dock icon's
+panel and in the menu bar icon's menu, which draw them.
 
 A Dock icon draws what the agent saved for its profile, and asks the agent for Refresh now. With the sign-in expired or
 signed out, its one key is Log in… (Claude Code's own sign-in in Terminal).
@@ -453,7 +463,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   the plan and organisation ("Ultra · Personal") and every limit its plan has as bars, drawn like the dashboard's
   (Ultra: week and Fable; Max: 5-hour, week and Fable; Pro: 5-hour and week; usage credits while it spends them). The
   others are **STANDBY**: remembered on the profile, signed out, with no folder or Keychain item of their own. Nothing
-  reads them, so a standby box shows no limits: its plan and when it was last in use on the profile ("Last in use on
+  reads them, so a standby box shows no limits: its plan and when it was last used on the profile ("Last used on
   Main 3 days ago"), or "Remembered by its
   address: it signs in when you switch to it". They come in the order a full limit offers them. Click one below its
   address to select it: its row lights in mint, and a **Switch account** key takes the place of STANDBY and opens the
@@ -544,7 +554,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     folder, and a profile on its own window that the offer below applies to has **Make the default profile…** here.
     A profile on its own window also has a small "own window" mark on its dashboard card and its tile.
   - **With Dock icon:** the window goes with the Dock icon: quitting the Dock icon quits it too, so Claude can ask
-    about unsent work (the Dock icon's menu then has **Quit and keep Claude window**), and, unless Opens from is
+    about unsent work (the Dock icon's menu then has **Claude window ▸ Quit and keep**), and, unless Opens from is
     "Only when asked", starting the Dock icon opens it (not at login). Its words: "opens and quits with it", "quits
     with it", or "on its own".
   - **Opens from:** **Dock click too** (the default) or **Only when asked**: a click on the Dock icon then never
@@ -577,8 +587,8 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   Saved choices stay stored and apply again when they can. Older settings carried over: Open at login on → At
   login; "start or quit the Dock icon too" → With its window; both off → When started; "open or quit the Claude
   window too" → the window switch.
-- **Menu bar:** the profile's own icon in the menu bar, exactly like its Dock icon. **In the menu bar** (off by
-  default) switches it on; the agent draws it, so it works with or without the Dock icon. The icons stand in
+- **Menu bar:** the profile's own icon in the menu bar, exactly like its Dock icon. **In the menu bar** (on for a
+  profile made with New profile, off for the first profile and the default profile) switches it; the agent draws it, so it works with or without the Dock icon. The icons stand in
   the order of the profiles in Settings, left to right, and that order wins over a ⌘-drag in the menu bar.
   Its look, each choice a tile drawn the way your menu bar is now, and the preview strip from "no numbers" to
   "full":
@@ -590,9 +600,11 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   - **Label:** none, or the profile's label before its icon ("MAIN").
   - **When full:** the countdown beside the icon ("1h 42m"), or crimson only.
 
-  A click opens the profile's menu: its limits (Fable's when the plan has one, when each resets, usage credits
-  while they're spent), when they were read, then **Open Claude window**, **Refresh now**, **Dashboard**,
-  **Profile settings…** and **Hide from the menu bar**.
+  A click opens the profile's menu: its name with the account in use under it, its limits (Fable's when the plan has
+  one, when each resets, usage credits while they're spent), when they were read; then the accounts (the one in use
+  ticked, each standby account by its address, **Sign in to another account…**; see the dashboard's Another account
+  above); then **Claude window ▸**, **Quick chat**, **Refresh now**, **Dashboard**, **Profile settings…** and **Hide
+  from the menu bar**.
 
 The cards sit in three columns: Profile, Claude Code, Sessions, Claude window and Alerts on the left, the Dock icon in the
 middle, the menu bar on the right. In two columns the menu bar goes under the left cards and the Dock icon stays
@@ -644,9 +656,10 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
 
 ### Adding a profile
 
-**New profile** opens a page: in a wide window three columns (the profile and its window, the Claude Code
-folder, a summary with the live icon and numbered steps); narrower, one column with the next step pinned
-at the bottom.
+**New profile** opens a page, in this order: **Profile**, **On this Mac** (Claude window, Dock icon, Menu bar),
+**Account**, then the **Steps** with **Create** at their foot. In a wide window three columns (Profile and On this
+Mac, Account, the steps); narrower, two (the cards, the steps); narrowest, one column with the next step pinned at
+the bottom.
 
 - **Name first, then Account:** until the profile has a name, every Sign in is off, with one grey line saying so. The
   Account card's **Account** pop-up lists the accounts signed
