@@ -505,15 +505,56 @@ do {
           && PluginProfile.load(id).map { $0.style == .bars && $0.pollMinutes == 5 && $0.name == "Dock" } == true,
           "an entry the app can't read still draws in the Dock, its unreadable fields at their defaults")
     try? fm.removeItem(at: Store.configURL)          // (Store.save never writes over a profiles file it can't read)
+    // more entries read back as the app's: no Claude window, an empty label, an empty name
+    var plain = e; plain.claudeWindow = false; plain.label = ""
+    var unnamed = e; unnamed.name = ""; unnamed.label = ""
+    for (what, entry) in [("no Claude window, no label", plain), ("no name, no label", unnamed)] {
+        try! Store.save([entry])
+        check(PluginProfile.load(id) == PluginProfile(entry) && PluginProfile.load(id)?.shortLabel == Account.label(entry),
+              "the plug-in's profile from accounts.json is the app's entry's: \(what)")
+        try? fm.removeItem(at: Store.configURL)
+    }
+    // the defaults: a bare entry decodes to the same profile in the app and in the plug-in (catches a default drifting)
+    let bare = Data(#"{"id":"x"}"#.utf8)
+    check((try? JSONDecoder().decode(AccountEntry.self, from: bare)).map { PluginProfile($0) } == (try? JSONDecoder().decode(PluginProfile.self, from: bare)),
+          "a bare {\"id\":\"x\"}: the app's defaults and the plug-in's are the same")
     saveProfiles()
     // the face: the same from the record (the plug-in) as from ProfileShow (the Dock icon app)
     var mismatch = record(); mismatch.loginEmail = "bob@example.com"
     var old = record(); old.updatedAt = now.addingTimeInterval(-3 * 3600)
     var expired = record(); expired.state = "expired"
     var noLogin = record(); noLogin.state = "noLogin"; noLogin.loginEmail = nil
+    var denied = record(); denied.state = "denied"
+    var unreadable = record(); unreadable.state = "unreadable"
+    var unresolved = record(); unresolved.resolved = nil
+    // a full limit whose reset has passed: no countdown (the face shows the numbers again)
+    let pastFull = record(five: 100, fiveIn: -600)
+    // the split by hand: the Claude app on bob, Claude Code (and the numbers) on ann; then the same while a switch waits for
+    // the app (the ages' split rule, ResolvedAccount.namesNumbersOwner, both ways)
+    let bob = Seat(account: "00000000-0000-4000-8000-000000000002", organization: "00000000-0000-4000-8000-0000000000d2", email: "bob@example.com")
+    var split = record()
+    split.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.Login(account: bob.account, org: bob.organization, state: .known, source: "log", at: now),
+                                             code: ann, loginEmail: ann.email, names: [:], now: now)
+    var splitWaits = split; splitWaits.resolved?.switchWaits = true
+    check(split.resolved?.numbersFor != nil && split.resolved?.namesNumbersOwner == true && splitWaits.resolved?.namesNumbersOwner == false
+          && ProfileShow.of(e, raw: split, now: now).display.split != nil,
+          "the split cases are a split: its numbers named (namesNumbersOwner), and not while a switch waits")
     let cases: [(String, StatusRecord?)] = [("fresh", record()), ("five full", record(five: 100)), ("week full", record(week: 100)),
         ("no numbers", record(five: nil, week: nil)), ("old", old), ("expired", expired), ("signed out", noLogin),
-        ("another account", mismatch), ("no record", nil)]
+        ("denied", denied), ("unreadable", unreadable), ("no account answer", unresolved), ("full, its reset passed", pastFull),
+        ("another account", mismatch), ("split", split), ("split, a switch waiting", splitWaits), ("no record", nil)]
+    // a few faces by their expected words (a golden table: both paths could drift together)
+    let golden: [(String, StatusRecord?, String)] = [
+        ("fresh", record(), "DOCK|Optional(12.0)|Optional(40.0)|false|bars|false|orange|nil"),
+        ("five full", record(five: 100), "DOCK|Optional(100.0)|Optional(40.0)|false|bars|false|orange|nil"),
+        ("no record", nil, "DOCK|nil|nil|true|bars|false|orange|nil")]
+    for (name, r, expect) in golden {
+        let w = words(TileModel.face(PluginProfile(e), record: r, windowOpen: false, now: now))
+        check(w.hasPrefix(expect), "the plug-in's face, \(name): \(w)")
+    }
+    check(TileModel.face(PluginProfile(e), record: record(five: 100), windowOpen: false, now: now).countdown?.footer == "5H FULL"
+          && TileModel.face(PluginProfile(e), record: pastFull, windowOpen: false, now: now).countdown == nil,
+          "the countdown while the 5-hour limit is full, none once its reset has passed")
     for entry in [e, looks] {
         for (name, r) in cases {
             for open in [false, true] {
