@@ -8,11 +8,14 @@ import Foundation
 
 public final class RunningProgram {
     public let program: Program
-    /// Each chunk of what it prints, in order, on a background queue; then once with nil at its end.
+    /// Each chunk of what it prints, in order, on a background queue; then once with nil at its end. The end of its
+    /// output, not of the process: a child or grandchild it started that still holds the output open keeps the reader
+    /// (a background thread) waiting until it lets go, after the program itself has ended (`onTermination` comes then).
     public var onOutput: (Data?) -> Void = { _ in }
     /// Each chunk of what it writes to its errors, in order, on a background queue.
     public var onErrors: (Data) -> Void = { _ in }
-    /// Its end, after its output ended (status, ended by a signal), on a background queue.
+    /// Its end, after its output ended (status, ended by a signal), on a background queue: so not before whatever holds
+    /// its output open lets go (see `onOutput`; `onTermination` hears the process's own end).
     public var onExit: (Int32, Bool) -> Void = { _, _ in }
     /// Its end as the process ends (status, ended by a signal), whether or not its output has ended (something it started
     /// may still hold its output open), on a background queue. Set before `start`.

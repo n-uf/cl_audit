@@ -3,6 +3,35 @@
 All notable changes to cl_kit are listed here, newest first. Calendar versions, `YY.M.R`, tagged `vYY.M.R` (see README ▸
 Versions and release).
 
+## 26.11.9
+
+MenuRows for cl_quick's stage 8, and the short ask's follow-ups from 26.11.8 (no app changes). No source breaks: new
+parameters with defaults and new API; `MenuRowColumns.standard` and every row drawn without the new parameters look as
+before.
+
+- **MenuRows: the address's size.** `addressFont:` on `MenuAccountRowView` and its `item`, by default the menu's font
+  (today's look): the address and the prefix are drawn in it, and the blurred stand-in, its room, the line height and the
+  natural width follow it, so at one size every hidden address takes the same room (cl_quick uses 11.5 pt).
+- **MenuRows: columns by the address.** `MenuRowColumns(addressX:)` puts the mark 13 pt before the address, never nearer
+  than 4 pt to the edge (14 gives `.standard`, 27 cl_quick's look).
+- **MenuRows: a row with no account.** `MenuAccountRow.add(_:note:hint:enabled:waiting:)` with `Marker.plus` ("Add an
+  account…"), marked by its own flag (`isAdd`; only `add` sets it, so an account row with an empty address still draws
+  the stand-in): the same metrics and pick as an account row, a second line from `note:`; its title and VoiceOver say its
+  words alone, never "hidden address".
+- **MenuRows: a waiting look.** `waiting: true` draws the text fainter than a disabled row's, and VoiceOver says
+  "waiting" (`MenuRowWords.waiting`, the app's word); the row acts as `enabled` says.
+- **MenuRows: the keyboard's stand-in.** `standInMenuLit(_:)` stands in for the menu's keyboard highlight (as
+  `pointer(_:)` does for the pointer), so an app can check that arrowing away and back reveals nothing; both stand-ins are
+  dropped when the row leaves its window or its menu closes.
+- **The short ask after a timeout** (Runs): once `claude` is stopped, it waits up to one more grace for the output to end,
+  so an answer it wrote as it ended is read. **Behaviour change:** when every answer asked for came that way the end is
+  `.answered` (callers trust it); `.timedOut` only while an answer is still missing (what came is kept), `.exited` for an
+  end with none, as before. A last line with no newline after it is read too. The documented worst case is now
+  `timeout` + 3 × `grace` + 2 s (26.11.8 said 2 × `grace`).
+- **Runs docs:** a running program's output reader, and `onExit`, wait for whatever still holds its output open (a child
+  or grandchild), after the program itself has ended; `onTermination` hears that end. Run/README lists `onTermination`.
+- **Checks:** the menurows suite gains each MenuRows addition; the runs suite a late answer after a timeout.
+
 ## 26.11.8
 
 A patch: shared seats in the status record, the split's numbers for a caller that names their account, and the short ask's

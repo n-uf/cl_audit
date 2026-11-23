@@ -242,5 +242,107 @@ let marked = MenuAccountRowView.item(MenuAccountRow(address: short, inUse: true)
 check("words: the tick and VoiceOver's word for the account in use are the app's to say",
       marked.view?.accessibilityValue() as? String == "in use" && (marked.view as? MenuAccountRowView)?.words.tick == "•")
 
+// ── 26.11.9: the address's size, the columns by the address, the add row, the waiting look, the keyboard's stand-in ──
+let small = NSFont.menuFont(ofSize: 11.5)
+func sized(_ a: String, _ f: NSFont, prefix: String = "", note: String? = nil) -> MenuAccountRowView {
+    let v = MenuAccountRowView(row: MenuAccountRow(prefix: prefix, address: a, inUse: false, note: note), addressFont: f, pick: {})
+    v.blur = true
+    v.frame.size = NSSize(width: max(v.naturalWidth, 320), height: v.height)
+    return v
+}
+let s11 = sized(short, small), l11 = sized(long, small), s13 = sized(short, MenuAccountRowView.font)
+check("size: by default the menu's font, today's metrics",
+      view(short).addressFont == MenuAccountRowView.font && view(short).lineH == MenuAccountRowView.addressLineH
+      && view(short, note: "x").secondTop == MenuAccountRowView.secondLineTop)
+check("size: at 11.5 pt, hidden, every address takes the same room, the stand-in's at that size",
+      s11.room == l11.room && s11.room == AddressInk(font: small).room(for: short, blur: true) && s11.naturalWidth == l11.naturalWidth,
+      "\(s11.room) \(l11.room)")
+check("size: at 11.5 pt the room, the line, the height and the width are smaller than at the default",
+      s11.room < s13.room && s11.lineH < s13.lineH && s11.height < s13.height && s11.naturalWidth < s13.naturalWidth)
+let pre11 = sized(short, small, prefix: "Sign in to "), pre13 = sized(short, MenuAccountRowView.font, prefix: "Sign in to ")
+check("size: the prefix is in the address's font, and the address starts after it at that size",
+      pre11.addressX == MenuRowColumns.standard.addressX + MenuAccountRowView.w("Sign in to ", small) && pre11.addressX < pre13.addressX)
+let two11 = sized(short, small, note: "Signed out")
+check("size: the second line starts under the smaller address line, the row lower",
+      two11.secondTop == two11.lineH - AddressInk.blurPad && two11.height < view(short, note: "Signed out").height)
+let l11b = sized(long, small); l11b.frame.size = s11.frame.size
+check("size: hidden at 11.5 pt, a short and a long address draw the very same row", pixels(s11) != nil && pixels(s11) == pixels(l11b) && inked(s11))
+let smallItem = MenuAccountRowView.item(MenuAccountRow(address: short, inUse: false), addressFont: small, blur: true) {}
+check("size: the item passes the font on", (smallItem.view as? MenuAccountRowView)?.addressFont == small)
+
+check("columns: by the address alone: 14 is the standard, 27 puts the mark at 14 (cl_quick), never under 4",
+      MenuRowColumns(addressX: 14) == .standard && MenuRowColumns(addressX: 27) == MenuRowColumns(markerX: 14, addressX: 27)
+      && MenuRowColumns(addressX: 8).markerX == 4)
+
+var adds = 0
+let addItem = MenuAccountRowView.item(.add("Add an account…"), blur: true) { adds += 1 }
+let addView = addItem.view as! MenuAccountRowView
+addView.frame.size = NSSize(width: max(addView.naturalWidth, 320), height: addView.height)
+check("add: its words alone in the title and VoiceOver, never 'hidden address'",
+      addItem.title == "Add an account…" && addView.accessibilityLabel() == "Add an account…", addItem.title)
+check("add: no address and no room; the plus in the leading column; drawn",
+      addView.room == 0 && addView.drawnAddress == "" && addView.row.marker == .plus && addView.row.isAdd && inked(addView))
+check("add: the same metrics as an account row (one line)", addView.height == view(short).height)
+addView.fire()
+check("add: Return picks it, as the others", adds == 1 && addItem.action == #selector(MenuAccountRowView.fire) && addItem.isEnabled)
+let addOff = MenuAccountRowView.item(.add("Add an account…", enabled: false), blur: true) { adds += 1 }
+check("add: disabled, no action and nothing done", addOff.action == nil && (addOff.view as? MenuAccountRowView)?.accessibilityPerformPress() == false && adds == 1)
+
+/// How much ink a row puts down (the sum of its pixels' alpha): fainter text, less ink.
+func inkAmount(_ v: NSView) -> Double {
+    guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return 0 }
+    v.cacheDisplay(in: v.bounds, to: rep)
+    var sum = 0.0
+    for x in 0..<rep.pixelsWide { for y in 0..<rep.pixelsHigh { sum += Double(rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) } }
+    return sum
+}
+func styled(_ enabled: Bool, waiting: Bool) -> MenuAccountRowView {
+    let v = MenuAccountRowView(row: MenuAccountRow(address: short, inUse: false, note: "Signing in", enabled: enabled, waiting: waiting), pick: {})
+    v.blur = true; v.frame.size = NSSize(width: 320, height: v.height); return v
+}
+let waitInk = inkAmount(styled(false, waiting: true)), offInk = inkAmount(styled(false, waiting: false)), onInk = inkAmount(styled(true, waiting: false))
+check("waiting: drawn fainter than a disabled row, which is fainter than a plain one, and still drawn",
+      waitInk > 0 && waitInk < offInk && offInk < onInk, "\(waitInk) \(offInk) \(onInk)")
+let waitItem = MenuAccountRowView.item(MenuAccountRow(address: short, inUse: false, enabled: false, waiting: true), blur: true) {}
+check("waiting: acts as `enabled` says (here not)", waitItem.action == nil && !waitItem.isEnabled)
+
+let k = view(short)
+k.standInMenuLit(true)
+check("keyboard: lit by the arrow keys (the stand-in), the pointer elsewhere: lit, the stand-in drawn", k.lit && !k.sharp && k.drawnAddress == AddressText.standIn)
+k.pointer(true)
+check("keyboard: the pointer on the lit row: sharp", k.sharp)
+k.standInMenuLit(false); k.pointer(false)
+check("keyboard: arrowed away, the pointer gone: nothing sharp", !k.lit && !k.sharp)
+k.standInMenuLit(true)
+check("keyboard: arrowed back: lit, still the stand-in (nothing remembered)", k.lit && !k.sharp && k.drawnAddress == AddressText.standIn)
+k.standInMenuLit(nil)
+check("keyboard: nil gives the menu's own highlight back", k.menuLit == nil && !k.lit)
+k.standInMenuLit(true); k.forgetPointer()
+check("keyboard: the menu's end (forgetPointer) drops the keyboard's stand-in too", k.menuLit == nil && k.pointerStandIn == nil)
+
+// ── review of #17: the waiting word, the add row's note and flag, a waiting row that still acts ──
+var waitPicks = 0
+let waitOn = MenuAccountRowView.item(MenuAccountRow(address: short, inUse: false, waiting: true), blur: true) { waitPicks += 1 }
+(waitOn.view as? MenuAccountRowView)?.fire()
+check("waiting: enabled, it still acts, and VoiceOver says 'waiting'",
+      waitPicks == 1 && waitOn.isEnabled && waitOn.view?.accessibilityValue() as? String == "waiting")
+let waitInUse = MenuAccountRowView.item(MenuAccountRow(address: short, inUse: true, waiting: true), blur: true) {}
+check("waiting: the account in use says 'selected, waiting'; the app's word for it", waitInUse.view?.accessibilityValue() as? String == "selected, waiting"
+      && (MenuAccountRowView.item(MenuAccountRow(address: short, inUse: false, waiting: true),
+                                  words: MenuRowWords(fiveHour: "5h", week: "Week", full: "full", waiting: "busy"), blur: true) {})
+         .view?.accessibilityValue() as? String == "busy")
+check("waiting: a plain row says nothing extra", view(short).accessibilityValue() == nil)
+let addWait = MenuAccountRowView.item(.add("Add an account…", note: "Signing in…", enabled: false, waiting: true), blur: true) {}
+let addWaitView = addWait.view as! MenuAccountRowView
+check("add: waiting with a note: the second line, 'waiting' to VoiceOver, still no address and no action",
+      addWaitView.secondLine == "Signing in…" && addWaitView.accessibilityValue() as? String == "waiting"
+      && addWaitView.accessibilityLabel() == "Add an account…, Signing in…" && addWaitView.room == 0 && addWait.action == nil
+      && addWaitView.height == view(short, note: "x").height, addWaitView.accessibilityLabel() ?? "")
+let emptyAccount = MenuAccountRowView(row: MenuAccountRow(address: "", inUse: false), pick: {})
+emptyAccount.blur = true
+check("add: only `add` makes an address-less row: an account row with an empty address still draws and says the stand-in",
+      !emptyAccount.row.isAdd && emptyAccount.drawnAddress == AddressText.standIn && emptyAccount.title == "hidden address"
+      && emptyAccount.room == s13.room)
+
 print("menurows: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

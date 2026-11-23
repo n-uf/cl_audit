@@ -465,6 +465,27 @@ do {
                                  environment: env, folder: work, usage: true, timeout: 1, grace: 0.5)
     check(stubborn.end == .timedOut && stubborn.stop == .killed && stubborn.signaled && stubborn.exitStatus == SIGKILL
           && Date().timeIntervalSince(t) < 6, "one that ignores SIGTERM: killed (SIGKILL), said so")
+    // one that answers only as it ends (once its input closes): the ask timed out, but what it wrote then is read; every
+    // answer asked for came, so it is answered (grace 2 and a wide bound: a busy machine is slow to run the stand-in)
+    let late = standIn("claude-late", """
+        while IFS= read -r line; do :; done
+        printf '%s\\n' '\(initialize)'
+        """)
+    t = Date()
+    let lateAnswer = ClaudeAsk.ask(claude: late, environment: env, folder: work, usage: false, timeout: 1, grace: 2)
+    check(lateAnswer.end == .answered && [.inputClosed, .terminated].contains(lateAnswer.stop)
+          && lateAnswer.account?["email"] == "wu@example.com" && Date().timeIntervalSince(t) < 8,
+          "after a timeout the last output is read: a complete late answer is answered")
+    let lateUsage = ClaudeAsk.ask(claude: late, environment: env, folder: work, usage: true, timeout: 1, grace: 2)
+    check(lateUsage.end == .timedOut && lateUsage.account?["email"] == "wu@example.com" && lateUsage.limits == nil,
+          "...but with get_usage still unanswered: timed out, the late account kept")
+    // a last line with no newline after it, as the output ends: read too
+    let unended = standIn("claude-unended", """
+        IFS= read -r line
+        printf '%s' '\(initialize)'
+        """)
+    let u = ClaudeAsk.ask(claude: unended, environment: env, folder: work, usage: false, timeout: 10, grace: 2)
+    check(u.end == .answered && u.account?["email"] == "wu@example.com", "a last line with no newline, read as the output ends")
     let refusing = standIn("claude-refuses", """
         while IFS= read -r line; do
           case "$line" in

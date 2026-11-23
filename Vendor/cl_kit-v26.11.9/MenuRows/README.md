@@ -37,7 +37,17 @@ with `kit_menurows_link OUT` placed before the other two's flags). `Checks/run.s
   shows no numbers. The words are `MenuRowWords` (`standard`: "5h", "Week", "full", "✓", "selected"), or the app's own.
 - **The standby look.** `dimmed: true` draws the row in tertiary text (it still lights and acts); `marker: .hollowLamp`
   puts a hollow lamp in the leading column. `MenuRowColumns` sets where the mark and the address stand (`standard`: the
-  tick in the margin, the text at 14 pt; cl_quick's block lines its address up at 27 pt).
+  tick in the margin, the text at 14 pt; cl_quick's block lines its address up at 27 pt). `MenuRowColumns(addressX:)`
+  gives the address's column alone and puts the mark 13 pt before it (never under 4 pt): 14 is `standard`, 27 cl_quick's.
+- **The waiting look.** `waiting: true` draws the text fainter than a disabled row's (cl_quick's row while a switch or a
+  sign-in is under way); the row acts as `enabled` says, usually not. VoiceOver says "waiting" (`MenuRowWords.waiting`).
+- **The address's size.** `addressFont:` on the view and on `item` (default `MenuAccountRowView.font`, the menu's): the
+  address and the prefix are drawn in it, and the stand-in, the room, the line's height and the width follow it, so at one
+  size every hidden address takes the same room (cl_quick: 11.5 pt, its in-use line's). The tag, the hint and the second
+  line keep the small font.
+- **A row with no account.** `MenuAccountRow.add("Add an account…")`: a "+" in the leading column and the words where the
+  address would stand, the same metrics, a pick like the others; its title and VoiceOver say the words alone; `note:`
+  adds a second line. Only `add` makes such a row (`isAdd`): an account row with an empty address still draws the stand-in.
 - **Compact.** One line, two with the usage line or a note (39 pt); a native item's highlight; no stripe on any edge.
 - **Acting.** A click closes the menu, then runs `pick` in the default run-loop mode once the menu's tracking has ended;
   Return runs it at once, VoiceOver's press as a click. A disabled row (`enabled: false`) is never lit and does nothing.
@@ -63,7 +73,9 @@ menu.addItem(MenuAccountRowView.item(signIn) { [weak self] in self?.signTerminal
 
 The app keeps what is its own: which accounts are listed and in what order, its words, what a pick does, and its setting
 (`AddressPrivacy.shared.apply(blur:)`). For tests and pictures every row takes `blur:` (an override of the setting) and
-`highlighted` (drawn lit with the pointer on it), and `pointer(_:)` stands in for the mouse (nil: the real one).
+`highlighted` (drawn lit with the pointer on it); `pointer(_:)` stands in for the mouse and `standInMenuLit(_:)` for the menu's
+keyboard highlight (nil: the real ones), so an app can check that arrowing away and back reveals nothing. Both stand-ins
+are dropped when the row leaves its window or its menu closes.
 
 Files: `MenuAccountRow.swift` (the model: `MenuAccountRow` with its `Marker`, `MenuRowColumns`, `MenuUsageLine`,
 `MenuRowWords`; Foundation and ProfileCore), `MenuAccountRowView.swift` (the view and its menu item; AppKit,
