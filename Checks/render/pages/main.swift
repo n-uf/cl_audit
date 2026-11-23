@@ -694,6 +694,54 @@ if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
     print("done"); exit(0)
 }
 
+// ==================================================================== two names (RENDER_ONLY=twonames-)
+// The split by hand in the two names, the Claude app and Terminal: Main's Claude app on wu@, Terminal on zedekiah@, ines@ on
+// standby. Settings ▸ Main ▸ Claude Code with both rows in one red band (std, 460 and 708), the dashboard card and the menu
+// bar row with the red line (460). Files twonames-<surface>-std-w<width>.png. Sample addresses only.
+@MainActor func twoNamesRenders() {
+    let wu = Seat(account: uuid(36), organization: uuid(76), email: "wu@example.com")
+    let zed = Seat(account: uuid(37), organization: uuid(77), email: "zedekiah@example.com")
+    let ines = Seat(account: uuid(38), organization: uuid(78), email: "ines@example.com")
+    var e = AccountEntry(id: "tn", name: "Main", label: "MAIN", configDir: "~/.claude-twonames"); e.seat = zed
+    e.desktop = .separate; e.desktopDataDir = "~/Library/Application Support/Claude-twonames"
+    e.standby = [StandbyAccount(email: wu.email!, seat: wu, id: "kw", plan: "Max", lastInUse: Date().addingTimeInterval(-86400)),
+                 StandbyAccount(email: ines.email!, seat: ines, id: "ki", plan: "Max", lastInUse: Date().addingTimeInterval(-2 * 86400))]
+    sign(e.configDir, zed)
+    try? fm.createDirectory(atPath: expand(e.desktopDataDir), withIntermediateDirectories: true)
+    try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": wu.account]).write(to: URL(fileURLWithPath: expand(e.desktopDataDir) + "/config.json"))
+    // the profiles file as it was before, put back after (the later pages save their own)
+    let before = Store.load()
+    defer { try? Store.save(before); Store.removeStatus(e.id) }
+    try! Store.save([e])
+    let now = Date()
+    var rec = IconStatus(state: "ok"); rec.loginEmail = zed.email; rec.numbersOwner = zed.email; rec.expectedEmail = zed.email
+    rec.weekly = 0; rec.weeklyResets = now.addingTimeInterval(6 * 86400); rec.noFiveHour = true; rec.plan = "Ultra"; rec.updatedAt = now
+    rec.source = "Anthropic"
+    rec.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: zed, loginEmail: zed.email, names: [:], now: now)
+    _ = Store.writeStatus(e.id, rec)
+    let show = ProfileShow.load(e, now: now)
+    print("two names:", show.display.split != nil ? "split" : "NO split (the app's account wasn't read)",
+          "| link:", UsageNotice.of(cardRow(e, now: now))?.link?.section ?? "none")
+    let model = SettingsModel(); model.accounts = [e]
+    let face = FaceTheme.of(.std)
+    func framed(_ v: some View, _ w: CGFloat) -> some View {
+        v.environment(\.settingsColumnWidth, w).frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .environment(\.face, face).environment(\.colorScheme, .dark)
+    }
+    for w in [CGFloat(460), 708] {
+        snapshot(framed(AccountSettings(entry: .constant(e), model: model, width: w).codeCard.fixedSize(horizontal: false, vertical: true), w),
+                 "twonames-settings-std-w\(Int(w))", w + 32, 1100)
+    }
+    let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    snapshot(framed(AccountCard(row: cardRow(e, now: now), actions: acts).frame(width: 460).fixedSize(horizontal: false, vertical: true), 460),
+             "twonames-card-std-w460", 492, 600)
+    snapshot(framed(MenuBarRow(profile: MenuBarItems.Profile(show: show), now: now).frame(width: 330), 460),
+             "twonames-menubar-std-w460", 492, 300)
+}
+MainActor.assumeIsolated { twoNamesRenders() }
+if ProcessInfo.processInfo.environment["TWONAMES_ONLY"] != nil { print("done"); exit(0) }
+
 // ==================================================================== the Dock icon's preview (DOCKPREVIEW_ONLY=1, ProfileCore step 0)
 // The preview Settings' tile and the Dock's tile draw (`preview(_:status:)`), from each record as the app keeps it: a good read, a
 // signed-out, an expired and a split profile (no numbers, not the samples 23 % and 41 %), a login on another account (the warning
