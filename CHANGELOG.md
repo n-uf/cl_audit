@@ -9,15 +9,22 @@ the notes before updating.
 ## Unreleased
 
 - **The Claude app and Terminal on different accounts** now read in two names only: the Claude app and Terminal.
-  - Settings ▸ Accounts puts both accounts in one red band, which says why there are no numbers for the Claude app's account.
-  - Each account carries a TERMINAL APP badge: its own half green, the missing half red.
-  - Terminal's account has Sign the Claude app in, which opens the Switch page.
-  - The Claude app's account has Sign Terminal in.
+  - It is a warning in amber, not red: Terminal's numbers still work.
+  - Settings ▸ Accounts puts both accounts in one amber band at the top, which says why the Claude app's account has no numbers.
+  - Each account carries a TERMINAL | APP badge: its own half green, the missing half red.
+  - Terminal's account has Sign the app in, which opens the Switch page.
+  - The Claude app's account has Sign Terminal in. The two keys are one width.
+  - If cl_audit doesn't know the Claude app's address yet, that row says to open the Claude window once.
   - The Switch page opens for Terminal's account even when something is missing, and says what.
   - The struck-through sign-in chips and the red "Terminal is signed in to …" lines are gone.
-  - The dashboard card and the menu bar row say "Claude window on another account" in red.
+  - The dashboard card, the menu bar row and the Dock panel say "Claude window on another account ›" in amber.
   - That line is a link to the profile's Settings ▸ Accounts, at the band.
-  - On the card, Show window turns reddish.
+  - Show window turns amber on the card and the Dock panel.
+  - The Dock panel names Terminal's account, marked "· Terminal", and shows the TERMINAL | APP badge by the name.
+  - The Dock panel's keys sit in one row: Show window, Sign in, Dashboard and the gear.
+  - Its old "Can't read …" and "Terminal: …" lines and its full-width key are gone.
+- A profile's Claude Code card is now two sections, ACCOUNTS and FOLDER (with Share from and Shared).
+- Each section header's line is the only line under it.
 - Keys no longer end in "…" (Sign in, Export, Move to Trash, Pick folder). Menu items and links keep theirs.
 - The note after the standby list is tidied reads "The standby list was tidied. Each account is listed once per plan."
 - A profile's saved status and what its Dock icon shows now come from cl_kit, the code cl_audit shares with cl_quick, so both apps read and draw them the same way. Nothing you see changes, and Dock icons from earlier versions still read the new files.
