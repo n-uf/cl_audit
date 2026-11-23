@@ -14,6 +14,11 @@
 // enterprise is "Personal") and from the agent sessions' emailAddress; an account with none shows as "account <first 8>"
 // until it is seen signed in. Only ids, dates and those named fields are read; never a token.
 //
+// Each of those sources is cl_kit's (ClaudeAuth's Discovery.swift and DiscoveryApp.swift: AccountSources.folderRecordFiles,
+// homeRecordFiles, records, appSessions, transcriptAccounts; FoundAccounts puts them together), with its bounds (no link
+// followed out of a folder, a FIFO or a device never waited on, records and heads read capped). This file picks the sources
+// each profile reads and does the listing.
+//
 // A pair goes on a profile's standby list when no profile has it (in use or on standby) and the profile didn't forget it
 // (Forget…). An account may be several profiles' (shared seats), but only by a sign-in in that profile: what is found here
 // never adds another profile's account by itself (the ~/.claude profile reads every ~/.claude* record, so it would collect
@@ -30,124 +35,27 @@
 //   COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 //   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+import ClaudeAuth
 import Foundation
 import ProfileCore
 
 enum AccountList {
-    /// What the oauthAccount blocks and agent sessions say, by id (claude-transplant's emails, orgs and pairs).
-    struct Logins: Equatable {
-        var emails: [String: String] = [:]       // account id → address
-        var orgs: [String: String] = [:]         // organisation id → "Personal" or its name
-        var plans: [String: String] = [:]        // account id → plan, as recorded
-        var pairs: [SeatID] = []                 // every account/organisation pair seen in a block, in order
+    // (the sources are cl_kit's, ClaudeAuth's Discovery: AccountSources' functions, each giving FoundAccount sightings, put
+    // together by FoundAccounts. What is cl_audit's here: which sources a profile reads, which profile an account goes to,
+    // what is forgotten, and the words.)
 
-        mutating func take(claudeJSON path: String) {
-            // bounded and non-blocking, parsed again only when the file changed (ClaudeFiles)
-            guard let r = ClaudeFiles.record(at: path) else { return }
-            take(record: r)
-        }
+    /// The records in `paths` (their oauthAccount blocks), read through ClaudeFiles' cached, bounded reader.
+    static func records(_ paths: [String]) -> [FoundAccount] { AccountSources.records(paths, read: ClaudeFiles.oauthBlock(at:)) }
 
-        mutating func take(record o: ClaudeFiles.Record) {
-            let account = o.accountUuid?.lowercased(), org = o.organizationUuid?.lowercased()
-            if let a = account, let e = o.emailAddress, !e.isEmpty, emails[a] == nil { emails[a] = e }
-            if let g = org, orgs[g] == nil,
-               let w = AccountFacts.orgWords(type: o.organizationType, name: o.organizationName) { orgs[g] = w }
-            if let a = account, plans[a] == nil, let p = o.planDisplayName, !p.isEmpty { plans[a] = p }
-            if let a = account, let g = org, ClaudeFiles.isUUID(a), ClaudeFiles.isUUID(g) {
-                let s = SeatID(account: a, organization: g)
-                if !pairs.contains(s) { pairs.append(s) }
-            }
-        }
-    }
-
-    /// The .claude.json files of one Claude Code folder and the backups Claude Code keeps of it.
-    static func folderFiles(_ configDir: String, home: String = NSHomeDirectory()) -> [String] {
-        let dir = expand(configDir)
-        var out = [Account.claudeJSON(configDir: configDir)]
-        func backups(_ d: String) {
-            for n in ((try? FileManager.default.contentsOfDirectory(atPath: d)) ?? []).sorted() where n.hasPrefix(".claude.json.backup") {
-                out.append((d as NSString).appendingPathComponent(n))
-            }
-        }
-        backups((dir as NSString).appendingPathComponent("backups"))
-        if Account.isDefault(configDir: configDir) { backups(home) }
-        return out
-    }
-
-    /// Every ~/.claude* .claude.json and ~/.claude-switch/accounts/*/.claude.json (claude-transplant's logins()).
-    static func homeFiles(home: String = NSHomeDirectory()) -> [String] {
-        let fm = FileManager.default
-        var out: [String] = []
-        for n in ((try? fm.contentsOfDirectory(atPath: home)) ?? []).sorted() where n.hasPrefix(".claude") {
-            let p = (home as NSString).appendingPathComponent(n)
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: p, isDirectory: &isDir) else { continue }
-            out.append(isDir.boolValue ? (p as NSString).appendingPathComponent(".claude.json") : p)
-        }
-        let sw = (home as NSString).appendingPathComponent(".claude-switch/accounts")
-        for n in ((try? fm.contentsOfDirectory(atPath: sw)) ?? []).sorted() {
-            out.append((sw as NSString).appendingPathComponent("\(n)/.claude.json"))
-        }
-        return out
-    }
-
-    /// A Claude window's pairs, with when a session was last written under each: claude-code-sessions and
-    /// local-agent-mode-sessions (whose records may name the address: `logins` takes it).
-    static func windowPairs(dataDir: String, logins: inout Logins) -> [(seat: SeatID, used: Date?)] {
-        let fm = FileManager.default
-        var out: [(SeatID, Date?)] = []
-        for (kind, readsEmail) in [("claude-code-sessions", false), ("local-agent-mode-sessions", true)] {
-            for scope in ClaudeFiles.sessionScopes(dataDir: expand(dataDir), kind: kind) {
-                let odir = scope.path
-                // the Code tab's: its session entries (ClaudeFiles' rule); the agent sessions': their records
-                let files = readsEmail ? ((try? fm.contentsOfDirectory(atPath: odir)) ?? []).filter { $0.hasSuffix(".json") }
-                    : ClaudeFiles.sessionEntries(in: odir).map(\.name)
-                let dates = files.compactMap { (try? fm.attributesOfItem(atPath: (odir as NSString).appendingPathComponent($0)))?[.modificationDate] as? Date }
-                let s = SeatID(account: scope.account.lowercased(), organization: scope.organization.lowercased())
-                if let i = out.firstIndex(where: { $0.0 == s }) { out[i].1 = [out[i].1, dates.max()].compactMap { $0 }.max() }
-                else { out.append((s, dates.max())) }
-                if readsEmail, logins.emails[s.account] == nil {
-                    for f in files.prefix(50) {
-                        guard let j = SafeRead.jsonObject((odir as NSString).appendingPathComponent(f), max: SafeRead.recordMax),
-                              let e = j["emailAddress"] as? String, !e.isEmpty else { continue }
-                        logins.emails[s.account] = e
-                        break
-                    }
-                }
-            }
-        }
-        return out
-    }
-
-    /// The account ids the folder's transcripts name ("accountUuid":"<uuid>"), from the first 64 KB of each, at most `cap`
-    /// transcripts, newest first.
-    static func transcriptAccounts(configDir: String, cap: Int = 400) -> Set<String> {
-        let fm = FileManager.default
-        let projects = (expand(configDir) as NSString).appendingPathComponent("projects")
-        var files: [(String, Date)] = []
-        for p in (try? fm.contentsOfDirectory(atPath: projects)) ?? [] {
-            let dir = (projects as NSString).appendingPathComponent(p)
-            for n in (try? fm.contentsOfDirectory(atPath: dir)) ?? [] where n.hasSuffix(".jsonl") {
-                let f = (dir as NSString).appendingPathComponent(n)
-                files.append((f, ((try? fm.attributesOfItem(atPath: f))?[.modificationDate] as? Date) ?? .distantPast))
-            }
-        }
-        let re = try! NSRegularExpression(pattern: #""accountUuid"\s*:\s*"([0-9a-fA-F-]{36})""#)
-        var out: Set<String> = []
-        for (f, _) in files.sorted(by: { $0.1 > $1.1 }).prefix(cap) {
-            guard let head = SafeRead.read(f, max: 64 << 10)?.data else { continue }   // a FIFO or device: skipped at once
-            let s = String(decoding: head, as: UTF8.self)
-            for m in re.matches(in: s, range: NSRange(s.startIndex..., in: s)) {
-                if let r = Range(m.range(at: 1), in: s), ClaudeFiles.isUUID(String(s[r])) { out.insert(s[r].lowercased()) }
-            }
-        }
-        return out
+    /// A profile's Claude Code folder, as the kit's sources take it.
+    static func folder(_ configDir: String, home: String) -> AuthFolder {
+        AuthFolder(path: configDir, isDefault: Account.isDefault(configDir: configDir), home: home)
     }
 
     /// "ultra-2@example.com · Personal", or "account 1a2b3c4d" for an account with no address known.
-    static func label(_ s: Seat, _ l: Logins) -> String {
-        guard let e = s.email ?? l.emails[s.account.lowercased()] else { return "account \(s.account.prefix(8))" }
-        return [e, s.organization.flatMap { l.orgs[$0.lowercased()] }].compactMap { $0 }.joined(separator: " · ")
+    static func label(_ s: Seat, _ l: FoundAccounts) -> String {
+        guard let e = s.email ?? l.emails[AccountID.normal(s.account)] else { return "account \(s.account.prefix(8))" }
+        return [e, s.organization.flatMap { l.orgWords(AccountID.normal($0)) }].compactMap { $0 }.joined(separator: " · ")
     }
 
     // MARK: the profiles' lists
@@ -155,7 +63,9 @@ enum AccountList {
     /// Where each profile's accounts were found: its window's pairs (with when last used), its folder's and its
     /// transcripts' accounts. Read off the main thread (the agent's look and the settings app's).
     struct Found: Equatable {
-        var logins = Logins()
+        /// What the records (every ~/.claude* one and each profile's folder and backups) say, by id; plus the addresses the
+        /// windows' agent sessions name. Its seats are the records' own (never a window's folders).
+        var logins = FoundAccounts()
         var window: [String: [SeatID: Date]] = [:]       // profile id → pair → last used (distantPast: unknown)
         var folder: [String: [SeatID]] = [:]
         var transcripts: [String: Set<String>] = [:]
@@ -164,22 +74,29 @@ enum AccountList {
     static func find(_ accounts: [AccountEntry], home: String = NSHomeDirectory()) -> Found {
         var f = Found()
         // the addresses and organisations: every file claude-transplant reads, and each profile's own folder and backups
-        for p in homeFiles(home: home) { f.logins.take(claudeJSON: p) }
-        for e in accounts { for p in folderFiles(e.configDir, home: home) { f.logins.take(claudeJSON: p) } }
-        for e in accounts {
-            var one = Logins()
-            for p in folderFiles(e.configDir, home: home) { one.take(claudeJSON: p) }
-            if Account.isDefault(configDir: e.configDir) { for p in homeFiles(home: home) { one.take(claudeJSON: p) } }
-            f.folder[e.id] = one.pairs
+        let homeRecords = records(AccountSources.homeRecordFiles(home: home))
+        f.logins.add(homeRecords)
+        let folderRecords = accounts.map { records(AccountSources.folderRecordFiles(folder($0.configDir, home: home))) }
+        folderRecords.forEach { f.logins.add($0) }
+        for (e, own) in zip(accounts, folderRecords) {
+            var one = FoundAccounts(own)
+            if Account.isDefault(configDir: e.configDir) { one.add(homeRecords) }
+            f.folder[e.id] = one.seats
             if e.claudeWindow {
                 let dir = e.desktop == .standard ? expand(FolderKey.standardDataDir) : (Account(e).claudeUserDataDir ?? "")
                 if !dir.isEmpty {
+                    // its session folders (an agent session's record opened only for an account whose address isn't known yet)
+                    let sessions = AccountSources.appSessions(dataDir: dir, knownAccounts: Set(f.logins.emails.keys))
                     var w: [SeatID: Date] = [:]
-                    for (s, used) in windowPairs(dataDir: dir, logins: &f.logins) { w[s] = used ?? .distantPast }
+                    for s in sessions {
+                        if f.logins.emails[s.accountID] == nil, let a = s.email { f.logins.emails[s.accountID] = a }
+                        guard let seat = s.seat else { continue }
+                        w[seat] = max(w[seat] ?? .distantPast, s.lastUsed ?? .distantPast)
+                    }
                     f.window[e.id] = w
                 }
             }
-            f.transcripts[e.id] = transcriptAccounts(configDir: e.configDir)
+            f.transcripts[e.id] = Set(AccountSources.transcriptAccounts(folder: folder(e.configDir, home: home)).map(\.accountID))
         }
         return f
     }
@@ -199,7 +116,7 @@ enum AccountList {
         func taken(_ account: String) -> Bool { out.contains { $0.seats.contains { $0.account.lowercased() == account } } }
         // the organisation each account's own record names
         var recordOrg: [String: String] = [:]
-        for p in found.logins.pairs where recordOrg[p.account] == nil { recordOrg[p.account] = p.organization }
+        for p in found.logins.seats where recordOrg[p.account] == nil { recordOrg[p.account] = p.organization }
         for i in out.indices {
             let e = out[i]
             let window = found.window[e.id] ?? [:]
@@ -249,11 +166,10 @@ enum AccountList {
     /// The organisation each account's own oauthAccount record names, from every .claude.json and backup `find` reads
     /// for these profiles (bounded reads; used only when a standby list needs tidying).
     static func recordOrgs(_ accounts: [AccountEntry], home: String = NSHomeDirectory()) -> [String: String] {
-        var l = Logins()
-        for p in homeFiles(home: home) { l.take(claudeJSON: p) }
-        for e in accounts { for p in folderFiles(e.configDir, home: home) { l.take(claudeJSON: p) } }
+        var l = FoundAccounts(records(AccountSources.homeRecordFiles(home: home)))
+        for e in accounts { l.add(records(AccountSources.folderRecordFiles(folder(e.configDir, home: home)))) }
         var out: [String: String] = [:]
-        for p in l.pairs where out[p.account] == nil { out[p.account] = p.organization }
+        for p in l.seats where out[p.account] == nil { out[p.account] = p.organization }
         return out
     }
 
@@ -267,11 +183,19 @@ enum AccountList {
     static func names(now: Date = Date()) -> [String: String] {
         namesLock.lock(); defer { namesLock.unlock() }
         if let m = namesMemo, now.timeIntervalSince(m.at) < 60 { return m.names }
-        var l = Logins()
-        for p in homeFiles() { l.take(claudeJSON: p) }
-        for p in folderFiles("~/.claude") { l.take(claudeJSON: p) }
+        let home = NSHomeDirectory()
+        var l = FoundAccounts(records(AccountSources.homeRecordFiles(home: home)))
+        l.add(records(AccountSources.folderRecordFiles(folder("~/.claude", home: home))))
         namesMemo = (now, l.emails)
         return l.emails
+    }
+}
+
+extension FoundAccounts {
+    /// An organisation in cl_audit's words: "Personal" for a type that isn't team or enterprise, else its name
+    /// (AccountFacts.orgWords), from the one record that named it first.
+    func orgWords(_ organization: String) -> String? {
+        AccountFacts.orgWords(type: organizationTypes[organization], name: organizationNames[organization])
     }
 }
 

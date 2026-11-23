@@ -328,7 +328,7 @@ do {
     let found = AccountList.find([p8, o8])
     check(found.logins.emails[u5.account] == "ultra-5@example.com" && found.logins.emails[u3.account] == "ultra-3@example.com",
           "addresses from the agent sessions and the folder's backups")
-    check(found.logins.orgs[u3.organization!] == "Personal" && found.logins.plans[u3.account] == "Max", "a personal plan's organisation is Personal; the plan is kept")
+    check(found.logins.orgWords(u3.organization!) == "Personal" && found.logins.plans[u3.account] == "Max", "a personal plan's organisation is Personal; the plan is kept")
     check(found.window["p8"]?.keys.contains(SeatID(u2)) == true && found.window["p8"]?.keys.contains(SeatID(u5)) == true
           && found.window["p8"]?.keys.contains { $0.account == "not-an-id" } == false, "the window's pairs, from both session folders, only real ids")
     check(found.folder["p8"]?.contains(SeatID(u3)) == true && found.folder["p8"]?.contains(SeatID(u1)) == true, "the folder's pairs: its .claude.json and its backups")
