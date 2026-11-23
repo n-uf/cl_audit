@@ -294,7 +294,7 @@ struct ConfigFile: Codable {
     var accounts: [AccountEntry]
 }
 
-// (IconStatus, the status record, and its codec: StatusRecord.swift)
+// (IconStatus, the status record, and its codec: cl_kit's ProfileCore, StatusRecord and StatusCodec)
 
 // MARK: - Renewing an expired login through Claude Code
 

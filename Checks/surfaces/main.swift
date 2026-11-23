@@ -1832,7 +1832,7 @@ do {
     Store.removeStatus("spl"); Store.removeStatus("spm")
 }
 
-// ============ 8. the status record's one codec (StatusRecord.swift): today's bytes, older files, the headline over them ============
+// ============ 8. the status record's one codec (cl_kit's StatusCodec): today's bytes, older files, the headline over them ============
 do {
     // written by main 20489f5's own writer (its IconStatus and ResolvedAccount, Store.writeStatus's settings): every field the
     // agent writes; the split with a switch waiting and a stale reading; a file from before the resolver, numbersOwner and
@@ -3966,24 +3966,25 @@ do {
     var rec = IconStatus(state: "ok")
     rec.loginEmail = "kit@example.com"; rec.expectedEmail = "kit@example.com"; rec.updatedAt = now
     rec.fiveHour = 42; rec.fiveHourResets = now.addingTimeInterval(2 * 3600); rec.weekly = 61; rec.weeklyResets = now.addingTimeInterval(3 * 86400)
-    // the face cl_audit draws is the kit's picture: the same label, numbers, elapsed shares, grey, warning and window dot
-    let show = ProfileShow.of(e, raw: rec, now: now)
-    let tile = TileModel.face(e, show, windowOpen: true, now: now)
-    let kit = StatusFace.of(show.display, look: e.look, windowOpen: true, now: now)
-    check(tile.label == kit.label && tile.label == "KITFACE" && tile.fiveHour == kit.fiveHour && tile.weekly == kit.weekly
-          && tile.fiveHourElapsed == kit.fiveHourElapsed && tile.weeklyElapsed == kit.weeklyElapsed && tile.stale == kit.grey
-          && tile.warn == kit.otherAccount && tile.windowOpen == false && kit.windowOpen == false,
-          "the Dock face is the kit's StatusFace (label, numbers, elapsed, grey, warning, the window dot off by the profile's look)")
+    func face(_ r: IconStatus, windowOpen: Bool = true) -> TileModel { TileModel.face(e, ProfileShow.of(e, raw: r, now: now), windowOpen: windowOpen, now: now) }
+    func near(_ a: Double?, _ b: Double) -> Bool { a.map { abs($0 - b) < 0.01 } ?? false }
     check(e.look == ProfileLook(name: "Kitface", label: "KITFACE", pollMinutes: 7, windowDot: false), "a profile's look in the kit's terms")
-    // the record's bytes: written as the agent writes them and read back whole; keys a newer build adds are skipped
-    let bytes = StatusCodec.encode(rec)
-    let back = bytes.flatMap(StatusCodec.decode)
-    var newer = (bytes.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
-    newer["aFieldFromLater"] = ["x": 1]
-    let newerBack = (try? JSONSerialization.data(withJSONObject: newer)).flatMap(StatusCodec.decode)
-    check(back?.fiveHour == 42 && back?.weekly == 61 && back?.loginEmail == "kit@example.com" && back?.state == "ok"
-          && newerBack?.weekly == 61 && newerBack?.state == "ok",
-          "the record round-trips through the kit's codec, and a newer record's unknown key is skipped")
+    // fresh numbers: the label, both percents, the share of each window gone (5-hour: 2 h of 5 left, 60; week: 3 days of 7
+    // left, 57.14), not grey, no warning, no countdown, and no window dot (the profile's look has it off)
+    let fresh = face(rec)
+    check(fresh.label == "KITFACE" && fresh.fiveHour == 42 && fresh.weekly == 61 && near(fresh.fiveHourElapsed, 60)
+          && near(fresh.weeklyElapsed, 400.0 / 7) && !fresh.stale && !fresh.warn && fresh.countdown == nil && !fresh.windowOpen,
+          "the Dock face from the kit: KITFACE, 42 and 61, 60 and 57.1 of the windows gone, not grey, no warning or countdown, no dot: "
+          + "\(fresh.label) \(fresh.fiveHour ?? -1) \(fresh.weekly ?? -1) \(fresh.fiveHourElapsed ?? -1) \(fresh.weeklyElapsed ?? -1)")
+    // old numbers (read 2 h ago, past the 30 minutes a 7-minute profile is grey after): drawn grey
+    var old = rec; old.updatedAt = now.addingTimeInterval(-2 * 3600)
+    check(face(old).stale, "numbers read 2 h ago: the face is grey")
+    // the sign-in on another account than the folder names: the warning
+    var other = rec; other.loginEmail = "someone-else@example.com"
+    check(face(other).warn, "a sign-in on another account: the face warns")
+    // the week full: the countdown to its reset instead of the numbers
+    var full = rec; full.weekly = 100
+    check(face(full).countdown != nil, "the week full: the face shows the countdown")
 }
 
 print("checks: \(passed) passed, \(failed) failed")

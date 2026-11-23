@@ -1,7 +1,7 @@
 // What the cl_audit widget draws, shared by the widget (Widget.swift, a sandboxed extension) and cl_audit itself (the
-// Widget card in Settings ▸ General shows the real widget as its preview). No WidgetKit here and nothing from Sources/
-// but the status record's codec (Sources/StatusRecord.swift, which the widget compiles too): ProfileCore's rules (Core/),
-// so both programs build it. Names start with W (or Widget) so they don't meet cl_audit's own.
+// Widget card in Settings ▸ General shows the real widget as its preview). No WidgetKit here and nothing from Sources/:
+// the status record and its codec are cl_kit's ProfileCore (StatusRecord, StatusCodec), as are its rules, so both programs
+// build it. Names start with W (or Widget) so they don't meet cl_audit's own.
 //
 // The look is kept in usage-n-uf/widget.json, which cl_audit writes and the widget reads (its sandbox may read that
 // folder only): the plate (System, Std, Black, Silver) and how the limits are drawn (Glow, Rings, Numbers, Segments,

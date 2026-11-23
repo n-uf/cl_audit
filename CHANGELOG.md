@@ -10,6 +10,7 @@ the notes before updating.
 
 - The note after the standby list is tidied reads "The standby list was tidied. Each account is listed once per plan."
 - A profile's saved status and what its Dock icon shows now come from cl_kit, the code cl_audit shares with cl_quick, so both apps read and draw them the same way. Nothing you see changes, and Dock icons from earlier versions still read the new files.
+- Renew sign-in and sign-out now run Claude Code with only a known list of settings from your Mac's environment. Ones like NODE_OPTIONS, model overrides, telemetry export and cloud credentials are no longer passed on; the CLAUDE_CODE_CERT and CLIENT settings still are.
 - The quick chat now lives in cl_quick, and cl_audit no longer has one of its own.
   - Quick chat opens cl_quick on that profile's Claude Code folder.
   - Without cl_quick it reads Get cl_quick… and opens its site.
