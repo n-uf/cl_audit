@@ -81,7 +81,7 @@ final class UsageReader {
             switch action {
             case .readSignIn(let gen): readSignIn(gen: gen)
             case .keepSignIn: keep?()
-            case .forgetSignIn: cachedLogin = nil
+            case .forgetSignIn: cachedLogin = nil; forgetSignInWords()
             case .lookUp(let req): lookUpEmail(req)
             case .fetchUsage(let req): fetchUsage(req)
             case .considerRenew: maybeRenew()
@@ -139,7 +139,9 @@ final class UsageReader {
             // account's and show now), the old one's numbers, sign-in and marks go (no "is back" from the switch itself)
             // and the new one's are read afresh (the machine's .lookAfresh); then a tick
             send(.relinked(folderMoved: folderMoved, now: Date()))
-            forgetWords()
+            // (another folder: every word about the old one goes. The same folder: only what the machine's own forgetting
+            // of the kept sign-in takes, .forgetSignIn; a folder already on the new account keeps its sign-in and words)
+            if folderMoved { forgetWords() }
             return
         }
         if followFolder() || pollChanged { forceFresh = true; send(.readNow); tick(); return }
@@ -343,7 +345,7 @@ final class UsageReader {
             let organizationName = ok ? data.flatMap(Self.organizationName) : nil
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.readingOrganizationName = (req.key, organizationName)
+                if ok { self.readingOrganizationName = (req.key, organizationName) }      // (a failed lookup changes nothing)
                 self.send(.lookupAnswer(email: email, key: req.key, asked: req.asked, generation: req.generation,
                                         expected: self.expectedEmail, now: Date(), account: account, organization: organization))
             }
@@ -419,6 +421,9 @@ final class UsageReader {
     /// the folder signed in to the account the profile works on as the watch saw it and as it is now (one signed in to
     /// another account is never renewed in its name), and none in the last 30 minutes, even across restarts.
     private func maybeRenew() {
+        // (never while the short ask runs on the folder: two claudes never refresh one folder's sign-in at once; skipped
+        // without a mark, so the next tick may renew)
+        guard !asking else { return }
         let last = defaults.object(forKey: renewKey) as? Date
         guard machine.mayRenewByItself(autoRenew: renewsByItself, folderNow: Account.signedInSeat(configDir: account.configDir),
                                        lastAttempt: last, now: Date()) else { return }
@@ -752,10 +757,29 @@ final class UsageReader {
     /// name only, so it is compared by it.
     private var readingOrganizationName: (key: String, name: String?)?
 
-    /// Forgets every word about the folder (another folder, another account linked): asked afresh.
+    /// Forgets every word about the folder (another folder): asked afresh, the first look a baseline again.
     private func forgetWords() {
-        readingSeen = nil; processWord = nil; askedAbout = nil; askRetried = nil; keptSignIn = nil; readingOrganizationName = nil
+        forgetSignInWords(); processWord = nil; askedAbout = nil; askRetried = nil
     }
+
+    /// Forgets what belonged to the kept sign-in, as the machine forgets it (.forgetSignIn: a sign-in or a switch on the
+    /// folder, a relink that reads afresh): its key and generation, its reply's organisation name. The short ask's word (tied
+    /// to the record's generation) and what the last ask was about stay, so the sign-in change itself is still asked about.
+    private func forgetSignInWords() {
+        readingSeen = nil; keptSignIn = nil; readingOrganizationName = nil
+    }
+
+#if CL_AUDIT_CHECKS
+    /// For the checks: what the reader keeps of the words (nothing else reads it).
+    var wordsForChecks: (kept: Bool, word: SignedInAccount?, askedAbout: ShortAsk.State?, organizationName: String?, lastAsk: Date) {
+        (keptSignIn != nil, processWord?.word, askedAbout, readingOrganizationName?.name, lastAsk)
+    }
+    /// For the checks: a kept sign-in as readSignIn keeps it (its key, read at the record's generation now), without the
+    /// Keychain.
+    func keepForChecks(key: String) {
+        keptSignIn = (key, account.configDir, Account.codeRecord(configDir: account.configDir).generation)
+    }
+#endif
 
     /// The organisation's name in Anthropic's profile reply (organization.name), when it gives one.
     static func organizationName(_ data: Data) -> String? {
@@ -785,8 +809,9 @@ final class UsageReader {
     private func readingVerified(_ look: FolderRecordReader.Look) -> Bool {
         guard let key = machine.numbersKey, readingAccount != nil, machine.state != .noLogin,
               let kept = keptSignIn, kept.key == key, kept.folder == account.configDir else { return false }
-        if readingSeen?.key != key { readingSeen = (key, kept.generation, Date()) }
-        return readingSeen?.generation == look.generation
+        // (readingSeen only for when the reading's sign-in was seen, against the short ask's word: anew with each read of it)
+        if readingSeen?.key != key || readingSeen?.generation != kept.generation { readingSeen = (key, kept.generation, Date()) }
+        return kept.generation == look.generation
     }
 
     /// The short ask's word while it stands: asked on this folder at the record's generation now, and newer than the
@@ -802,16 +827,22 @@ final class UsageReader {
     /// every ShortAsk.floor, never while one runs, and only in the profile's own folder (a profile is one folder; a standby
     /// account has none and is never asked).
     private func considerAsk(now: Date = Date()) {
-        // (never while a renewal runs: two claudes never refresh one folder's sign-in at once)
-        guard !machine.stopped, !machine.renewing else { return }
+        guard !machine.stopped else { return }
         let look = Account.codeRecord(configDir: account.configDir)
         let reading = readingVerified(look) ? readingAccount : nil
         let state = ShortAsk.State(generation: look.generation, reading: reading.flatMap { AccountKey($0)?.text })
         let differs = reading != nil && FolderSignIn.answer(record: look.account, verified: reading).verdict == .differs
-        // (a record that names nobody, signed out: nothing to ask about)
-        guard look.account != nil, ShortAsk.due(last: askedAbout, now: state, differs: differs, lastAsk: lastAsk, at: now, asking: asking,
-                                                folderReady: FolderGuard.folderReady(account.configDir)) else {
-            if askedAbout == nil { askedAbout = state }        // the first look: nothing changed yet
+        // the record left alone for a moment (a switch or a sign-in may still be writing it: the ask waits for the next save)
+        let quiet = Account.recordStamp(Account.claudeJSON(configDir: account.configDir)).modified
+            .map { now.timeIntervalSince($0) >= Self.recordQuietFor } ?? true
+        // (a record that names nobody, signed out: nothing to ask about; never while a renewal runs: two claudes never
+        // refresh one folder's sign-in at once. Either way the first look still sets what later looks are compared with,
+        // so a sign-in during a start-up renewal is still asked about once it ends; never a disagreement, which is asked
+        // about once nothing holds it back)
+        guard look.account != nil, !machine.renewing, quiet,
+              ShortAsk.due(last: askedAbout, now: state, differs: differs, lastAsk: lastAsk, at: now, asking: asking,
+                           folderReady: FolderGuard.folderReady(account.configDir)) else {
+            if askedAbout == nil, !differs { askedAbout = state }        // the first look: nothing changed yet
             return
         }
         askedAbout = state; lastAsk = now
@@ -844,8 +875,9 @@ final class UsageReader {
                     return
                 }
                 self.processWord = (word, gen, dir, Date())
-                // (another account, or a seat that can't be told from the reading's: the Keychain may have moved on)
-                if let r = self.readingAccount, r.match(word) != .seat {
+                // (another account, or a seat its organisation's name can't tell from the reading's: the Keychain may have
+                // moved on. A word naming no organisation says nothing about the seat)
+                if let r = self.readingAccount, r.match(word) == .different || (r.match(word) == .seatNotKnown && word.organizationName != nil) {
                     agentLog.log("reader \(self.id, privacy: .public): Claude Code is on another account than the sign-in read; reading the sign-in again")
                     self.forceFresh = true
                     self.send(.refreshRequested)
@@ -856,6 +888,9 @@ final class UsageReader {
             }
         }
     }
+
+    /// How long the folder's record must have been left alone before the short ask (a check sets 0).
+    nonisolated(unsafe) static var recordQuietFor: TimeInterval = 5
 
     /// How the short ask runs: a check build never runs `claude` (CL_AUDIT_CHECKS: no word), and a check gives its own.
 #if CL_AUDIT_CHECKS

@@ -1893,6 +1893,7 @@ do {
     hr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: hr.generation, key: "k3")
     check(Store.status(for: same)?.weekly != 100, "token mo, folder pat, owner not yet known: the new reading isn't shown")
     var asks: [String] = []
+    UsageReader.recordQuietFor = 0          // (the record was just written here; the shipped reader waits 5 s for it to settle)
     UsageReader.askSeam = { folder in asks.append(folder.path); return SignedInAccount(email: pat.email, origin: .process) }
     hr.profileFound(mo.email!, key: "k3"); hr.save()
     let mixed = Store.status("spm")
@@ -1908,6 +1909,78 @@ do {
     check(asks.count == 1, "…and not again for the same state (never on every save or tick)")
     UsageReader.askSeam = { _ in nil }
     hr.stop()
+
+    // the short ask and a renewal never run together on one folder: while a renewal is under way, no ask (the sign-in
+    // changed all the same); once it has ended, the change is asked about once. No claude is found here: the renewal
+    // ends at once and nothing runs
+    do {
+        var r4 = profile("sk4", "~/.claude-sk4", mo); r4.claudeWindow = false
+        signIn(r4.configDir, mo)
+        let keepLocator4 = ClaudeLocator.current
+        ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { [] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
+        var asks4: [String] = []
+        UsageReader.askSeam = { asks4.append($0.path); return SignedInAccount(email: pat.email, origin: .process) }
+        let reader4 = UsageReader(r4, defaults: UserDefaults(suiteName: "cl-audit-surfaces-ask4-\(getpid())")!)
+        reader4.save()                                         // the first look: what later looks are compared with
+        reader4.renewLogin()                                   // (on mo, the folder's account: allowed)
+        signIn(r4.configDir, pat)                              // then a sign-in: the record names someone else
+        reader4.save()
+        check(asks4.isEmpty && reader4.machine.renewing, "a renewal under way: no short ask on its folder, the sign-in changed all the same: \(asks4.count)")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        reader4.save(); RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        check(!reader4.machine.renewing && asks4 == [expand(r4.configDir)], "…the renewal over: the sign-in change asked about once: \(asks4.count)")
+        reader4.stop(); ClaudeLocator.current = keepLocator4
+    }
+    // the words the reader keeps: a relink to the account the folder names already keeps the kept sign-in, the short ask's
+    // word and what was asked; another folder forgets them
+    do {
+        var s1 = profile("sk1", "~/.claude-sk1", mo); s1.claudeWindow = false
+        signIn(s1.configDir, mo)
+        UsageReader.askSeam = { _ in SignedInAccount(email: pat.email, origin: .process) }
+        let reader1 = UsageReader(s1, defaults: UserDefaults(suiteName: "cl-audit-surfaces-ask1-\(getpid())")!)
+        reader1.save()
+        signIn(s1.configDir, pat); reader1.tick(); reader1.save()   // Claude Code signed in to pat on the folder: asked about
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        reader1.keepForChecks(key: "s1")
+        check(reader1.wordsForChecks.word?.email == pat.email && reader1.wordsForChecks.kept, "the short ask's word and a kept sign-in, before the relink")
+        var onPat = s1; onPat.seat = pat
+        reader1.update(onPat)                                       // the profile follows its folder: it reads pat already
+        check(reader1.wordsForChecks.kept && reader1.wordsForChecks.word?.email == pat.email && reader1.wordsForChecks.askedAbout != nil,
+              "a relink to the account the folder names already: the kept sign-in, the word and what was asked stay")
+        var elsewhere = onPat; elsewhere.configDir = "~/.claude-sk1b"
+        try? fm.createDirectory(atPath: expand(elsewhere.configDir), withIntermediateDirectories: true)
+        reader1.update(elsewhere)
+        check(!reader1.wordsForChecks.kept && reader1.wordsForChecks.word == nil, "another folder: every word about the old one goes")
+        reader1.stop()
+    }
+    // a failed ask (no word) is tried once more after the floor: what it was about becomes a state no look has
+    do {
+        var sr = profile("skr", "~/.claude-skr", mo); sr.claudeWindow = false
+        signIn(sr.configDir, mo)
+        var tries = 0
+        UsageReader.askSeam = { _ in tries += 1; return nil }
+        let readerR = UsageReader(sr, defaults: UserDefaults(suiteName: "cl-audit-surfaces-askr-\(getpid())")!)
+        readerR.save(); signIn(sr.configDir, pat); readerR.save()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        let after = readerR.wordsForChecks.askedAbout
+        check(tries == 1 && after?.generation == -1
+              && ShortAsk.due(last: after, now: ShortAsk.State(generation: 1, reading: nil), differs: false,
+                              lastAsk: Date().addingTimeInterval(-ShortAsk.floor - 1), at: Date(), asking: false, folderReady: true),
+              "a failed ask: tried once more after the floor (its state set apart): \(tries) ask(s)")
+        readerR.stop()
+    }
+    // the first asks follow each profile's staggered first read
+    let staggered = UsageReader(profile("sks", "~/.claude-sks", mo), defaults: UserDefaults(suiteName: "cl-audit-surfaces-asks-\(getpid())")!, startIn: 120)
+    let firstAskIn = staggered.wordsForChecks.lastAsk.addingTimeInterval(ShortAsk.floor).timeIntervalSinceNow
+    check(abs(firstAskIn - 120) < 5, "the first short ask no sooner than the profile's first read (startIn 120): in \(Int(firstAskIn)) s")
+    staggered.stop()
+    // the reply's organisation name, read for the short ask's comparison
+    check(UsageReader.organizationName(Data(#"{"account":{"uuid":"x"},"organization":{"uuid":"o","name":"  Example Team "}}"#.utf8)) == "Example Team"
+          && UsageReader.organizationName(Data(#"{"organization":{"name":" "}}"#.utf8)) == nil
+          && UsageReader.organizationName(Data(#"{"account":{"uuid":"x"}}"#.utf8)) == nil,
+          "the profile reply's organisation name: trimmed; blank or missing is none")
+    UsageReader.askSeam = { _ in nil }
+    UsageReader.recordQuietFor = 5
 
     // a lookup outage: a token whose account was confirmed keeps it (its numbers stay current); a new token's reading is
     // held, then, its lookup still failing, shown as "account not confirmed" (as read, never full, no alert); its owner
@@ -3353,6 +3426,10 @@ do {
         AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: h2.email, loginAccount: h2.account,
                                 loginOrganization: teamOrg, loginOrganizationName: name, process: word, names: [:], now: t0)
     }
+    // a word that names no organisation says nothing about the seat: the reading stands
+    let orglessWord = teamReading(nil, word: SignedInAccount(email: h2.email, origin: .process))
+    check(orglessWord.readStale == nil && orglessWord.line != AccountResolver.staleWords,
+          "the short ask's word with no organisation: nothing said about the seat, the reading's numbers stand")
     let unbridged = teamReading(nil, word: personalWord)
     check(unbridged.readStale == true && unbridged.line == AccountResolver.staleWords && shownWeekly(unbridged, id: h2.account) == nil,
           "A2: the short ask names a seat by name, the reading its seat by id only: the seat can't be told, stale, shown nowhere")

@@ -109,7 +109,8 @@ enum AccountResolver {
         // Against a running claude's own word the seat must be told apart: a reading whose seat can't be (the word names its
         // organisation by name only, the reading by id only) isn't counted as that seat's, so a personal plan's numbers
         // never show for a Team seat on its address, or the other way round (the reader then reads the sign-in again).
-        let processSaid = word?.origin == .process
+        // (a word that names no organisation says nothing about the seat: only one that names it by name counts here)
+        let processSaid = word?.origin == .process && word?.organizationName != nil
         let stale = reading.map { r in
             codeAccount.map { a in
                 switch r.match(a) {
