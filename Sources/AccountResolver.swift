@@ -281,6 +281,9 @@ struct AccountView: Equatable {
     var codeAccount: String? = nil
     /// What the resolver decided: the one line of state is built from it each time it is read (`line`), never kept as text.
     var resolved: ResolvedAccount? = nil
+    /// Claude Code's account's organisation (lower case; "" none; nil not known), where the record has it: with
+    /// `codeAccount`, one seat (a personal plan and a Team seat share the account id).
+    var codeOrganization: String? = nil
 
     /// The one line of state, built now (ResolvedAccount.lineText: an address in it follows Show emails as it is at this read).
     var line: String? { resolved?.lineText() }
@@ -290,7 +293,7 @@ struct AccountView: Equatable {
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.codeName ?? r.numbersFor,
                                lit: r.lit, account: r.account, recordTooLarge: r.recordTooLarge == true,
-                               differs: r.differs, codeAccount: r.codeAccount, resolved: r)
+                               differs: r.differs, codeAccount: r.codeAccount, resolved: r, codeOrganization: r.codeOrganization)
         }
         // a record from before the resolver (or none written yet): the sign-in it was read for
         let who = s.loginEmail ?? s.expectedEmail
@@ -312,6 +315,13 @@ struct AccountView: Equatable {
     /// Settings ▸ Accounts gives it a row of its own, with the numbers (they are its). nil when the numbers are the active
     /// account's.
     var codeRow: String? { differs ? numbersOwner : nil }
+
+    /// This seat is Claude Code's account: its id, and its organisation where the record knows Claude Code's (a personal plan
+    /// and a Team seat share the id). One not known there (nil: an older record, a seat not known) is decided by the id.
+    func isCodeSeat(_ s: Seat) -> Bool {
+        guard AccountID.same(codeAccount, s.account) else { return false }
+        return codeOrganization.map { AccountID.sameOrganization($0, s.organization) } ?? true
+    }
 
     /// Claude Code's own row is this account: by its id first (a row named "account <8>" has no address), else its address
     /// (the one owner rule, the record naming no organisation).

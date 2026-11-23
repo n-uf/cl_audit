@@ -50,7 +50,7 @@ extension AccountEntry {
     /// it; there is no sign-in to open.
     func codeTarget(_ v: AccountView) -> StandbyAccount? {
         guard let code = v.codeRow else { return nil }
-        let s = seat.flatMap { AccountID.same(v.codeAccount, $0.account) ? $0 : nil }
+        let s = seat.flatMap { v.isCodeSeat($0) ? $0 : nil }
         guard !standby.contains(where: { b in
             (b.seat?.email ?? b.email).lowercased() == code.lowercased() || (s.map { s in b.seat.map { $0.same(s) } ?? false } ?? false)
         }) else { return nil }
@@ -64,7 +64,7 @@ extension AccountEntry {
     func codeTargetMissing(_ v: AccountView) -> String? {
         // the split ended (a Switch page left open from before): both are on one account, nothing to switch
         guard v.codeRow != nil else { return Self.oneAccountWords }
-        guard let s = seat, s.organization != nil, AccountID.same(v.codeAccount, s.account) else { return Self.codeSeatMissingWords }
+        guard let s = seat, s.organization != nil, v.isCodeSeat(s) else { return Self.codeSeatMissingWords }
         guard let app = appSeat(v) else { return Self.appSeatMissingWords }
         return app.same(s) ? Self.sameAccountWords : nil
     }
