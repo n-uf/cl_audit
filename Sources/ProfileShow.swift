@@ -63,16 +63,6 @@ struct ProfileShow {
         }
     }
 
-    /// The one key's title: Log in…, or in the split Claude Code's own sign-in to the app's account (`short`: the Dock
-    /// panel's fixed width).
-    func keyWords(short: Bool) -> String? {
-        switch display.key {
-        case .none: return nil
-        case .logIn: return "Sign in…"
-        case .logInCode: return short ? splitWords?.shortKey : splitWords?.key
-        }
-    }
-
     /// Under the line when there are no numbers, in place of "No numbers yet": in the split, what gives the numbers.
     var numbersHint: String? { splitWords?.numbersHint }
 

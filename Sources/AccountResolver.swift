@@ -195,11 +195,12 @@ struct SplitUsage: Equatable {
         switched ? "\(Self.switchingHead(code, blur: blur)). Sign the Claude app in to \(AddressSettings.words(code, blur: blur)) to finish."
                  : Self.bandHead
     }
-    /// Settings ▸ Accounts' red band around both rows of the split: its red headline and the two muted lines under it.
+    /// Settings ▸ Accounts' amber band around both rows of the split: its amber headline and the two lines under it.
     static let bandHead = "The Claude app and Terminal are signed in to different accounts."
     static let bandWhy = "cl_audit can read usage only through Terminal's sign-in, so the Claude app's account shows no numbers."
     static let bandFix = "Use the key on either account to put both on the same account."
-    /// The one red line on the dashboard card and the menu bar row while the split is by hand: a link to the band.
+    /// The one amber line on the dashboard card, the menu bar row and the Dock panel while the split is by hand: a link to
+    /// the band.
     static let windowLine = "Claude window on another account"
     /// The keys of the band's two rows: on Terminal's account (it opens the Switch page) and on the Claude app's (Terminal's
     /// own sign-in, the app's address filled in when known).
@@ -209,11 +210,9 @@ struct SplitUsage: Equatable {
     static let panelSignInKey = "Sign in"
     /// In place of "Sign Terminal in" while the Claude app's account is known by its id only (no address to sign in to).
     static let appUnknownWords = "Open the Claude window once, so cl_audit learns its account."
-    /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…"; a switch waiting for the app:
-    /// its first clause, "Switching to M@…: one step left".
-    var shortLine: String {
-        switched ? Self.switchingHead(code) : "Can't read \(AddressSettings.words(app))'s usage\nTerminal: \(AddressSettings.words(code))"
-    }
+    /// The short form where space is short: a switch waiting for the app, its first clause, "Switching to M@…: one step
+    /// left"; the split by hand, the line itself (the surfaces short of room draw the amber link in its place).
+    var shortLine: String { switched ? Self.switchingHead(code) : line }
     /// The after-switch heading, the same on the card (UsageNotice) and every other surface.
     static func switchingHead(_ to: String, blur: Bool? = nil) -> String { "Switching to \(AddressSettings.words(to, blur: blur)): one step left" }
     /// Under the line, in place of "No numbers yet": what gives the numbers. Nil while a switch waits for the app (nothing
@@ -225,14 +224,10 @@ struct SplitUsage: Equatable {
     /// The key: the existing Sign in (Claude Code's own sign-in in Terminal, with the app's address filled in), the Claude
     /// app's row's key in Settings ▸ Accounts. Not a switch. None while a switch waits for the app, and none when the app's
     /// account is known by its id only: the key only ever fills in the app's own address (never Claude Code's), so then
-    /// `hint` says what to do instead.
+    /// Settings says `appUnknownWords` instead.
     var key: String? { loginEmail.map { _ in Self.terminalSignInKey } }
-    /// The key where space is short (the Dock panel's fixed width): "Sign in to P@… in Terminal", as long as the old key.
-    var shortKey: String? { loginEmail.map { "Sign in to \(AddressSettings.words($0)) in Terminal…" } }
     /// The address the login fills in: the app's own, when it is known (not while a switch waits for the app).
     var loginEmail: String? { !switched && app.contains("@") ? app : nil }
-    /// In place of the key when the app's address isn't known.
-    var hint: String? { !switched && loginEmail == nil ? "Sign Terminal in to the Claude app's account" : nil }
 }
 
 /// What every surface shows of a profile's account, from its status record only (never a file, a log or a seat).
