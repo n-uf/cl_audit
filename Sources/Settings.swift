@@ -1623,7 +1623,7 @@ struct AccountSettings: View {
         SCard(title: "Accounts", info: loginInfo,
               // the split by hand: the amber band from the card's top edge, the ACCOUNTS header inside it
               top: splitBand ? view.codeRow.map { AnyView(splitBandRows($0)) } : nil) {
-            accountRows(stacked: stacked)
+            accountRows
             // FOLDER: its header's hairline is the section's one line, so its first row has no separator of its own
             SectionHeader(title: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder; folders are used where they are (Claude Code names a folder's Keychain sign-in after its path). Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.")
                 .padding(.top, 10)
@@ -1716,7 +1716,7 @@ struct AccountSettings: View {
     /// Account: one row for everything about this folder's sign-in, first in the card (as on New profile). Its value is
     /// the pop-up, drawn like the Folder one; only when something needs a choice, the keys for it sit under the pop-up
     /// in the same row (wrapping in a narrow column), with one grey line under the row. Renew sign-in is a pop-up item.
-    @ViewBuilder func accountRows(stacked: Bool) -> some View {
+    @ViewBuilder var accountRows: some View {
         // "was X, now on standby": only while X is on standby in the boxes too (never the active account or Claude Code's)
         let linkedLately: (was: String, at: Date)? = entry.seat.flatMap { s in
             guard let was = s.was, let at = s.linkedAt, Date().timeIntervalSince(at) < 7 * 86400,
@@ -1730,7 +1730,7 @@ struct AccountSettings: View {
                 // a switch of this profile running, or refused before anything: one line, the Switch page's strip words
                 SwitchStripLine(runner: model.runner(of: entry.id))
                 if let n = entry.accountNote { accountNoteRow(n) }
-                // the split by hand: Terminal's account and the Claude app's are in the red band at the card's top (codeCard)
+                // the split by hand: Terminal's account and the Claude app's are in the amber band at the card's top (codeCard)
                 if !splitBand {
                     inUseBox
                         .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
@@ -1845,14 +1845,14 @@ struct AccountSettings: View {
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
     }
 
-    // MARK: the split by hand (the Claude app and Terminal on different accounts): both rows in one red band
+    // MARK: the split by hand (the Claude app and Terminal on different accounts): both rows in one amber band
 
     /// The split by hand, Terminal signed in and no switch waiting for the Claude app (the card's link says it, UsageNotice):
-    /// Terminal's account and the Claude app's sit in one red band, each with the key for the sign-in it is missing. A switch
+    /// Terminal's account and the Claude app's sit in one amber band, each with the key for the sign-in it is missing. A switch
     /// waiting for the app, or Terminal signed out or expired, keep the rows as they were.
     var splitBand: Bool { view.codeRow != nil && UsageNotice.of(inUseRow)?.link != nil }
 
-    /// The band: the red headline and the two muted lines once, then Terminal's account, then the Claude app's. At the very
+    /// The band: the amber headline and the two lines under it once, then Terminal's account, then the Claude app's. At the very
     /// top of the Claude Code panel (SCard's `top`: the fill from the panel's top edge, inside its rounded corners, edge to
     /// edge), no bar on its left; the boxes inside stay the normal dark. A link to the profile's Settings ▸ Accounts lands
     /// here (SettingsLink.splitBand).
@@ -1905,9 +1905,9 @@ struct AccountSettings: View {
         entry.standby.first { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() } ?? entry.codeTarget(view)
     }
 
-    /// The Claude app's account in the band: red lamp, TERMINAL red and APP lit green, no numbers (cl_audit reads only
-    /// through Terminal), its address as the in-use pop-up, and "Sign Terminal in": Terminal's own sign-in with the app's
-    /// address filled in (ProfileShow.loginAddress; none filled in while the app's account is known by its id only).
+    /// The Claude app's account in the band: amber lamp, TERMINAL bright red and APP lit green, no numbers (cl_audit reads
+    /// only through Terminal), its address as the in-use pop-up, and "Sign Terminal in": Terminal's own sign-in with the
+    /// app's address filled in (ProfileShow.loginAddress); while the app's account is known by its id only, one line instead.
     var splitAppBox: some View {
         let v = view
         return AccountBox(lamp: FaceTheme.ledAmber, badge: "", detail: inUsePlan.map(Account.planWords), inUse: true, split: .app) {

@@ -1074,8 +1074,8 @@ struct AccountCard: View {
     private var showsSwitch: Bool { notice == nil && row.full != nil }
     /// Signed out or expired: no window key in the row (it waits in ⋯ with Terminal).
     private var windowInRow: Bool { row.entry.claudeWindow && notice?.signedOut != true }
-    /// The window key's LED: the profile's own colour; reddish while the window is on another account than Terminal
-    /// (the split by hand: the window is the part that's out of line). (Not private: the surfaces checks.)
+    /// The window key is the amber face key while the window is on another account than Terminal (the split by hand: the
+    /// window is the part that's out of line). (Not private: the surfaces checks.)
     var windowKeyAmber: Bool { notice?.windowAmber == true }
     /// Terminal in the row only while the card is as usual or its notice has no key; otherwise (a notice with its key, or
     /// the Switch account key) it steps into ⋯ so the row stays one line at 340 pt. (Not private: the surfaces checks.)

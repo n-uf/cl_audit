@@ -400,8 +400,8 @@ struct MenuBarRow: View {
     /// The row's one line of state: in the split its short form ("Can't read P's usage" over "Terminal: M": the row is about
     /// 300 pt of text, two lines), else the record's line.
     static func lineWords(_ p: MenuBarItems.Profile) -> String? { p.show.lineWords(short: true) }
-    /// The split by hand: the card's one red line in its place, the same link (UsageNotice's rule and SettingsLink), to the
-    /// profile's Settings ▸ Accounts at the red band. nil otherwise.
+    /// The split by hand: the card's one amber line in its place, the same link (UsageNotice's rule and SettingsLink), to the
+    /// profile's Settings ▸ Accounts at the amber band. nil otherwise.
     static func splitLink(_ p: MenuBarItems.Profile) -> SettingsLink? { UsageNotice.of(AccountRow(entry: p.entry, show: p.show))?.link }
 
     private var limits: [Limit] {

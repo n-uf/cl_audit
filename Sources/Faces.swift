@@ -690,7 +690,7 @@ extension View {
     }
 }
 
-/// The red band's fill at the top of a panel (SCard's `top`): MintRow's red, from the panel's very top edge, inside its
+/// The split's amber band fill at the top of a panel (SCard's `top`): SplitAmber, from the panel's very top edge, inside its
 /// own rounded top corners (`radius`: the panel's), edge to edge; no bar and no top line (the fill meets the panel's edge),
 /// its faint lower edge where the panel's own content starts.
 struct TopBandFill: View {

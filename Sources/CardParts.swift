@@ -18,7 +18,7 @@ struct UsageNotice: Equatable {
     let key: Key
     /// Signed out or expired: no sign-in to show the window or Terminal on, so both wait in ⋯.
     var signedOut = false
-    /// The heading is a link (the split by hand: to the profile's Settings ▸ Accounts, at the red band); no line under it.
+    /// The heading is a link (the split by hand: to the profile's Settings ▸ Accounts, at the amber band); no line under it.
     var link: SettingsLink? = nil
     /// The split by hand: the window key amber (the card's, the Dock panel's).
     var windowAmber: Bool { link != nil }
@@ -104,7 +104,7 @@ struct UsageNoticeView: View {
 struct SettingsLink: Equatable {
     let profile: String
     var section: String? = nil
-    /// Settings ▸ the profile ▸ Claude Code ▸ Accounts, at the red band around the split's two rows.
+    /// Settings ▸ the profile ▸ Claude Code ▸ Accounts, at the amber band around the split's two rows.
     static let splitBand = "accounts-split-band"
     static func split(_ profile: String) -> SettingsLink { SettingsLink(profile: profile, section: splitBand) }
 }
