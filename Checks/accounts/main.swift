@@ -3266,6 +3266,40 @@ do {
           "Continue anyway: the window's folder is made with the desktop app open, and recorded for Cancel")
     check(NewAccountSetup.discard(dCA, claude: nil) && !fm.fileExists(atPath: expand(dCA.dataDir)) && !fm.fileExists(atPath: expand(dCA.configDir)),
           "…Cancel then removes both folders it made")
+    // another folder before anything is made (the Folder pop-up, a found account, a sign-in to a new folder): what the last
+    // folder's sign-in left goes with it, so neither a waiting sign-in nor its end sticks to the new folder
+    var repl = NewAccountDraft(); repl.name = "Repl"; repl.source = .existing; repl.existingDir = "~/.claude-replx"; repl.connected = true
+    repl.signInAsked = Date(); repl.signInRunning = true; repl.seatAtAsk = u2; repl.continueAnyway = true
+    NewAccountSetup.replaceFolder(&repl, existing: "~/.claude-reply")
+    check(repl.source == .existing && repl.existingDir == "~/.claude-reply" && !repl.connected && repl.signInAsked == nil && !repl.signInRunning
+          && repl.seatAtAsk == nil && repl.signInSaid == nil && !repl.continueAnyway && !NewAccountSetup.waiting(repl),
+          "another existing folder chosen: unconnected, and no sign-in waiting, ended or asked about from the last one")
+    repl.signInAsked = Date(); repl.signInRunning = true
+    NewAccountSetup.replaceFolder(&repl, existing: nil)
+    check(repl.source == .new && repl.existingDir == nil && repl.signInAsked == nil && !repl.signInRunning, "a new folder chosen: the same")
+    var viaSignIn = NewAccountDraft(); viaSignIn.name = "Viasign"; viaSignIn.source = .existing; viaSignIn.existingDir = "~/.claude-gatesigned2"
+    viaSignIn.connected = true; viaSignIn.signInAsked = Date(); viaSignIn.continueAnyway = true
+    try? fm.createDirectory(atPath: expand("~/.claude-gatesigned2"), withIntermediateDirectories: true)
+    sign("~/.claude-gatesigned2", u3)
+    let viaNew = NewAccountSetup.forSignIn(viaSignIn, email: "")
+    check(viaNew.source == .new && viaNew.signInAsked == nil && !viaNew.continueAnyway, "a sign-in to a new folder: the connected folder's sign-in state goes too")
+    try? fm.removeItem(atPath: expand("~/.claude-gatesigned2"))
+    // the name emptied after a folder was connected: a red line, so Create can't add a profile with no name
+    try? fm.createDirectory(atPath: expand("~/.claude-noname"), withIntermediateDirectories: true)
+    sign("~/.claude-noname", u4)
+    var noName = NewAccountDraft(); noName.name = "Noname"; noName.claudeWindow = false; noName.source = .existing; noName.existingDir = "~/.claude-noname"
+    try! NewAccountSetup.createCode(&noName)
+    check(NewAccountSetup.canFinish(noName, accounts: [], discarding: false, windowBusy: false), "connected, named: Create can")
+    noName.name = "  "
+    check(!NewAccountSetup.canFinish(noName, accounts: [], discarding: false, windowBusy: false)
+          && NewAccountSetup.checks(noName, accounts: [], runs: [], checked: true).contains { $0.section == .account && $0.state == .bad },
+          "…its name emptied: a red line, and Create can't")
+    check(NewAccountSetup.checks(NewAccountDraft(), accounts: [], runs: [], checked: true).contains { $0.section == .account && $0.state == .wait && !$0.blocks },
+          "no name yet, nothing made: a grey hint, not a red line")
+    check(NewAccountSetup.discardSummary(noName) == "~/.claude-noname stays as it is, signed in." && NewAccountSetup.discard(noName, claude: nil)
+          && fm.fileExists(atPath: expand("~/.claude-noname")),
+          "Cancel with a connected folder: said to stay as it is, signed in, and it does: \(NewAccountSetup.discardSummary(noName))")
+    try? fm.removeItem(atPath: expand("~/.claude-noname"))
     check(NewAccountSetup.discardSummary(dS).contains("~/.claude-signfirst") && !NewAccountSetup.discardSummary(dS).contains("desktop data folder"),
           "…Cancel's summary names the Claude Code folder and no window folder: \(NewAccountSetup.discardSummary(dS))")
     check(NewAccountSetup.discard(dS, claude: nil) && !fm.fileExists(atPath: expand(dS.configDir)) && !fm.fileExists(atPath: expand(dS.dataDir)),

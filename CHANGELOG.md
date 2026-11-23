@@ -87,10 +87,10 @@ the notes before updating.
 - With Show emails off, the address field of Sign in to another account… shows the stand-in while you aren't typing in it.
 - New profile's Sign in step draws the signed-in address as the stand-in, like the Account pop-up.
 - New profile's Claude window switch is no longer locked once the folder is made.
-- Turned on afterwards, the Sign in step gets a "b · Claude window" part. It checks that the desktop app is closed, then makes the window's folder.
+- Turned on afterwards, its Claude window step checks that the desktop app is closed, then makes the window's folder.
 - Turned off, it quits only the window this setup started and removes only the folder it made.
 - A window this setup didn't start is never quit, and the switch says why.
-- Finish waits only for what the switch needs.
+- Create waits only for what the switch needs.
 
 ## 26.11.87 — 2026-11-21
 
