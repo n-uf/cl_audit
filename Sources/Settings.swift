@@ -1237,12 +1237,6 @@ struct SCard<Content: View>: View {
     }
 }
 
-/// The widest of the split band's key labels, as drawn (Settings ▸ Accounts: "Sign the app in", "Sign Terminal in").
-struct SplitKeyWidth: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
-
 /// A section's header in a card: the printed title, its (i) and the hairline after it, the section's one line (the row
 /// under it starts with no separator of its own: SRow `first`). Inside the split's amber band the title is a light amber
 /// and the hairline one amber line, not the engraved pair.
@@ -1868,18 +1862,19 @@ struct AccountSettings: View {
             splitTerminalBox(code)
             splitAppBox
         }
-        // the two keys share one width, the wider label's (SplitKeyWidth), so they line up
-        .onPreferenceChange(SplitKeyWidth.self) { splitKeyLabel = $0 }
         .id(SettingsLink.splitBand)
     }
 
     /// One of the band's two keys: the metal compact key with an amber dot, its label centred in the width both labels
-    /// share (the wider one's, measured: SplitKeyWidth), so the two keys are one width and still sized to their labels.
+    /// share: both labels laid in one place, hidden, under the shown one, so the two keys are one width (the wider label's,
+    /// in the key's own font on every face) and still sized to their labels.
     func splitKey(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
-                .background(GeometryReader { g in Color.clear.preference(key: SplitKeyWidth.self, value: g.size.width) })
-                .frame(minWidth: splitKeyLabel)
+            ZStack {
+                Text(SplitUsage.appSignInKey).hidden()
+                Text(SplitUsage.terminalSignInKey).hidden()
+                Text(title)
+            }
         }
         .buttonStyle(PillButtonStyle(tint: FaceTheme.ledAmber, compact: true)).fixedSize()
     }
@@ -2079,8 +2074,6 @@ struct AccountSettings: View {
         }
     }
     @State private var newestSwitch: SwitchReceipt?
-    /// The wider of the split band's two key labels (SplitKeyWidth): both keys take it.
-    @State private var splitKeyLabel: CGFloat = 0
 
     /// The account the profile's current switch went for: the runner's goal while it has one going or just ended (nil for a
     /// sign-in again); else (after a restart) the profile's newest switch: when it went to Claude Code's account (`code`,
