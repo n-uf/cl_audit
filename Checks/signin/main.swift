@@ -445,7 +445,7 @@ MainActor.assumeIsolated {
     let s = AddressPrivacy.shared.blur ? AddressText.hidden : "c-8"
     check(offers.first?.usedWords == "\(s): week 8% used" && offers.first?.leftWords == "\(s) has 92% of its week left",
           "the offer's words")
-    check(SwitchWords.button == "Switch account…" && SwitchWords.backButton == "Switch back…", "the alerts' buttons name no account (round 2: Switch account…, Switch back…)")
+    check(SwitchWords.button == "Switch account" && SwitchWords.backButton == "Switch back", "the alerts' buttons name no account and, as keys, carry no ellipsis: Switch account, Switch back")
     // stale numbers never count as room: a sign-in that ran out, a problem, or numbers older than three read intervals
     var expired = st(8); expired.state = "expired"
     var problem = st(8); problem.problem = "Couldn't update"
@@ -1405,7 +1405,7 @@ do {
     check(SwitchWaiting.canCancel(.codeSignIn) && !SwitchWaiting.canCancel(.windowSignIn) && !SwitchWaiting.canCancel(.sidebar), "Cancel switch only at Claude Code's sign-in")
     let cats = Dictionary(uniqueKeysWithValues: SwitchAlert.categories().map { ($0.identifier, $0.actions.map(\.title)) })
     check(cats[SwitchAlert.waitingCategory] == ["Show switch", "Cancel switch"] && cats[SwitchAlert.waitingLinkedCategory] == ["Show switch"], "waiting alert: Show switch + Cancel switch, or Show switch alone")
-    check(cats[SwitchAlert.category] == ["Switch account…", "Later"] && cats[SwitchAlert.backCategory] == ["Switch back…", "Stay"], "the other alerts' keys: Switch account…, Switch back…")
+    check(cats[SwitchAlert.category] == ["Switch account", "Later"] && cats[SwitchAlert.backCategory] == ["Switch back", "Stay"], "the other alerts' keys: Switch account, Switch back")
     check(SwitchAlert.isQuiet(SwitchAlert.cancelSwitch) && !SwitchAlert.isQuiet(SwitchAlert.action), "Cancel switch needs no window; Show switch does")
 
     // once per step, only while the page isn't in front, withdrawn when the step moves on or the switch ends; every waiting
@@ -1681,8 +1681,8 @@ do {
     check(SwitchWaiting.waits(.waiting) && SwitchWaiting.canCancel(.waiting) && SwitchWaiting.category(.waiting) == SwitchAlert.waitingCategory,
           "the sign-in waits, can be cancelled, and alerts with Show switch and Cancel switch")
     let cats = Dictionary(uniqueKeysWithValues: SwitchAlert.categories().map { ($0.identifier, $0.actions.map(\.title)) })
-    check(cats.count == 2 && cats[SwitchAlert.waitingCategory] == ["Show switch", "Cancel switch"] && cats[SwitchAlert.category] == ["Switch account…", "Later"],
-          "two categories: Show switch + Cancel switch; Switch account… + Later (no Switch back, no linked step)")
+    check(cats.count == 2 && cats[SwitchAlert.waitingCategory] == ["Show switch", "Cancel switch"] && cats[SwitchAlert.category] == ["Switch account", "Later"],
+          "two categories: Show switch + Cancel switch; Switch account + Later (no Switch back, no linked step)")
     check(SwitchAlert.retired.contains("switchBack") && SwitchAlert.retired.contains("switchWaitingLinked") && cats.keys.allSatisfy { !SwitchAlert.retired.contains($0) },
           "the categories older builds registered are taken away, none of ours among them")
     check(SwitchAlert.isQuiet(SwitchAlert.cancelSwitch) && SwitchAlert.isQuiet(SwitchAlert.later) && SwitchAlert.isQuiet(SwitchAlert.stay)

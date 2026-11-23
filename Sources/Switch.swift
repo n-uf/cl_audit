@@ -69,7 +69,7 @@ extension AccountEntry {
     }
     static let codeSeatMissingWords = "Terminal's account isn't fully known yet (its organisation), so there is no folder to move the sessions to. Refresh now, then try again."
     static let appSeatMissingWords = "The Claude app's account isn't known yet (its window's sign-in, with its organisation), so there are no sessions to move. Open the Claude window once, then try again."
-    static let sameAccountWords = "The Claude app is on Terminal's account already: nothing to switch."
+    static let sameAccountWords = "The Claude app is on Terminal's account already. There's nothing to switch."
 
     /// How the Claude app's sign-in is read for a profile (its window's account and organisation); checks give their own.
     nonisolated(unsafe) static var appLogin: (AccountEntry) -> AppSignIn.Login = { AppSignIn.cached(for: $0) }
@@ -193,5 +193,5 @@ enum SwitchWords {
                             : "You can switch to its other account: Claude Code signs in again on this profile's folder."
     }
     /// The full-limit alert's button, worded like the card's and the menus' (it opens the Switch page)
-    static let button = "Switch account…"
+    static let button = "Switch account"
 }

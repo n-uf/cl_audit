@@ -1571,7 +1571,7 @@ struct AccountSettings: View {
             SRow(label: "Fable's limit", info: "Fable's own weekly limit (Max and Ultra plans, premium Team and Enterprise seats): shown on this profile's dashboard card, usage panels, Dock and menu bar menus and the widget, with its alerts. Off: left out everywhere; it still counts in Anthropic's limits.") {
                 SSwitch(isOn: $entry.showFable, on: "shown and alerted", off: "left out")
             }
-            Button("Remove profile…") { model.askRemove(entry.id) }
+            Button("Remove profile") { model.askRemove(entry.id) }
                 .buttonStyle(.plain).font(.system(size: 12.5)).foregroundStyle(face.danger)
                 .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 .overlay(alignment: .top) { EngravedRule() }
