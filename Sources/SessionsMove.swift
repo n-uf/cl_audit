@@ -7,7 +7,8 @@
 // they are fingerprints like everywhere else in the file, so an import of that file can't name the accounts.
 //
 // An import never changes a profile that is here. A profile of the file is "already here" when one of its accounts (the account and
-// organisation ids) is a profile's here, in use or standing by (one account belongs to one profile), or, for a file that names no
+// organisation ids) is a profile's here, in use or standing by, and that profile has its id or its name (an account can be in more
+// than one profile, so an account alone doesn't make it the same profile), or, for a file that names no
 // account, when a profile here has its name. One whose name a profile here already has (with other accounts) isn't made. The others
 // are made, under the file's id when it is free here (another id when it isn't). A profile made by an import:
 // - has no sign-in. Each of its accounts needs one (Sign in with another account…): sign-ins never travel, and the Keychain is never read;

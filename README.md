@@ -476,7 +476,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   - A **standby** account's address is a pop-up with **Switch to it…** and **Forget…** (asks first; it takes the account
     off the profile for good, and nothing on this Mac changes).
   - The standby accounts are **found by themselves** (see the dashboard's Another account above); no sign-in is ever
-    copied, and an account belongs to one profile. **Sign in with another account…** runs Claude Code's own sign-in on
+    copied. An account can be in more than one profile, and each of them shows the same numbers. **Sign in with another account…** runs Claude Code's own sign-in on
     the profile's folder with no address filled in: the account that signs in becomes the one in use, and the one
     before goes on standby. New profile still starts with one account.
   - **Folders from before.** Up to 26.11.16 cl_audit kept a standby account's sign-in, and the account in use's when it
