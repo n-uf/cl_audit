@@ -79,7 +79,8 @@ extension DockTile {
         return age >= -5 && age < AppPlaces.agentBeatSeconds * 3 && (m.pausedUntil.map { $0 <= now } ?? true)
     }
 
-    /// The two fields of the agent's mark (AgentMark) this asks: when it last beat, and until when it waits after crashes.
+    /// The two fields of the agent's mark (AgentMark, Agent.swift) this asks, by AgentMark's own names: when it last beat, and
+    /// until when it waits after crashes. Checks/docktile writes an AgentMark and reads it back through this.
     private struct MarkBeat: Decodable { var beat: Date; var pausedUntil: Date? }
 }
 

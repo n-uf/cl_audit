@@ -47,17 +47,22 @@ struct PluginProfile: Equatable {
     var windowDot = true
     var claudeWindow = true
     /// Its Claude window quits with its Dock icon (ProfileRuns.windowFollowsDock): only the running app's menu says so
-    /// ("Quit and keep"); the plug-in's never does.
+    /// ("Quit and keep"); the plug-in's never does, so it doesn't use this. Decoded from accounts.json it ignores the legacy
+    /// `lifecycle` key that AccountEntry still reads (PluginProfile(e) carries the app's answer).
     var windowFollowsDock = false
 
     init(id: String, name: String, label: String) { self.id = id; self.name = name; self.label = label }
 
-    /// The profile's own colour, nil for none (AccountEntry.ownColor's rule).
-    var ownColor: TileColor? { accent ?? ([.usage, .graphite].contains(color) ? nil : color) }
+    /// The profile's own colour, nil for none: its accent, else its Dock icon's colour when that is one of its own.
+    var ownColor: TileColor? { Self.ownColor(accent: accent, color: color) }
+    /// The one rule (AccountEntry.ownColor asks it too).
+    static func ownColor(accent: TileColor?, color: TileColor) -> TileColor? { accent ?? (color.isOwn ? color : nil) }
     /// What decides the face besides the record, in cl_kit's terms.
     var look: ProfileLook { ProfileLook(name: name, label: label, pollMinutes: pollMinutes, windowDot: windowDot) }
-    /// Its label, or the start of its name when it has none (Account.label's rule).
-    var shortLabel: String { label.isEmpty ? String(name.uppercased().prefix(6)) : label }
+    /// Its label, or the start of its name when it has none.
+    var shortLabel: String { Self.shortLabel(name: name, label: label) }
+    /// The one rule (Account.label asks it too).
+    static func shortLabel(name: String, label: String) -> String { label.isEmpty ? String(name.uppercased().prefix(6)) : label }
 
     /// The entry with this id in the profiles file, or nil: a capped read of a regular file (SafeRead), never a wait.
     static func load(_ id: String) -> PluginProfile? {
@@ -80,6 +85,8 @@ struct PluginProfile: Equatable {
 }
 
 extension PluginProfile: Decodable {
+    /// AccountEntry's keys for the fields the tile and its menu use. A new field the face or the menu reads must be added
+    /// here, to init(from:) and to PluginProfile(_ e:) (DockTileApps.swift); Checks/docktile compares the two.
     private enum Keys: String, CodingKey {
         case id, name, label, style, pollMinutes, color, frame, accent, windowDot, claudeWindow, iconHidden, windowFollowsDock
     }

@@ -15,7 +15,8 @@ import os
 
 let agentLog = Logger(subsystem: "local.usage-n-uf", category: "agent")
 
-/// The agent's "alive" mark. No secrets, no e-mail addresses.
+/// The agent's "alive" mark. No secrets, no e-mail addresses. The Dock tile plug-in reads two of its fields by their names,
+/// `beat` and `pausedUntil` (DockTile.agentRuns' MarkBeat): rename neither without it (Checks/docktile writes this mark).
 struct AgentMark: Codable, Equatable {
     var pid: Int32
     var started: Date

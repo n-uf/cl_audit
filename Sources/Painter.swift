@@ -119,9 +119,12 @@ enum TileColor: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// A colour a profile can call its own: not "by usage" and not graphite (the one rule: PluginProfile.ownColor, lamp).
+    var isOwn: Bool { ![.usage, .graphite].contains(self) }
+
     /// The light a profile colour gives (ProfileLED, the menus' profile row): its colour and lit, or unlit for none.
     static func lamp(_ c: TileColor?) -> (color: NSColor?, lit: Bool) {
-        guard let c, ![.usage, .graphite].contains(c) else { return (nil, false) }     // no colour of its own (as ownColor)
+        guard let c, c.isOwn else { return (nil, false) }
         return (c.color(fiveHour: nil, stale: false), true)
     }
 }

@@ -162,6 +162,8 @@ enum DockTileMenu {
                 i.target = target; i.representedObject = object(act, what)
                 m.addItem(i)
             case .address(let r):
+                // (a menu with address rows always comes with their items: only the Dock tile's has none, and no address rows)
+                assert(address != nil, "an address row with no address item: DockTileMenu.menu(…, views:) draws them")
                 if let address { m.addItem(address(r)) }
             case .submenu(let s, let inside):
                 let i = NSMenuItem(title: fit(s), action: nil, keyEquivalent: "")

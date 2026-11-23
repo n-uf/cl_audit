@@ -137,7 +137,7 @@ struct Account {
 
     /// The profile's label as its icons show it: its own, else its name's first six letters. Reads nothing (the Dock tile
     /// plug-in draws with it; `init` looks at the folder too).
-    static func label(_ e: AccountEntry) -> String { e.label.isEmpty ? String(e.name.uppercased().prefix(6)) : e.label }
+    static func label(_ e: AccountEntry) -> String { PluginProfile.shortLabel(name: e.name, label: e.label) }   // (the plug-in's rule too)
 
     init(_ e: AccountEntry) {
         label = Self.label(e)
