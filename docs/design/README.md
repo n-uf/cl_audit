@@ -13,6 +13,14 @@ A sketch shows what was proposed at the time. The app and the CHANGELOG say what
 
 ## App sketches
 
+- [accounts-two-apps-sketch.html](accounts-two-apps-sketch.html): Settings ▸ Accounts when the Claude app and Terminal
+  are on different accounts. Approved 2026-11-23; being built. The split is a warning in amber: one zone from the panel's
+  top edge with the ACCOUNTS header inside it, Terminal's account (its numbers, a TERMINAL | APP badge, not selectable,
+  Sign the app in) and the Claude app's (Sign Terminal in, the two keys at one width), then the standby accounts with
+  today's mint selection; red stays for signed out or expired. ACCOUNTS and FOLDER are their own sections (CLAUDE CODE
+  goes), one line per section header. Also the after states, today vs proposed, the Dock icon's panel (one window key with
+  the card) and its six-item menu, the dashboard card and the menu bar row.
+
 - [at-limit-sketch.html](at-limit-sketch.html): what a card shows while a limit is full.
 - [inuse-look-sketch.html](inuse-look-sketch.html): how the account in use is marked.
 - [switch-ux-sketch.html](switch-ux-sketch.html): the Switch page.
