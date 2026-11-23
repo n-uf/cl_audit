@@ -182,6 +182,12 @@ struct DashboardSettings: View {
     @State private var placeProblem: String?          // why the folder just picked can't be used
     private static let dayChoices = [0, 7, 14, 30, 60, 90, 180, 365]
 
+    /// The Backups steppers' values, with their units: "3 backups" ("1 backup"), "30 days" ("1 day").
+    static func backupsWords(_ n: Int) -> String { n == 1 ? "1 backup" : "\(n) backups" }
+    static func daysWords(_ n: Int) -> String { n == 1 ? "1 day" : "\(n) days" }
+    /// Every value either Backups row can show: both displays are sized by the widest, so the keys line up.
+    static var keepValues: [String] { (1...50).map(backupsWords) + dayChoices.map(daysWords) }
+
     var backupsCard: some View {
         let place = BackupPrefs.placeURL
         let custom = !backups.place.isEmpty
@@ -219,11 +225,13 @@ struct DashboardSettings: View {
                 }
             }
             SRow(label: "Keep the last", info: "The newest backups of each profile that are always kept, however old.") {
-                MiniStepper(text: "\(backups.last)", down: { backups.last = max(1, backups.last - 1) }, up: { backups.last = min(50, backups.last + 1) })
+                // both rows' displays fit the widest value of either, so their keys line up
+                ValueStepper(text: Self.backupsWords(backups.last), values: Self.keepValues,
+                             down: { backups.last = max(1, backups.last - 1) }, up: { backups.last = min(50, backups.last + 1) })
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
             }
             SRow(label: "And any under", info: "Backups made within this many days are kept too. After Back up now, the ones past both are deleted; one an old switch that stopped half way names is never deleted. 0 keeps only the last few.") {
-                MiniStepper(text: "\(backups.days) days", down: { step(-1) }, up: { step(1) })
+                ValueStepper(text: Self.daysWords(backups.days), values: Self.keepValues, down: { step(-1) }, up: { step(1) })
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
             }
             SRowLine(text: "The last \(backups.last) of each profile, and any under \(backups.days) days.")

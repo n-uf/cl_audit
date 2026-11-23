@@ -4428,6 +4428,16 @@ do {
           "menu bar: older rounds' and gone profiles' keys are stale; the current plan's and other names' stay")
 }
 
+// ============ the one stepper (ValueStepper): the display fits the row set's widest value; the Backups units ============
+do {
+    check(DashboardSettings.backupsWords(1) == "1 backup" && DashboardSettings.backupsWords(3) == "3 backups"
+          && DashboardSettings.daysWords(1) == "1 day" && DashboardSettings.daysWords(30) == "30 days", "Backups steppers: units, one and many")
+    check(ValueStepper.widest(DashboardSettings.keepValues) == "50 backups", "Backups steppers: both sized by the widest of either row")
+    check(ValueStepper.widest(stride(from: 50, through: 100, by: 5).map { "\($0)%" }) == "100%"
+          && PeekDuration.all.first == PeekDuration.range.lowerBound && PeekDuration.all.last == PeekDuration.range.upperBound,
+          "Notify at and Usage shows for: their sets run end to end")
+}
+
 // ============ Settings ▸ Sessions ▸ Backups: the scroller shows at most 3 boxes ============
 do {
     check(SessionsCard.shownBoxes == 3 && SessionsCard.listHeight([50, 60, 70, 80, 90], spacing: 8) == 196

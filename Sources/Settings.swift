@@ -1498,17 +1498,30 @@ struct InfoDot: View {
     }
 }
 
-/// − value ＋ in small pills.
-struct MiniStepper: View {
+/// The one stepper: − and + keys round a display window that is as wide as the widest value the row can show
+/// (`values`), so the keys stay put as the value changes, and line up across rows handed the same set. The same gap on
+/// both sides of the display; it sits at the start of the value column like every control there.
+struct ValueStepper: View {
     let text: String
+    /// Every value the row can show (or several rows' together, to line their keys up): the display fits the widest.
+    let values: [String]
     let down: () -> Void
     let up: () -> Void
-    /// − and + keys round a small display window.
+
+    static let gap: CGFloat = 6
+
+    /// The value the display is sized for: the longest (the display's type is monospaced, so the longest is the widest).
+    static func widest(_ values: [String]) -> String { values.max { $0.count < $1.count } ?? "" }
+
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Self.gap) {
             Button(action: down) { Image(systemName: "minus").font(.system(size: 9, weight: .bold)).frame(width: 8) }
-            DisplayWindow(text: text).frame(minWidth: 54)
+                .accessibilityLabel("Less")
+            // sized by the widest value (hidden), the value drawn over it at that width
+            DisplayWindow(text: Self.widest(values + [text])).hidden()
+                .overlay(alignment: .leading) { DisplayWindow(text: text, fill: true) }
             Button(action: up) { Image(systemName: "plus").font(.system(size: 9, weight: .bold)).frame(width: 8) }
+                .accessibilityLabel("More")
         }
         .buttonStyle(PillButtonStyle(tint: nil, compact: true))
     }
@@ -2507,9 +2520,9 @@ struct AccountSettings: View {
         }
         if brief {
             SRow(label: "Usage shows for", info: "How long the usage panel stays up after a click" + (opens ? ", before the Claude window opens." : ".")) {
-                MiniStepper(text: PeekDuration.text(entry.peekSeconds),
-                            down: { entry.peekSeconds = PeekDuration.down(entry.peekSeconds) },
-                            up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
+                ValueStepper(text: PeekDuration.text(entry.peekSeconds), values: PeekDuration.all.map(PeekDuration.text),
+                             down: { entry.peekSeconds = PeekDuration.down(entry.peekSeconds) },
+                             up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
             }
         }
     }
@@ -2597,9 +2610,9 @@ struct AccountSettings: View {
                 HStack(spacing: 8) {
                     SSwitch(isOn: $entry.notify, on: "", off: "off")        // on: the level beside it says the rest
                     if entry.notify {
-                        MiniStepper(text: "\(entry.notifyPercent)%",
-                                    down: { entry.notifyPercent = max(50, entry.notifyPercent - 5) },
-                                    up: { entry.notifyPercent = min(100, entry.notifyPercent + 5) })
+                        ValueStepper(text: "\(entry.notifyPercent)%", values: stride(from: 50, through: 100, by: 5).map { "\($0)%" },
+                                     down: { entry.notifyPercent = max(50, entry.notifyPercent - 5) },
+                                     up: { entry.notifyPercent = min(100, entry.notifyPercent + 5) })
                     }
                 }
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }

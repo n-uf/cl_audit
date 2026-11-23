@@ -27,6 +27,7 @@ the notes before updating.
   - If macOS keeps moving them, cl_audit stops after three tries, and a ⌘-drag stays until the profiles change.
 - **Settings ▸ Accounts:** with a standby account selected, a click on the account in use clears the selection.
 - **Settings ▸ Sessions ▸ Backups** shows at most three backups and scrolls for the rest, so the card stays its size.
+- **Steppers** are one control: a display fitted to the widest value, so General ▸ Backups' two rows line up; they read "3 backups" and "30 days".
 
 ## 26.11.88 — 2026-11-23
 

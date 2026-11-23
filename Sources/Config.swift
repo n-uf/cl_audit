@@ -283,6 +283,12 @@ enum PeekDuration {
     static let range: ClosedRange<Double> = 0.25...15
     static func up(_ v: Double) -> Double { min(range.upperBound, v < 3 ? v + 0.25 : v.rounded(.down) + 1) }
     static func down(_ v: Double) -> Double { max(range.lowerBound, v > 3 ? v.rounded(.up) - 1 : v - 0.25) }
+    /// Every duration the stepper steps through, shortest first.
+    static var all: [Double] {
+        var out = [range.lowerBound]
+        while let v = out.last, v < range.upperBound { out.append(up(v)) }
+        return out
+    }
     /// "0.75 s", "2 s", "1.5 s".
     static func text(_ v: Double) -> String {
         let s = v == v.rounded() ? "\(Int(v))" : String(format: "%g", v)
