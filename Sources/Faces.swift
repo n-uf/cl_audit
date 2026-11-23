@@ -653,30 +653,13 @@ struct MintRow: ViewModifier {
     var barOffset: CGFloat = 6              // the bar's distance left of the box
     /// The same treatment in red: the account in use whose sign-in is wrong or gone (Settings ▸ Accounts).
     var red = false
-    /// The lit bar on the left; off for a band around several rows (the split's: never a stripe on the left edge).
-    var bar = true
-    /// The band's corners: 0, square (a row's band); the panel's inner radius for a band that reaches the panel's edges
-    /// (the split's), its hairlines soft and kept off the rounded corners.
-    var radius: CGFloat = 0
 
     func body(content: Content) -> some View {
         let c: Color = red ? .hex(0xff6b5e) : FaceTheme.mint
         let bar: [Color] = red ? [.hex(0xffd9d4), .hex(0xff6b5e)] : [.hex(0xe2fffa), .hex(0x7ff3e2)]
-        // a soft hairline: fading out towards both ends, inset by the corners' radius (a lighter red on top)
-        func hairline(_ color: Color) -> some View {
-            LinearGradient(colors: [color.opacity(0), color, color, color.opacity(0)], startPoint: .leading, endPoint: .trailing)
-                .frame(height: 1).padding(.horizontal, radius)
-        }
         return content
             .background(alignment: .leading) {
-                if on, radius > 0 {
-                    RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .fill(LinearGradient(colors: [c.opacity(red ? 0.11 : 0.13), c.opacity(red ? 0.05 : 0.06)], startPoint: .top, endPoint: .bottom))
-                        .overlay(alignment: .top) { hairline((red ? Color.hex(0xffa49b) : c).opacity(0.42)) }
-                        .overlay(alignment: .bottom) { hairline(c.opacity(red ? 0.17 : 0.20)) }
-                        .padding(.horizontal, -reach).padding(.vertical, -6)
-                        .allowsHitTesting(false)
-                } else if on {
+                if on {
                     LinearGradient(colors: [c.opacity(red ? 0.11 : 0.13), c.opacity(red ? 0.05 : 0.06)], startPoint: .top, endPoint: .bottom)
                         .overlay(alignment: .top) { c.opacity(red ? 0.28 : 0.32).frame(height: 1) }
                         .overlay(alignment: .bottom) { c.opacity(red ? 0.17 : 0.20).frame(height: 1) }
@@ -685,7 +668,7 @@ struct MintRow: ViewModifier {
                 }
             }
             .overlay(alignment: .leading) {
-                if on && self.bar {
+                if on {
                     Capsule().fill(LinearGradient(colors: bar, startPoint: .leading, endPoint: .trailing))
                         .frame(width: 3)
                         .padding(.vertical, 8)
@@ -702,9 +685,37 @@ extension View {
     func mintRow(_ on: Bool, red: Bool = false, reach: CGFloat = 12, barOffset: CGFloat = 6) -> some View {
         modifier(MintRow(on: on, reach: reach, barOffset: barOffset, red: red))
     }
-    /// The red band around several rows, edge to edge in a panel: no bar, its corners the panel's inner `radius`.
-    func redBand(reach: CGFloat, radius: CGFloat) -> some View {
-        modifier(MintRow(on: true, reach: reach, red: true, bar: false, radius: radius))
+}
+
+/// The red band's fill at the top of a panel (SCard's `top`): MintRow's red, from the panel's very top edge, inside its
+/// own rounded top corners (`radius`: the panel's), edge to edge; no bar and no top line (the fill meets the panel's edge),
+/// its faint lower edge where the panel's own content starts.
+struct TopBandFill: View {
+    let radius: CGFloat
+    var body: some View {
+        let c = Color.hex(0xff6b5e)
+        LinearGradient(colors: [c.opacity(0.11), c.opacity(0.05)], startPoint: .top, endPoint: .bottom)
+            .overlay(alignment: .bottom) { c.opacity(0.17).frame(height: 1) }
+            .clipShape(TopRounded(radius: radius))
+            .allowsHitTesting(false)
+    }
+}
+
+/// A rectangle with only its top corners rounded (continuous enough at a panel's 4–10 pt radius): macOS 13 has no
+/// UnevenRoundedRectangle.
+struct TopRounded: Shape {
+    let radius: CGFloat
+    func path(in r: CGRect) -> Path {
+        let k = min(radius, r.width / 2, r.height)
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX, y: r.minY + k))
+        p.addArc(tangent1End: CGPoint(x: r.minX, y: r.minY), tangent2End: CGPoint(x: r.minX + k, y: r.minY), radius: k)
+        p.addLine(to: CGPoint(x: r.maxX - k, y: r.minY))
+        p.addArc(tangent1End: CGPoint(x: r.maxX, y: r.minY), tangent2End: CGPoint(x: r.maxX, y: r.minY + k), radius: k)
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        p.closeSubpath()
+        return p
     }
 }
 

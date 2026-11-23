@@ -1212,20 +1212,30 @@ struct TileText: View {
 struct SCard<Content: View>: View {
     let title: String
     var info: String? = nil
+    /// A red band at the very top of the card, above its title (the split's, Settings ▸ Accounts): its fill starts at the
+    /// card's top edge, inside its rounded top corners, edge to edge; what it holds keeps the card's own padding.
+    var top: AnyView? = nil
     @ViewBuilder let content: Content
     @Environment(\.face) private var face
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Printed(text: title)
-                if let info { InfoDot(text: info) }
-                EngravedRule(dark: face.light ? .black(0.28) : nil).frame(minWidth: 12)
+        VStack(alignment: .leading, spacing: 0) {
+            if let top {
+                top.padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(TopBandFill(radius: face.moduleRadius))
             }
-            .padding(.bottom, 4)
-            VStack(spacing: 0) { content }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Printed(text: title)
+                    if let info { InfoDot(text: info) }
+                    EngravedRule(dark: face.light ? .black(0.28) : nil).frame(minWidth: 12)
+                }
+                .padding(.bottom, 4)
+                VStack(spacing: 0) { content }
+            }
+            .padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 10)
         }
-        .padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RaisedShape(finish: face.module, radius: face.moduleRadius))
     }
@@ -1578,7 +1588,9 @@ struct AccountSettings: View {
 
     private func codeCard(stacked: Bool) -> some View {
         SCard(title: "Claude Code",
-              info: "The claude.ai account this profile uses and the Claude Code folder it lives in. Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.") {
+              info: "The claude.ai account this profile uses and the Claude Code folder it lives in. Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.",
+              // the split by hand: its red band at the card's very top, nothing above it
+              top: splitBand ? view.codeRow.map { AnyView(splitBandRows($0)) } : nil) {
             accountRows(stacked: stacked)
             SRow(label: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder; folders are used where they are (Claude Code names a folder's Keychain sign-in after its path).", stacked: stacked) {
                 // the folder key beside the pop-up while the whole path fits; in a narrow column the pop-up alone (its
@@ -1684,11 +1696,8 @@ struct AccountSettings: View {
                 // a switch of this profile running, or refused before anything: one line, the Switch page's strip words
                 SwitchStripLine(runner: model.runner(of: entry.id))
                 if let n = entry.accountNote { accountNoteRow(n) }
-                if splitBand, let code = view.codeRow {
-                    // the split by hand: Terminal's account and the Claude app's in one red band, a key on each
-                    splitBandRows(code)
-                        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
-                } else {
+                // the split by hand: Terminal's account and the Claude app's are in the red band at the card's top (codeCard)
+                if !splitBand {
                     inUseBox
                         .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
                     // Claude Code's account while the Claude app is still on another (right after a switch): its own row
@@ -1808,9 +1817,10 @@ struct AccountSettings: View {
     /// waiting for the app, or Terminal signed out or expired, keep the rows as they were.
     var splitBand: Bool { view.codeRow != nil && UsageNotice.of(inUseRow)?.link != nil }
 
-    /// The band: the red headline and the two muted lines once, then Terminal's account, then the Claude app's. Edge to
-    /// edge in the Claude Code panel (its corners the panel's inner radius), no bar on its left; the boxes inside stay the
-    /// normal dark. A link to the profile's Settings ▸ Accounts lands here (SettingsLink.splitBand).
+    /// The band: the red headline and the two muted lines once, then Terminal's account, then the Claude app's. At the very
+    /// top of the Claude Code panel (SCard's `top`: the fill from the panel's top edge, inside its rounded corners, edge to
+    /// edge), no bar on its left; the boxes inside stay the normal dark. A link to the profile's Settings ▸ Accounts lands
+    /// here (SettingsLink.splitBand).
     func splitBandRows(_ code: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
@@ -1823,10 +1833,6 @@ struct AccountSettings: View {
             splitTerminalBox(code)
             splitAppBox
         }
-        // comfortable room above the headline and under the last box, inside the band (which reaches 6 pt further)
-        .padding(.top, 8).padding(.bottom, 6)
-        .redBand(reach: 14, radius: face.moduleRadius)       // the SCard's 14 pt side padding, its inner radius
-        .padding(.top, 8).padding(.bottom, 6)                // room under the Accounts title, and above the standby rows
         .id(SettingsLink.splitBand)
     }
 
