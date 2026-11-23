@@ -17,14 +17,16 @@ the notes before updating.
   - If cl_audit doesn't know the Claude app's address yet, that row says to open the Claude window once.
   - The Switch page opens for Terminal's account even when something is missing, and says what.
   - The struck-through sign-in chips and the red "Terminal is signed in to …" lines are gone.
-  - The dashboard card, the menu bar row and the Dock panel say "Claude window on another account ›" in amber.
+  - The dashboard card, the menu bar row and the Dock panel name Terminal's account, then say "Claude window on another account ›" in amber under it.
   - That line is a link to the profile's Settings ▸ Accounts, at the band.
   - Show window turns amber on the card and the Dock panel.
   - The Dock panel names Terminal's account, marked "· Terminal", and shows the TERMINAL | APP badge by the name.
   - The Dock panel's keys sit in one row: Show window, Sign in, Dashboard and the gear.
   - Its old "Can't read …" and "Terminal: …" lines and its full-width key are gone.
-- A profile's Claude Code card is now two sections, ACCOUNTS and FOLDER (with Share from and Shared).
+  - In the split, the Dock panel shows no plan capsule.
+- A profile's Claude Code settings are now two cards, ACCOUNTS and FOLDER (with Share from and Shared).
 - Each section header's line is the only line under it.
+- When the cl_audit agent isn't running, the Dock panel says so in full sentences and asks you to open cl_audit.
 - Keys no longer end in "…" (Sign in, Export, Move to Trash, Pick folder). Menu items and links keep theirs.
 - The note after the standby list is tidied reads "The standby list was tidied. Each account is listed once per plan."
 - A profile's saved status and what its Dock icon shows now come from cl_kit, the code cl_audit shares with cl_quick, so both apps read and draw them the same way. Nothing you see changes, and Dock icons from earlier versions still read the new files.
