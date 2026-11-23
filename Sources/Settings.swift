@@ -701,6 +701,7 @@ final class SettingsModel: ObservableObject {
             d.color = TileColor.accents.first { !used.contains($0) } ?? .purple
             d.template = accounts.first(where: { $0.id == selection }) ?? accounts.first
             d.standardTaken = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: accounts) != nil
+            d.menuBar = true                  // On this Mac's menu bar icon starts on here (first run and the default profile: off)
             draft = d
         }
         selection = Self.newID

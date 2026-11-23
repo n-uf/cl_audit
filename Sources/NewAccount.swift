@@ -37,6 +37,9 @@ struct NewAccountDraft: Equatable {
     var existingDir: String?            // the chosen folder, when connecting an existing one
     var continueAnyway = false          // set up while Claude is still running
     var usageInDock = true              // off: no Dock icon, usage read in the background (the last step, "Start reading usage")
+    /// Its own menu bar icon (On this Mac). Off by default; New profile's page starts it on (SettingsModel.startNew), first
+    /// run and the default profile leave it off.
+    var menuBar = false
     var claudeWindow = true             // off: no Claude window, so no Claude app sign-in step
     /// "Sign in to another account…": the address Claude Code's sign-in is filled in with (only filled in: the
     /// browser's claude.ai account decides; empty: none, optional), the address row open, and when Sign in was pressed.
@@ -97,7 +100,17 @@ struct NewAccountDraft: Equatable {
         e.accent = color
         e.iconHidden = !usageInDock
         e.claudeWindow = claudeWindow
+        e.menuBar = menuBar
+        e.menuBarLook = Self.newMenuBarLook       // (the template's look isn't copied: a new profile starts here)
         return e
+    }
+
+    /// A new profile's menu bar icon: Two bars, Levels, the profile's label and Countdown. MenuBarLook's own default (the
+    /// carry-over from the old single item, MenuBarLegacy, too) keeps no label.
+    static var newMenuBarLook: MenuBarLook {
+        var l = MenuBarLook()
+        l.label = true
+        return l
     }
 }
 
@@ -288,6 +301,13 @@ enum NewAccountSetup {
     /// The address row's field and its grey line: the address only fills in the sign-in, the browser's account decides.
     static let addressPlaceholder = "name@example.com (optional)"
     static let addressHelp = "Leave it empty to choose the account in your browser."
+
+    /// On this Mac's grey line under a Claude window that's on.
+    static func windowWords(standard: Bool) -> String {
+        standard ? "The usual Claude app, with its sign-in and Code sidebar." : "Its own window, with its own sign-in and Code sidebar."
+    }
+    /// On this Mac's grey line under a menu bar icon that's on.
+    static let menuBarWords = "Style and colours: in Settings after."
 
     /// Why Sign in (the address route) can't go with this address, or nil: only an address that isn't one. The address is
     /// optional: empty signs in with none, and the account picked in the browser is the folder's, read afterwards. Another
@@ -738,14 +758,13 @@ struct NewAccountView: View {
 
     // MARK: layouts
 
-    /// Three columns: who it is and each part in its own card (layout A, the part's switch first) · Claude Code · steps.
+    /// Three columns: who it is and its parts on this Mac · Account · steps.
     private func three(_ c: Columns, _ w: CGFloat) -> some View {
         ScrollView {
             HStack(alignment: .top, spacing: Self.gap) {
                 VStack(spacing: 10) {
                     profileCard(stacked: c.widths[0] < Self.smallRowsFit)
-                    windowCard(stacked: c.widths[0] < Self.smallRowsFit)
-                    dockCard(stacked: c.widths[0] < Self.smallRowsFit)
+                    onThisMacCard(stacked: c.widths[0] < Self.smallRowsFit)
                 }
                 .frame(width: c.widths[0])
                 folderCard(stacked: c.widths[1] < Self.rowsFit).frame(width: c.widths[1])
@@ -756,15 +775,14 @@ struct NewAccountView: View {
         }
     }
 
-    /// Two columns: every card, Claude Code right after who it is · the steps.
+    /// Two columns: Profile, On this Mac and Account, in that order · the steps.
     private func two(_ c: Columns, _ w: CGFloat) -> some View {
         ScrollView {
             HStack(alignment: .top, spacing: Self.gap) {
                 VStack(spacing: 10) {
                     profileCard(stacked: c.widths[0] < Self.smallRowsFit)
+                    onThisMacCard(stacked: c.widths[0] < Self.smallRowsFit)
                     folderCard(stacked: c.widths[0] < Self.rowsFit)
-                    windowCard(stacked: c.widths[0] < Self.smallRowsFit)
-                    dockCard(stacked: c.widths[0] < Self.smallRowsFit)
                 }
                 .frame(width: c.widths[0])
                 stepsPanel(bar: true).frame(width: c.widths[1])
@@ -781,9 +799,8 @@ struct NewAccountView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     profileCard(stacked: cw < Self.smallRowsFit)
+                    onThisMacCard(stacked: cw < Self.smallRowsFit)
                     folderCard(stacked: cw < Self.rowsFit)
-                    windowCard(stacked: cw < Self.smallRowsFit)
-                    dockCard(stacked: cw < Self.smallRowsFit)
                     stepsPanel(bar: false)
                 }
                 .frame(maxWidth: 700)
@@ -806,39 +823,35 @@ struct NewAccountView: View {
             // a red line only (the name taken, or emptied after a connect); no name yet is Account's one grey line
             if let clash = checks(.account).first(where: { $0.state == .bad }) { SRowLine(text: clash.text, color: face.danger) }
             SRow(label: "Colour", info: "The profile's colour in the launcher, on the dashboard and in its panels.", stacked: stacked) {
-                FlowLayout(spacing: 6) {
-                    ForEach(TileColor.accents, id: \.self) { c in
-                        Swatch(color: c, selected: draft.color == c, size: 16).onTapGesture { draft.color = c }
-                    }
-                }
-                .padding(.vertical, 6)
-                .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+                // Settings ▸ Profile's own swatch row: the colours in one row
+                SwatchRow(colors: TileColor.accents, selected: draft.color) { if let c = $0 { draft.color = c } }
             }
         }
     }
 
-    /// Claude window: its switch first (layout A). Which window follows from the folder: ~/.claude uses the usual Claude
-    /// app, any other folder its own window; only a clash with another profile's window needs a line.
-    private func windowCard(stacked: Bool) -> some View {
-        SCard(title: "Claude window", info: "A Claude window signed in to this profile's account. A folder other than ~/.claude gets its own window, with its own sign-in and Code sidebar; ~/.claude uses the usual Claude app. Off: no window, and no window sign-in step; Claude Code in Terminal still works.") {
-            SRow(label: "Claude window", info: "On: a Claude window for this profile, opened from the dashboard or its Dock icon.\nOff: none.\nIts folder is made in the Claude window step, after Sign in, once the desktop app is closed.\nTurned off, the window this setup started is quit and the folder it made is removed.", first: true, stacked: stacked) {
+    /// On this Mac: the profile's three parts here, one switch row each with the words profile settings use, in the order the
+    /// sketch reads (the largest to the smallest): its Claude window, its Dock icon, its menu bar icon. A part that's on says
+    /// in one grey line what it comes with (the window: its sign-in and sidebar; the menu bar: where its look is set); the
+    /// Dock icon's click and look start as the template profile's. Profile settings keep each part's own card.
+    private func onThisMacCard(stacked: Bool) -> some View {
+        SCard(title: "On this Mac", info: "This profile's things on this Mac: a Claude window signed in to its account, a Dock icon and a menu bar icon showing its usage. Each can change later in the profile's settings.") {
+            SRow(label: "Claude window", info: "On: a Claude window for this profile, opened from the dashboard or its Dock icon. A folder other than ~/.claude gets its own window, with its own sign-in and Code sidebar; ~/.claude uses the usual Claude app.\nOff: none, and no window sign-in step; Claude Code in Terminal still works.\nIts folder is made in the Claude window step, after Sign in, once the desktop app is closed.\nTurned off, the window this setup started is quit and the folder it made is removed.", first: true, stacked: stacked) {
                 SSwitch(isOn: Binding(get: { draft.claudeWindow }, set: { setWindow($0) }),
                         on: draft.window == .standard ? "the usual Claude app" : "its own window", off: "none")
                     .disabled(windowBusy || model.discarding)
             }
+            if draft.claudeWindow { SRowLine(text: NewAccountSetup.windowWords(standard: draft.window == .standard)) }
             if let note = windowNoteShown { SRowLine(text: note, color: face.caution) }
             if draft.claudeWindow, let clash = checks(.window).first(where: { $0.state != .ok }) {
                 SRowLine(text: clash.text, color: clash.state == .bad ? face.danger : face.caution)
             }
-        }
-    }
-
-    /// Dock icon: its switch first (layout A); the rest of its settings start as the template profile's.
-    private func dockCard(stacked: Bool) -> some View {
-        SCard(title: "Dock icon", info: "A Dock icon, “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)”, showing this profile's usage; how it runs, its click and its look start as \(draft.template?.name ?? "the other profiles'") and are in the profile's settings afterwards.") {
-            SRow(label: "Usage in the Dock", info: "On: Create installs the Dock icon and puts it in the Dock. Off: nothing is installed and the Dock isn't touched; cl_audit still reads the usage for the dashboard, the launcher and alerts.", first: true, stacked: stacked) {
+            SRow(label: "Dock icon", info: "On: Create installs “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)” and puts it in the Dock; how it runs, its click and its look start as \(draft.template?.name ?? "the other profiles'") and are in the profile's settings afterwards.\nOff: nothing is installed and the Dock isn't touched; cl_audit still reads the usage for the dashboard, the launcher and alerts.", stacked: stacked) {
                 SSwitch(isOn: $draft.usageInDock, on: "shows the usage", off: "no Dock icon")
             }
+            SRow(label: "Menu bar", info: "On: an icon for this profile in the menu bar, drawn by the cl_audit agent, like its Dock icon. It starts as Two bars in the level colours, with the profile's label and a countdown when full.\nOff: none; the usage is read either way.", stacked: stacked) {
+                SSwitch(isOn: $draft.menuBar, on: "shows the usage", off: "no icon")
+            }
+            if draft.menuBar { SRowLine(text: NewAccountSetup.menuBarWords) }
         }
     }
 
