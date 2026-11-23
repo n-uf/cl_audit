@@ -551,8 +551,7 @@ enum Store {
     /// the file as it was, kept as accounts.json.pre-<version> beside it, owner only, once per version. A copy counts as
     /// done only when it's a plain file of the source's size. The name taken by anything else (a link, a cut-off copy,
     /// another file) is never touched: the copy goes under the next name (…-2, …-3), and a failed write is tried once more
-    /// there. True when a complete copy is kept; false stops the rewrite it comes before (`edit`). Under the profiles
-    /// file's lock.
+    /// there. True when a complete copy is kept. Never blocks the write it comes before. Under the profiles file's lock.
     @discardableResult
     static func preCopy(_ old: Data) -> Bool {
         let base = "accounts.json.pre-\(version.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" })"
@@ -598,13 +597,12 @@ enum Store {
         guard let before = exists ? loadRaw() : [] else { throw CocoaError(.fileReadCorruptFile) }
         // the standby lists tidied before any change (one entry per seat)
         let tidy = StandbyTidy.apply(before, recordOrgs: { AccountList.recordOrgs(before) })
-        let after = change(tidy.accounts)
+        var after = change(tidy.accounts)
         guard after != before || !exists else { return after }
         // a new shape (the old fields go, or the lists were tidied): the file as it was, copied first. A copy that can't be
-        // kept stops the rewrite (as cl_quick's store does): the file stays as it was, nothing is written, and the copy is
-        // tried again at the next save. (An older build's "couldn't be kept" note still reads: AccountNote.noCopy.)
+        // kept never stops the write: each Accounts card then says so, once
         if exists, let old = try? Data(contentsOf: configURL), tidy.changed || oldShape(old), !preCopy(old) {
-            throw CocoaError(.fileWriteUnknown)
+            for i in after.indices { after[i].accountNote = AccountNote(kind: .noCopy, email: "", profile: after[i].name, at: Date()) }
         }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]

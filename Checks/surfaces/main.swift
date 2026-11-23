@@ -1129,21 +1129,19 @@ do {
     let beforeC = copies()
     Store.update("mg") { $0.name = "Mg6" }
     check(copies() == beforeC, "a complete copy for this version: nothing new is made")
-    // neither name usable: a copy that can't be kept stops the rewrite (cl_quick's rule too): the file stays as it was, the
-    // change waits, and the copy is tried again at the next save
+    // neither name usable: the edit still goes ahead, and the Accounts card says the copy couldn't be kept
     try! legacy.write(to: Store.configURL)
     Store.version = "f1"
     // every name it may use is taken by a link (none is ever written through)
     let fNames = ["accounts.json.pre-f1"] + (2...20).map { "accounts.json.pre-f1-\($0)" }
     for n in fNames { try? fm.createSymbolicLink(atPath: pre(n), withDestinationPath: home + "/elsewhere-pre") }
     Store.update("mg") { $0.name = "Mg7" }
-    check(fm.contents(atPath: Store.configURL.path) == legacy, "no copy could be kept: the profiles file isn't rewritten (it stays as it was)")
-    check(!fm.fileExists(atPath: home + "/elsewhere-pre"), "never through the link")
-    for n in fNames { try? fm.removeItem(atPath: pre(n)) }
-    Store.update("mg") { $0.name = "Mg7" }
     let noted = Store.loadRaw()?.first
-    check(noted?.name == "Mg7" && fm.contents(atPath: pre("accounts.json.pre-f1")) == legacy && noted?.accountNote == nil,
-          "…the next save, a name free again: the copy kept first, then the change written, no line: \(noted?.name ?? "-")")
+    check(noted?.name == "Mg7", "the edit went ahead all the same")
+    check(!fm.fileExists(atPath: home + "/elsewhere-pre"), "never through the link")
+    check(noted?.accountNote?.kind == .noCopy && noted?.accountNote?.words.contains("couldn't be kept") == true,
+          "no copy could be kept: the line on the Accounts card says so: \(noted?.accountNote?.words ?? "-") (\(noted?.name ?? "-"))")
+    for n in fNames { try? fm.removeItem(atPath: pre(n)) }
     Store.version = "dev"
     copies().forEach { try? fm.removeItem(at: Store.folder.appendingPathComponent($0)) }
 }
