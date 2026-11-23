@@ -25,10 +25,11 @@ enum SwitchMenu {
     static func inUseLine(_ v: AccountView) -> String? { v.inUseLine }
 
     /// Every standby account, in the order a full limit offers them (the card's and the Switch page's, SwitchOffer), each with
-    /// when it was last in use.
-    static func lines(_ e: AccountEntry, now: Date = Date()) -> [Line] {
+    /// when it was last in use. `notOffered`: listed but never the one a full limit offers (in the split, Terminal's own
+    /// account: the full numbers are its, AccountEntry.fullOffer).
+    static func lines(_ e: AccountEntry, notOffered: (StandbyAccount) -> Bool = { _ in false }, now: Date = Date()) -> [Line] {
         let offers = e.switchOffers(now: now)
-        let best = AccountBook.best(offers.map(\.standby), now: now)
+        let best = AccountBook.best(offers.map(\.standby).filter { !notOffered($0) }, now: now)
         return offers.map { o in
             let full = o.knownFull(now: now)          // orders and picks the offer only; never shown
             let words = o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? ""

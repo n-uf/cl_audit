@@ -111,7 +111,8 @@ enum DockTileMenu {
     static func accounts(_ e: AccountEntry, _ show: ProfileShow, actions: Bool = true, now: Date = Date()) -> [Row] {
         let d = show.display
         let listed = e.listed(by: show.view)                    // never the account in use on standby too
-        let lines = SwitchMenu.lines(listed, now: now)
+        // (in the split, and while a switch waits, Terminal's own account is listed but never offered: its numbers are the full ones)
+        let lines = SwitchMenu.lines(listed, notOffered: { show.view.isCodeRow(id: $0.seat?.account, email: $0.seat?.email ?? $0.email) }, now: now)
         var out: [Row] = []
         // the account in use (none while signed out)
         if d.sign != .signedOut, let inUse = show.view.label {

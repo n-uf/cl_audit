@@ -101,10 +101,14 @@ extension AccountEntry {
     /// THE offer while a limit is full, for every place that makes one (the full-limit alert; the menus pick
     /// the same through SwitchMenu.best): AccountBook.best over the standby list as the account answer lists it, so never
     /// the account in use, matched by its id or its address (AccountView.isActive). An account remembered by its address
-    /// only is never it; no numbers are read for it. `view`: the account answer when the caller has a newer one than the
-    /// saved record (the agent's reader, before it saves).
+    /// only is never it; no numbers are read for it. In the split (a switch waiting for the Claude app too) never Terminal's
+    /// own account either: the full numbers are its (standbyRows). `view`: the account answer when the caller has a newer one
+    /// than the saved record (the agent's reader, before it saves).
     func fullOffer(view: AccountView? = nil, now: Date = Date()) -> SwitchOffer? {
-        listed(by: view ?? AccountView.of(Store.status(for: self, now: now))).bestOffer(now: now)
+        let v = view ?? AccountView.of(Store.status(for: self, now: now))
+        var e = listed(by: v)
+        e.standby = standbyRows(by: v)
+        return e.bestOffer(now: now)
     }
 }
 

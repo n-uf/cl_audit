@@ -2234,6 +2234,24 @@ do {
     // the profile's own full-limit offer is the alert's (the record is saved by now)
     check(e.fullOffer()?.key == AccountEntry.switchKey("qa", "kpat") && e.fullOffer()?.key == fullPost?.key,
           "the profile's offer is the alert's: \(e.fullOffer()?.key ?? "none")")
+    // the split with Terminal's account full: the numbers are Terminal's (mo's), so the offer never names mo, though mo is
+    // on standby (the app's account, pat, in use) and the least used by its last week; the menus' best is the same
+    do {
+        let quinn = Seat(account: uuid(43), organization: uuid(83), email: "quinn@example.com")
+        var q = profile("qb", "~/.claude-qb", pat)
+        q.standby = [StandbyAccount(email: mo.email!, seat: mo, id: "kmo", lastInUse: t0, lastWeek: 5),
+                     StandbyAccount(email: quinn.email!, seat: quinn, id: "kq", lastInUse: t0, lastWeek: 40)]
+        let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: t0)
+        var s = IconStatus(state: "ok"); s.loginEmail = mo.email; s.numbersOwner = mo.email; s.weekly = 100; s.updatedAt = t0
+        s.resolved = AccountResolver.resolve(q, among: [q], app: appPat, code: mo, loginEmail: mo.email, names: [:], now: t0)
+        let v = AccountView.of(s)
+        let codeRow: (StandbyAccount) -> Bool = { v.isCodeRow(id: $0.seat?.account, email: $0.seat?.email ?? $0.email) }
+        let lines = SwitchMenu.lines(q.listed(by: v), notOffered: codeRow, now: t0)
+        check(v.codeRow == mo.email && AccountBook.best(q.listed(by: v).standby, now: t0)?.id == "kmo"
+              && q.fullOffer(view: v, now: t0)?.key == AccountEntry.switchKey("qb", "kq")
+              && SwitchMenu.best(lines)?.key == AccountEntry.switchKey("qb", "kq") && lines.contains { $0.key == AccountEntry.switchKey("qb", "kmo") },
+              "the split, Terminal's account (mo) full: the offer and the menus' best are quinn, never mo (still listed): \(q.fullOffer(view: v, now: t0)?.key ?? "none")")
+    }
     var onlyMo = e; onlyMo.standby = [e.standby[0]]
     check(onlyMo.fullOffer() == nil, "only the account in use on standby: no offer anywhere")
     var byAddress = e; byAddress.standby = [StandbyAccount(email: "lee@example.com", id: "klee")]
