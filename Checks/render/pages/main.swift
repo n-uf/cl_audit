@@ -696,8 +696,9 @@ if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
 
 // ==================================================================== two names (RENDER_ONLY=twonames-)
 // The split by hand in the two names, the Claude app and Terminal: Main's Claude app on wu@, Terminal on zedekiah@, ines@ on
-// standby. Settings ▸ Main ▸ Claude Code with both rows in one red band (std, 460 and 708), the dashboard card and the menu
-// bar row with the red line (460). Files twonames-<surface>-std-w<width>.png. Sample addresses only.
+// standby. Settings ▸ Main ▸ ACCOUNTS and FOLDER with both rows in one amber band (std, 460 and 708), the dashboard card,
+// the menu bar row and the Dock panel with the amber line (460), and the normal state (460). Files
+// twonames-<surface>-std-w<width>.png. Sample addresses only.
 @MainActor func twoNamesRenders() {
     let wu = Seat(account: uuid(36), organization: uuid(76), email: "wu@example.com")
     let zed = Seat(account: uuid(37), organization: uuid(77), email: "zedekiah@example.com")
@@ -731,13 +732,27 @@ if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
     }
     for w in [CGFloat(460), 708] {
         snapshot(framed(AccountSettings(entry: .constant(e), model: model, width: w).codeCard.fixedSize(horizontal: false, vertical: true), w),
-                 "twonames-settings-std-w\(Int(w))", w + 32, 1100)
+                 "twonames-settings-std-w\(Int(w))", w + 32, 1200)
     }
     let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
     snapshot(framed(AccountCard(row: cardRow(e, now: now), actions: acts).frame(width: 460).fixedSize(horizontal: false, vertical: true), 460),
              "twonames-card-std-w460", 492, 600)
     snapshot(framed(MenuBarRow(profile: MenuBarItems.Profile(show: show), now: now).frame(width: 330), 460),
              "twonames-menubar-std-w460", 492, 300)
+    // the Dock icon's panel in the split, as its app builds it (the window open, as the sketch draws it)
+    let dockApp = AppDelegate(); dockApp.entry = e; dockApp.show = show
+    var panel = dockApp.detailsInfo(); panel.windowOpen = true
+    snapshot(framed(DetailsView(info: panel, actions: DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})).fixedSize(), 460),
+             "twonames-dock-std-w460", 492, 600)
+    // the normal state (no split: the Claude app's sign-in not known, so the record's account is the one in use): ACCOUNTS
+    // and FOLDER, each header's hairline its one line
+    var normal = rec
+    normal.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: zed, loginEmail: zed.email, names: [:], now: now)
+    _ = Store.writeStatus(e.id, normal)
+    model.tick += 1
+    print("two names, normal:", ProfileShow.load(e, now: now).display.split == nil ? "no split" : "STILL A SPLIT")
+    snapshot(framed(AccountSettings(entry: .constant(e), model: model, width: 460).codeCard.fixedSize(horizontal: false, vertical: true), 460),
+             "twonames-settings-normal-std-w460", 492, 1200)
 }
 MainActor.assumeIsolated { twoNamesRenders() }
 if ProcessInfo.processInfo.environment["TWONAMES_ONLY"] != nil { print("done"); exit(0) }
