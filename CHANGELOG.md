@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+- **The Dock tile plug-in** (what draws a profile's icon inside the Dock) is built from its own few files: 791 KB instead of 20.6 MB.
+  - It holds no sign-in, Keychain, process or network code, and the build fails if any reaches it.
+  - It reads a profile leniently, so an entry the app can't read still draws a tile, with its unreadable fields at their defaults.
+  - It draws the same face as the Dock icon app, from the same record.
 - **Account rows in the menu bar menu and the dashboard's Switch account menu**, while addresses are hidden:
   - Moving to an address with the arrow keys doesn't show it, and nothing stays shown after the menu closes.
   - The words after an address (" · Terminal", the "…" after "Sign Terminal in to") are smaller and quieter.
