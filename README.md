@@ -668,17 +668,20 @@ at the bottom.
   its own Claude window; it is saved in the profile and doesn't change with the folder's name. With Claude
   window off, the Claude app sign-in step drops out; with Usage in the Dock off, the last step is **Start
   reading usage**, which installs nothing and leaves the Dock alone: the agent reads its usage from then on.
-- **Quit the Claude app first** (with a Claude window), until the folder is created or connected: while open
-  it writes its sign-in and settings. The page lists its windows, checking every 2 s, with Quit and Check
-  again. Without a Claude window this step isn't there: the only new folder is the Claude Code folder, which
-  the Claude app never writes. Claude Code in Terminal doesn't get in the way.
-- **Sign in, in two parts:** a profile is a pair, the Claude Code folder and the Claude window's data folder,
-  each signed in on its own. Claude Code first (Terminal runs `claude auth login` for the folder, with the
-  address filled in when you typed one), then the Claude window, its own or the usual Claude app, signed in to
-  the same claude.ai account (checked by the account id it saved; no email or token is read; the address is
-  shown as a reminder only). Its Code sidebar starts empty: Code sessions stay in the data folder they were made
-  in. "Finish now" leaves sign-in for later. An account another profile already has is taken too, with one
-  amber line that names that profile.
+- **The steps:** a profile is a pair, the Claude Code folder and the Claude window's data folder, each signed in on
+  its own.
+  1. **Sign in** makes the Claude Code folder first (`~/.claude-<name>` with its shared links, or the existing folder
+     connected), then Terminal runs `claude auth login` for it, with the address filled in when you typed one. The
+     Claude app never writes this folder, so it may stay open. Claude Code in Terminal doesn't get in the way either.
+  2. **Claude window** (only with one): its own window's data folder is made once the Claude app is closed, since
+     while open it writes its sign-in and settings. The step shows whether it's open, checking every 2 s, with Quit
+     the desktop app, Check again and Continue anyway; held, it's amber. Then the window, its own or the usual Claude
+     app, is signed in to the same claude.ai account (checked by the account id it saved; no email or token is read;
+     the address is shown as a reminder only). Its Code sidebar starts empty: Code sessions stay in the data folder
+     they were made in.
+  3. **Add the Dock icon** (or **Start reading usage**). "Finish now" leaves sign-in for later; it waits only on the
+     folders the profile needs. An account another profile already has is taken too, with one amber line that names
+     that profile.
 - New profiles start with an existing profile's click and panel settings. **Cancel** undoes only what
   the page created: an existing folder is never deleted or signed out.
 

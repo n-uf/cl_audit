@@ -20,6 +20,12 @@ the notes before updating.
   - A personal plan and a Team seat on one address stay apart: when only one side names the organisation, cl_audit no longer borrows it from the other.
   - The line "Claude Code's record has no address: sign in again in Claude Code." is gone; such numbers now show under Anthropic's account, or hide with the usual "Numbers for another account" line.
 - A standby account whose organisation is found later no longer carries its old week onto that seat (the week was read before the seat was known).
+- **New profile's steps** are now Sign in, Claude window, then the Dock icon.
+  - **Sign in** makes the Claude Code folder and its links first. The Claude app may stay open: it never writes that folder.
+  - **Claude window** (only with one) waits for the Claude app to close before it makes the window's folder, with Quit, Check again and Continue anyway. Then it checks the window's own sign-in.
+  - A step waiting on the Claude app is amber, not red. Red is for failures.
+  - The steps use progress colours: the current step green, a done one green with a check, one to come grey. They are never the profile's colour (a pink profile's current step was pink).
+  - Until the profile has a name, Sign in is dimmed, and "Name the profile first." is a grey hint, not red.
 - **New profile's Account pop-up** lists the other profiles' standby accounts too, as "Plan · Name's standby", after the accounts in use.
   - The accounts found on this Mac now come last, before Sign in to another account.
 - **A usage-only profile's tile** shows its folder again, with "usage only" after it.
