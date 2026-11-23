@@ -140,7 +140,11 @@ enum NewAccountSetup {
     static func exists(_ path: String) -> Bool { !path.isEmpty && FileManager.default.fileExists(atPath: expand(path)) }
 
     /// The Claude Code folder is in place: created, or an existing one connected.
-    static func codeReady(_ d: NewAccountDraft) -> Bool { d.source == .existing ? d.connected : exists(d.configDir) }
+    /// A new folder counts only once this setup made it (createdConfigDir): one that was already there is a red line
+    /// ("already exists"), never "ready".
+    static func codeReady(_ d: NewAccountDraft) -> Bool {
+        d.source == .existing ? d.connected : d.createdConfigDir != nil && exists(d.configDir)
+    }
 
     /// The window's data folder is needed for the switch's current value (on, its own window) and isn't there yet.
     static func windowFolderMissing(_ d: NewAccountDraft) -> Bool { d.window == .separate && d.claudeWindow && !exists(d.dataDir) }
@@ -819,7 +823,7 @@ struct NewAccountView: View {
     /// Profile: who it is (name and colour), in rows like Settings ▸ Profile. `width`: the card's column; narrower than
     /// `swatchesInline`, the Colour row stacks (its label above) so its ten swatches stay one row.
     private func profileCard(stacked: Bool, width: CGFloat) -> some View {
-        SCard(title: "Profile", info: "The new profile: one Claude account, with its Claude Code folder and, if you want them, a Claude window and a Dock icon. Its click and panel settings start as \(draft.template?.name ?? "the other profiles'").") {
+        SCard(title: "Profile", info: "The new profile: one Claude account, with its Claude Code folder and, if you want them, a Claude window, a Dock icon and a menu bar icon. Its click and panel settings start as \(draft.template?.name ?? "the other profiles'").") {
             SRow(label: "Name", info: "What cl_audit calls this profile. Its Dock icon is “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)”, and a new Claude Code folder is \(draft.name.isEmpty ? "~/.claude-<name>" : draft.newConfigDir).", first: true, stacked: stacked) {
                 SField(placeholder: "e.g. personal", text: $draft.name, width: nil).disabled(draft.locked || waiting)   // (not while a sign-in waits)
             }
@@ -844,10 +848,14 @@ struct NewAccountView: View {
                         on: draft.window == .standard ? "the usual Claude app" : "its own window", off: "none")
                     .disabled(windowBusy || model.discarding)
             }
-            if draft.claudeWindow { SRowLine(text: NewAccountSetup.windowWords(standard: draft.window == .standard)) }
-            if let note = windowNoteShown { SRowLine(text: note, color: face.caution) }
-            if draft.claudeWindow, let clash = checks(.window).first(where: { $0.state != .ok }) {
+            // one line under the window: the switch's note, else its clash, else (nothing to warn of) what it comes with
+            let clash = draft.claudeWindow ? checks(.window).first(where: { $0.state != .ok }) : nil
+            if let note = windowNoteShown {
+                SRowLine(text: note, color: face.caution)
+            } else if let clash {
                 SRowLine(text: clash.text, color: clash.state == .bad ? face.danger : face.caution)
+            } else if draft.claudeWindow {
+                SRowLine(text: NewAccountSetup.windowWords(standard: draft.window == .standard))
             }
             SRow(label: "Dock icon", info: "On: Create installs “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)” and puts it in the Dock; how it runs, its click and its look start as \(draft.template?.name ?? "the other profiles'") and are in the profile's settings afterwards.\nOff: nothing is installed and the Dock isn't touched; cl_audit still reads the usage for the dashboard, the launcher and alerts.", stacked: stacked) {
                 SSwitch(isOn: $draft.usageInDock, on: "shows the usage", off: "no Dock icon")
