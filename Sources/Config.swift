@@ -753,7 +753,9 @@ enum Store {
     /// cl_audit's thresholds for the headline and the display (StatusAges, Core/README.md): fresh for the read interval
     /// plus a minute (6 minutes by default), grey after three missed reads (30 minutes at least), never hidden by age; a
     /// last-known full limit is left out.
-    static func ages(_ e: AccountEntry) -> Headline.Ages { StatusAges.of(pollMinutes: e.pollMinutes) }
+    /// The card, the menu bar, the Dock panel and the agent's alerts name Terminal's account in the split ("· Terminal"), so
+    /// its numbers show there (cl_kit 26.11.8's opt-in).
+    static func ages(_ e: AccountEntry) -> Headline.Ages { StatusAges.of(pollMinutes: e.pollMinutes, splitShowsNumbersOwner: true) }
 
     /// Writes a profile's record. The agent's alone (Reader.save): the cl_audit window never writes it, it holds its own
     /// answer in memory (`hold`) and asks the agent to read.
