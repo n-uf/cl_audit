@@ -31,8 +31,9 @@ build_modules "$out" keychain -O
 # it, and so does the Dock tile plug-in, which is the same objects (the plug-in itself draws no address); the widget doesn't
 echo "compiling AddressPrivacy…"
 build_privacy "$out" -O
-# and MenuRows (cl_kit's MenuRows/: the menu bar menu's account rows, over ProfileCore and AddressPrivacy); its flags go
-# before theirs (a static library comes before the ones it needs)
+# and MenuRows (cl_kit's MenuRows/: the menu bar menu's account rows, over ProfileCore and AddressPrivacy). Its flags go
+# before AddressPrivacy's, as cl_kit says; ProfileCore stays earlier on the line, which Apple's linker takes (it searches
+# every static library given for what's still missing, not only the later ones)
 echo "compiling MenuRows…"
 build_menurows "$out" -O
 privacy=(); while IFS= read -r f; do privacy+=("$f"); done < <(menurows_link "$out"; privacy_link "$out")

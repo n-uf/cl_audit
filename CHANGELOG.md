@@ -8,9 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
-- **Account rows in the menu bar menu and the dashboard's Switch account menu** are now cl_kit's shared row (MenuRows, as in cl_quick).
-  - While addresses are hidden, an address shows only while the pointer is on its row.
-  - Moving onto the row with the arrow keys no longer shows it, and nothing stays shown after the menu closes.
+- **Account rows in the menu bar menu and the dashboard's Switch account menu**, while addresses are hidden:
+  - Moving to an address with the arrow keys doesn't show it, and nothing stays shown after the menu closes.
+  - The words after an address (" · Terminal", the "…" after "Sign Terminal in to") are smaller and quieter.
 
 ## 26.11.88 — 2026-11-23
 

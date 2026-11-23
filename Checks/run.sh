@@ -73,7 +73,7 @@ srcs+=("$APP/Widget/WidgetViews.swift")
 frameworks=(-framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement
             -framework UserNotifications -framework WidgetKit)
 
-# The shared modules (ProfileCore, Runs, ClaudeAuth with Auth/Keychain.swift) and AddressPrivacy from the vendored cl_kit tag
+# The shared modules (ProfileCore, Runs, ClaudeAuth with Auth/Keychain.swift), AddressPrivacy and MenuRows from the vendored cl_kit tag
 # (scripts/modules.sh), built once per run like build.sh does, but with testing on, into one folder every app suite links
 repo="$APP"
 . "$APP/scripts/modules.sh" || exit 1
@@ -81,7 +81,8 @@ MODS="$WORK/kit-modules"
 core_lib=(-I "$MODS" -L "$MODS" -lProfileCore)
 runs_lib=(-I "$MODS" -L "$MODS" -lRuns)
 auth_lib=(-I "$MODS" -L "$MODS" -lClaudeAuth "${runs_lib[@]}")
-# (MenuRows first: it needs AddressPrivacy and ProfileCore)
+# (MenuRows before AddressPrivacy, as cl_kit says; ProfileCore is earlier on the compile line, which Apple's linker takes:
+# it searches every static library given for what's still missing)
 addr_lib=(); while IFS= read -r f; do addr_lib+=("$f"); done < <(menurows_link "$MODS"; privacy_link "$MODS")   # (with its frameworks)
 build_kit() {
   [[ $build -eq 1 ]] || { [[ -f "$MODS/libClaudeAuth.a" && -f "$MODS/libAddressPrivacy.a" && -f "$MODS/libMenuRows.a" ]] || { echo "no modules at $MODS (run without --no-build)" >&2; return 1; }; return 0; }
@@ -171,7 +172,7 @@ run_binary() {  # run_binary SUITE-DIR BIN [args...]: in the throwaway home, wit
 }
 
 # the kit suite: the shared modules' own suites, cl_kit's Checks/run.sh in the vendored copy (core, runs, auth, claudesignin,
-# nokeychain). It takes its own build lock and throwaway homes (Vendor/cl_kit-<tag>/Checks/.work, git-ignored)
+# nokeychain, addressprivacy, menurows). It takes its own build lock and throwaway homes (Vendor/cl_kit-<tag>/Checks/.work, git-ignored)
 run_kit() {
   local args=(all)
   [[ $build -eq 1 ]] || args+=(--no-build)

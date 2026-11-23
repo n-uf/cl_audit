@@ -11,7 +11,7 @@
 #   build_menurows OUT [swiftc flags...]                       builds MenuRows (MenuRows/: the menu bar menu's account rows)
 #                                                              into OUT, after build_modules and build_privacy into it
 #   menurows_link OUT                                          prints the flags that link MenuRows: put them before
-#                                                              privacy_link's and ProfileCore's
+#                                                              privacy_link's
 #   module_sources Core|Run|Auth|Privacy|MenuRows [left-out names...]   a module's vendored sources, one path per line
 #   modules_kit, modules_tag                                   the vendored copy's folder and its tag
 

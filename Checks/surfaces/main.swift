@@ -3680,6 +3680,14 @@ MainActor.assumeIsolated {
     check(pickItem.view is MenuAccountRowView && pickItem.title == "hidden address" && probe.got == DockTileMenu.object(.switchTo, "pa~k2")
           && pickItem.representedObject as? String == DockTileMenu.object(.switchTo, "pa~k2"),
           "hidden: a standby row is the kit's account row whose Return and click send the action with its Switch page's key: \(pickItem.title) \(probe.got ?? "nil")")
+    // a row that can't switch now (enabled false): the kit's row, disabled, with no action, and its Return does nothing
+    let offProbe = PickProbe()
+    let offItem = DockTileMenu.item(DockTileMenu.AddressRow(address: a3, act: .switchTo, target: "pa~k3", enabled: false),
+                                    views: true, target: offProbe, action: #selector(PickProbe.pick(_:)))
+    (offItem.view as? MenuAccountRowView)?.fire()
+    check(offItem.view is MenuAccountRowView && offItem.action == nil && !offItem.isEnabled
+          && (offItem.view as? MenuAccountRowView)?.lit == false && offProbe.got == nil,
+          "hidden: a row that can't switch now is the kit's row, disabled, with no action, never lit, and Return sends nothing")
     // shown: native items with the whole address
     AddressPrivacy.shared.apply(blur: false)
     let shownItem = DockTileMenu.item(pickRow, views: true, target: probe, action: #selector(PickProbe.pick(_:)))
