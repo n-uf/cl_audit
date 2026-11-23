@@ -991,14 +991,20 @@ struct AccountCard: View {
                     } else {
                         name
                     }
-                    if let label = row.show.view.label ?? row.status?.expectedEmail {
+                    // the split by hand: the line names Terminal's account (the one read), "· Terminal", its lamp amber
+                    let splitCode = notice?.link != nil ? row.show.splitWords?.code : nil
+                    if let label = splitCode ?? row.show.view.label ?? row.status?.expectedEmail {
                         // the account in use, one line on every card (no "· in use": the lamp says it); signed out or
                         // expired: lamp and address red, and the why in the limits' place (UsageNotice)
                         let out = notice?.signedOut == true
                         HStack(spacing: 5) {
-                            Circle().fill(out ? face.danger : row.lit ? FaceTheme.ledOn : face.muted.opacity(0.4)).frame(width: 6, height: 6)
+                            Circle().fill(out ? face.danger : splitCode != nil ? FaceTheme.ledAmber : row.lit ? FaceTheme.ledOn : face.muted.opacity(0.4))
+                                .frame(width: 6, height: 6)
                             AccountValue(text: label, size: 12).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
                                 .foregroundStyle(out ? face.danger : face.muted)
+                            if splitCode != nil {
+                                Text("· Terminal").font(.system(size: 12)).foregroundStyle(face.muted).lineLimit(1).fixedSize()
+                            }
                         }
                         if let n = row.line, notice == nil {          // (a notice says it once, in the limits' place)
                             Text(n).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).lineLimit(2)

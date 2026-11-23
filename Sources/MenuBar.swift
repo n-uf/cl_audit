@@ -426,11 +426,13 @@ struct MenuBarRow: View {
                 }
             }
             // the active account, its lamp (ProfileDisplay's) and the one line of state
-            if let inUse = profile.show.view.inUseLine {
+            // (the split by hand: Terminal's account, the one read, "· Terminal", as the card and the Dock panel name it)
+            let splitCode = Self.splitLink(profile) != nil ? profile.show.splitWords?.code : nil
+            if let inUse = splitCode.map(AccountNames.short) ?? profile.show.view.inUseLine {
                 HStack(spacing: 6) {
                     Circle().fill(Color(nsColor: lit ? .systemGreen : .tertiaryLabelColor)).frame(width: 7, height: 7)
                         .shadow(color: Color(nsColor: .systemGreen).opacity(lit ? 0.7 : 0), radius: 2.5)
-                    Text(inUse).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(inUse + (splitCode != nil ? " · Terminal" : "")).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             if let link = Self.splitLink(profile) {
