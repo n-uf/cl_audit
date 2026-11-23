@@ -40,8 +40,14 @@ struct DetailsInfo {
     var activeLit = true
     /// "Usage: Claude Code on b…" when the numbers are another account's, or why Claude Code's account is shown.
     var activeNote: String? = nil
-    /// The split (SplitUsage): its short key, "Sign in to P@… in Terminal" (the panel's width is fixed), in place of Sign in….
+    /// The split by hand (SplitUsage): its compact key, "Sign in" (Terminal's sign-in to the window's account), in the keys
+    /// row beside the others; nil otherwise.
     var splitKey: String? = nil
+    /// The split by hand: the amber line "Claude window on another account ›", a link to the profile's Settings ▸ Accounts
+    /// at the band (the card's), the window key amber, and the TERMINAL | APP badge beside the name.
+    var splitLink: SettingsLink? = nil
+    /// The profile's Claude window is open (the window key's lamp, its words: Show window or Open window).
+    var windowOpen = false
 }
 
 extension DetailsInfo {
@@ -66,7 +72,12 @@ extension DetailsInfo {
             noNumbers: s.noNumbersWords, stale: d.tier == .stale)
         info.active = s.view.label
         info.activeLit = d.lamp; info.activeNote = s.lineWords(short: true)
-        if case .logInCode = d.key { info.splitKey = s.keyWords(short: true) }
+        // the split by hand: the card's amber line and its link in place of the old two lines, and the compact Sign in
+        if let link = UsageNotice.of(AccountRow(entry: e, show: s))?.link {
+            info.splitLink = link; info.activeNote = nil
+            if case .logInCode = d.key { info.splitKey = SplitUsage.panelSignInKey }
+        }
+        info.windowOpen = e.claudeWindow && DockTile.windowOpen(e.id)
         return info
     }
 }
@@ -78,6 +89,8 @@ struct DetailsActions {
     var logIn: () -> Void
     var close: () -> Void = {}
     var dashboard: () -> Void = {}
+    /// The amber line's link (the split): the profile's Settings ▸ Accounts at the band, through cl_audit's open-settings.
+    var openLink: (SettingsLink) -> Void = { Installer.openSettings($0) }
 }
 
 /// "Updated 4 min ago": the age of the numbers; a click fetches them again. In a row that's short of room it gives way
@@ -147,13 +160,21 @@ struct DetailsView: View {
                     HStack(spacing: 6) {
                         ProfileLED(color: info.ownColor)
                         Text("Claude \(info.name)").font(.system(size: 15, weight: .semibold))
+                        // the split: TERMINAL | APP beside the name (Terminal lit green, the app's half bright red)
+                        if info.splitLink != nil {
+                            Spacer(minLength: 4)
+                            DisplayWindow(text: SplitBadge.terminalWord, dim: SplitBadge.appWord, tone: SplitBadge.terminal.terminal,
+                                          height: 16, size: 8.5, dimTone: SplitBadge.terminal.app, divider: true)
+                        }
                     }
-                    // (accountLine: the account in use with its lamp; else the sign-in's line)
+                    // (accountLine: the account in use with its lamp, amber in the split; else the sign-in's line)
                     let line = info.accountLine
                     if line.lamp {
+                        let lampColor: Color = info.splitLink != nil ? FaceTheme.ledAmber
+                            : Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)
                         HStack(spacing: 5) {
-                            Circle().fill(Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)).frame(width: 6, height: 6)
-                                .shadow(color: Color(nsColor: .systemGreen).opacity(info.activeLit ? 0.7 : 0), radius: 2)
+                            Circle().fill(lampColor).frame(width: 6, height: 6)
+                                .shadow(color: lampColor.opacity(info.activeLit || info.splitLink != nil ? 0.7 : 0), radius: 2)
                             // no label: the address with its lamp says it's in use
                             AccountValue(text: line.text, size: 10).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
@@ -192,16 +213,26 @@ struct DetailsView: View {
                 .font(.caption)
             }
 
-            // the split (SplitUsage): Claude Code's own sign-in to the Claude app's account, on its own row (a long address);
-            // neutral, not a problem
-            if !info.needsLogin, let k = info.splitKey {
-                Button(k, action: actions.logIn).buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            // the split by hand: the card's amber line, a link to the profile's Settings ▸ Accounts at the band
+            if let link = info.splitLink {
+                LineLink(text: SplitUsage.windowLine, color: .hex(0xf5b54a)) { actions.openLink(link) }
             }
-            HStack(spacing: 8) {
-                Button("Claude", action: actions.openClaude).buttonStyle(.pill(ProfileLED.keyTint(info.ownColor), compact: true))
-                    .keyboardShortcut(.defaultAction).help("Open Claude for this profile")
+            HStack(spacing: 6) {
+                if info.splitLink != nil {
+                    // the window is the part out of line: the amber face key, its lamp lit while the window is open
+                    Button(info.windowOpen ? "Show window" : "Open window", action: actions.openClaude)
+                        .buttonStyle(FaceKeyStyle(tint: .amber, lamp: info.windowOpen, compact: true))
+                        .keyboardShortcut(.defaultAction).help("Open Claude for this profile")
+                } else {
+                    Button("Claude", action: actions.openClaude).buttonStyle(.pill(ProfileLED.keyTint(info.ownColor), compact: true))
+                        .keyboardShortcut(.defaultAction).help("Open Claude for this profile")
+                }
+                // the split: Terminal's sign-in to the window's account, compact, in the row
+                if !info.needsLogin, let k = info.splitKey {
+                    Button(k, action: actions.logIn).buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                }
                 Button("Dashboard", action: actions.dashboard).buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                if info.needsLogin { Button("Sign in…", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }
+                if info.needsLogin { Button("Sign in", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }
                 Spacer(minLength: 4)
                 Button(action: actions.settings) { Image(systemName: "gearshape") }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Settings…")
