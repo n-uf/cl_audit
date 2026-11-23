@@ -154,7 +154,9 @@ enum NewAccountSetup {
     /// folder. nil: it can go.
     static func signInWait(_ d: NewAccountDraft, accounts: [AccountEntry]) -> String? {
         if d.name.trimmingCharacters(in: .whitespaces).isEmpty { return "Name the profile first." }
-        if !codeReady(d) && codeBlocked(d, accounts: accounts) { return "Fix the red lines first." }
+        // before anything is made or connected (a new folder that is already there, not made here, is a red line, never
+        // "ready": signing in there would take a folder that isn't this setup's)
+        if !d.started && codeBlocked(d, accounts: accounts) { return "Fix the red lines first." }
         return nil
     }
 
@@ -1142,7 +1144,7 @@ struct NewAccountView: View {
         guard let claude = model.requireClaude() else { addressProblem = model.noClaudeWhy; return }
         // the Claude Code folder first, with no look at the desktop app (it never writes this folder); the window's folder
         // is the Claude window step's
-        if !NewAccountSetup.codeReady(next) { do { try NewAccountSetup.createCode(&next) } catch { addressProblem = PlainWords.why(error); return } }
+        if !next.started { do { try NewAccountSetup.createCode(&next) } catch { addressProblem = PlainWords.why(error); return } }
         draft = next
         // Claude Code's sign-in in Terminal with the address filled in, or none (the account picked in the browser), followed
         // to its end (SignInWindow): the sign-in window ending any other way than on an account says so under Account (a
@@ -1230,6 +1232,7 @@ struct NewAccountView: View {
     /// links"), or the red lines that hold it.
     private var signInDetail: String {
         if folders { return draft.configDir }
+        if unnamed { return "after the profile's name" }          // (its folder is named after it: no folder to say yet)
         if blocked { return "fix the red lines first" }
         if draft.source == .existing {
             let dir = draft.existingDir ?? draft.configDir
