@@ -679,8 +679,8 @@ at the bottom.
      app, is signed in to the same claude.ai account (checked by the account id it saved; no email or token is read;
      the address is shown as a reminder only). Its Code sidebar starts empty: Code sessions stay in the data folder
      they were made in.
-  3. **Add the Dock icon** (or **Start reading usage**). "Finish now" leaves sign-in for later; it waits only on the
-     folders the profile needs. An account another profile already has is taken too, with one amber line that names
+  3. **Add the Dock icon** (or **Start reading usage**, with Usage in the Dock off). **Create** at the foot adds the
+     profile; it can leave sign-in for later, and waits only on the folders the profile needs. An account another profile already has is taken too, with one amber line that names
      that profile.
 - New profiles start with an existing profile's click and panel settings. **Cancel** undoes only what
   the page created: an existing folder is never deleted or signed out.

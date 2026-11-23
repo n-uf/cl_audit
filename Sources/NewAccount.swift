@@ -36,7 +36,7 @@ struct NewAccountDraft: Equatable {
     var source: FolderSource = .new
     var existingDir: String?            // the chosen folder, when connecting an existing one
     var continueAnyway = false          // set up while Claude is still running
-    var usageInDock = true              // off: no Dock icon, usage read in the background ("Start reading usage")
+    var usageInDock = true              // off: no Dock icon, usage read in the background (the last step, "Start reading usage")
     var claudeWindow = true             // off: no Claude window, so no Claude app sign-in step
     /// "Sign in to another account…": the address Claude Code's sign-in is filled in with (only filled in: the
     /// browser's claude.ai account decides; empty: none, optional), the address row open, and when Sign in was pressed.
@@ -1312,12 +1312,12 @@ struct NewAccountView: View {
     }
 
     /// The one next action ("Finish now" stays next to it once the folder exists).
-    /// The one key at the foot: Create (or Start reading usage). Signing in is the Account card's (its Sign in key), the
+    /// The one key at the foot: Create, in every case. Signing in is the Account card's (its Sign in key), the
     /// window's keys are its step's: no key here repeats one. Create waits only on what the profile needs: its Claude Code
     /// folder (made by Sign in) and, with its own window, that window's folder (step 2); a sign-in still to do can follow
     /// from Settings, so the key is plain until the steps are done, green then.
     @ViewBuilder private var actionButtons: some View {
-        let title = draft.usageInDock ? "Create" : "Start reading usage"
+        let title = "Create"            // one word in every case (the Dock icon off too: the step above says what it does)
         let can = NewAccountSetup.foldersReady(draft) && !blocked && !model.discarding && !windowBusy && !waiting
         if current == 3 {
             Button(title) { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(!can)
