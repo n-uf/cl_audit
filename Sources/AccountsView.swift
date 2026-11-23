@@ -133,6 +133,9 @@ enum StandbyPick {
 
     /// Whether the in-use box takes a click: only while a standby is selected (the click then clears it).
     static func inUseTakesClick(_ picked: String?) -> Bool { picked != nil }
+
+    /// The in-use box's click (the normal one, and both split boxes): `clear` while a standby is selected, else none.
+    static func inUseTap(_ picked: String?, clear: @escaping () -> Void) -> (() -> Void)? { inUseTakesClick(picked) ? clear : nil }
 }
 
 /// The badge on the split's two rows in Settings ▸ Accounts: TERMINAL then APP, always in that order. The row's own half

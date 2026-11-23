@@ -1818,7 +1818,7 @@ struct AccountSettings: View {
                           rest: picked != nil && !red, alert: red,
                           // while a standby is selected, a click anywhere on it (not its address pop-up or keys) clears
                           // the selection, as a second click on the selected row does; with nothing selected, nothing
-                          tap: StandbyPick.inUseTakesClick(picked) ? { clearPick() } : nil,
+                          tap: StandbyPick.inUseTap(picked) { clearPick() },
                           tapHelp: StandbyPick.clearHelp, tapName: StandbyPick.clearName) {
             loginPopUp(shown, tint: tint, icon: icon)
         } content: {
@@ -1910,11 +1910,14 @@ struct AccountSettings: View {
 
     /// Terminal's account in the band: amber lamp, TERMINAL lit green and APP red, its numbers (read through Terminal's
     /// sign-in), and "Sign the Claude app in", which opens the Switch page for it (always offered: AccountEntry.codeTarget;
-    /// the page says what's missing). Not selectable: a click on the row does nothing.
+    /// the page says what's missing). Not selectable: while a standby is selected, a click on it (not its key) clears that,
+    /// as on the normal in-use box; otherwise a click does nothing.
     func splitTerminalBox(_ code: String) -> some View {
         let own = codeStatus
         let pick = splitSwitchTarget(code)
-        return AccountBox(lamp: FaceTheme.ledAmber, badge: "", detail: (own?.plan).map(Account.planWords), inUse: true, split: .terminal) {
+        return AccountBox(lamp: FaceTheme.ledAmber, badge: "", detail: (own?.plan).map(Account.planWords), inUse: true, split: .terminal,
+                          tap: StandbyPick.inUseTap(picked) { clearPick() },
+                          tapHelp: StandbyPick.clearHelp, tapName: StandbyPick.clearName) {
             AccountBoxTitle(text: code)
         } content: {
             limitsOrWhy(own, entry: entry, none: nil)
@@ -1934,7 +1937,10 @@ struct AccountSettings: View {
     /// app's address filled in (ProfileShow.loginAddress); while the app's account is known by its id only, one line instead.
     var splitAppBox: some View {
         let v = view
-        return AccountBox(lamp: FaceTheme.ledAmber, badge: "", detail: inUsePlan.map(Account.planWords), inUse: true, split: .app) {
+        // while a standby is selected, a click on it (not its key or address pop-up) clears that; otherwise nothing
+        return AccountBox(lamp: FaceTheme.ledAmber, badge: "", detail: inUsePlan.map(Account.planWords), inUse: true, split: .app,
+                          tap: StandbyPick.inUseTap(picked) { clearPick() },
+                          tapHelp: StandbyPick.clearHelp, tapName: StandbyPick.clearName) {
             loginPopUp(v.label ?? (v.recordTooLarge ? "account not known (record too large)" : "not signed in yet"))
         } content: {
             if let address = show.loginAddress {

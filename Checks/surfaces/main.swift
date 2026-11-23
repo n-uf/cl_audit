@@ -4452,6 +4452,11 @@ do {
     check(StandbyPick.inUseTakesClick("s2") && !StandbyPick.inUseTakesClick(nil),
           "the in-use box: its click clears a selection, and does nothing with none")
     check(StandbyPick.clearName == "Clear selection", "the in-use box's VoiceOver action while a standby is selected")
+    var cleared = false
+    let clearTap = StandbyPick.inUseTap("s2", clear: { cleared = true })
+    clearTap?()
+    check(cleared && StandbyPick.inUseTap(nil, clear: {}) == nil,
+          "the in-use boxes (normal and both split rows): a click clears a selection; with none they take no click")
 }
 
 // ============ the profile tile's second line (AccountTile.subtitle): the folder, the account in use, the mode ============
