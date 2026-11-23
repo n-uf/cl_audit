@@ -20,7 +20,6 @@ the notes before updating.
   - A personal plan and a Team seat on one address stay apart: when only one side names the organisation, cl_audit no longer borrows it from the other.
   - The line "Claude Code's record has no address: sign in again in Claude Code." is gone; such numbers now show under Anthropic's account, or hide with the usual "Numbers for another account" line.
 - A standby account whose organisation is found later no longer carries its old week onto that seat (the week was read before the seat was known).
-- When the profiles file needs a new shape and its copy as it was can't be kept, cl_audit no longer rewrites it: the change waits and the copy is tried again at the next save.
 
 ## 26.11.88 — 2026-11-23
 
