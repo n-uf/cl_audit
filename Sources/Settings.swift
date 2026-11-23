@@ -730,7 +730,11 @@ final class SettingsModel: ObservableObject {
                 }
                 self.draft = nil
                 self.selection = self.accounts.first?.id
-                self.message = "Cancelled \(d.name.isEmpty ? "the new profile" : d.name); its folders and sign-in were removed"
+                // what it made went; a connected folder stays as it was, signed in or not (NewAccountSetup.keptWords)
+                let name = d.name.isEmpty ? "the new profile" : d.name
+                self.message = d.locked ? "Cancelled \(name); the folders it made and their sign-in were removed"
+                    + (d.connected ? "; " + NewAccountSetup.keptWords(d) : "")
+                    : "Cancelled \(name); " + NewAccountSetup.keptWords(d)
             }
         }
     }

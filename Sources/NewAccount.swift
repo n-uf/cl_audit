@@ -109,8 +109,9 @@ struct SetupCheck: Identifiable {
     let section: Section
     let state: State
     let text: String
-    /// A red line blocks Sign in's folder and Finish; the desktop-app line (`running`) blocks only the Claude window's
-    /// folder, "Checking…" too: which Claude runs is never taken for "none" before it has been read.
+    /// A red line blocks Sign in's folder (the profile's and the folder's lines) and Create (the window's clash too); the
+    /// desktop-app line (`running`) holds only the Claude window's folder, "Checking…" too: which Claude runs is never
+    /// taken for "none" before it has been read.
     var blocks: Bool { state == .bad || section == .running && state == .wait }
 }
 
@@ -164,16 +165,30 @@ enum NewAccountSetup {
         !d.locked || (d.createdConfigDir != nil && d.source == .new) || emptyConnected(d)
     }
 
-    /// An existing folder connected with no account in it yet: a sign-in runs there (its first), never in a new folder.
-    static func emptyConnected(_ d: NewAccountDraft) -> Bool { d.source == .existing && d.connected && signedInEmail(d) == nil }
+    /// An existing folder connected with no confirmed account in it yet (none, or only the guess an unconfirmed sign-in left):
+    /// a sign-in runs there (its first, or a retry), never in a new folder.
+    static func emptyConnected(_ d: NewAccountDraft) -> Bool {
+        d.source == .existing && d.connected && (signedInEmail(d) == nil || d.unconfirmed)
+    }
 
     /// The draft as a sign-in from Account leaves it: a new folder, unless something is made already (signing in again in
     /// the folder this setup made) or a connected folder waits for its first sign-in.
     static func forSignIn(_ d: NewAccountDraft, email: String) -> NewAccountDraft {
         var n = d
         n.email = email
-        if !n.locked && !emptyConnected(n) { n.source = .new; n.existingDir = nil; n.connected = false }
+        if !n.locked && !emptyConnected(n) { replaceFolder(&n, existing: nil) }
         return n
+    }
+
+    /// Another folder for the draft before anything is made: an existing one (used as it is, connected by the caller once
+    /// nothing holds it) or, nil, a new one. What the last folder's sign-in left goes with it (its waiting, its end, its
+    /// Continue anyway): it was about that folder, never this one.
+    static func replaceFolder(_ d: inout NewAccountDraft, existing path: String?) {
+        d.source = path == nil ? .new : .existing
+        d.existingDir = path
+        d.connected = false
+        d.signInAsked = nil; d.seatAtAsk = nil; d.signInSaid = nil; d.signInRunning = false
+        d.continueAnyway = false
     }
 
     /// Whether Create can add the profile now: its folders there for the switches as they are (its window's too), no red
@@ -340,10 +355,15 @@ enum NewAccountSetup {
             .first { $0.section == .running && $0.blocks }?.text
     }
 
-    /// Everything the Checks card shows, in order. Any `.bad` line blocks Create/Connect and Finish. `failed`: which Claude runs couldn't be checked (RunsMonitor.failed): a red line, never "the desktop app is closed".
+    /// Every line about the draft, in order: the name, the folder, the window, the sign-in, the desktop app. A `.bad` line
+    /// blocks (SetupCheck.blocks). `failed`: which Claude runs couldn't be checked (RunsMonitor.failed): a red line, never
+    /// "the desktop app is closed".
     static func checks(_ d: NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun], checked: Bool, failed: Bool = false) -> [SetupCheck] {
         var out: [SetupCheck] = []
         let name = d.name.trimmingCharacters(in: .whitespaces)
+        // no name: nothing can be made without one (a grey hint, `.wait`); emptied after a folder was connected, a red line,
+        // so Create can't add a profile with no name
+        if name.isEmpty { out.append(.init(section: .account, state: d.started ? .bad : .wait, text: "Name the profile first.")) }
         // the name: only a clash is worth a line (the caption under the field says what it's for)
         if accounts.contains(where: { $0.name.lowercased() == name.lowercased() }) { out.append(.init(section: .account, state: .bad, text: "Another profile is already called “\(name)”")) }
 
@@ -414,11 +434,14 @@ enum NewAccountSetup {
         return out
     }
 
+    /// A connected folder after Cancel: "~/.claude-x stays as it is, signed in" (it is never signed out or deleted).
+    static func keptWords(_ d: NewAccountDraft) -> String {
+        "\(d.configDir) stays as it is" + (signedInEmail(d) != nil ? ", signed in" : "")
+    }
+
     /// What Cancel will undo, for the confirmation.
     static func discardSummary(_ d: NewAccountDraft) -> String {
-        guard d.createdConfigDir != nil || d.createdDataDir != nil else {
-            return d.connected ? "\(d.configDir) stays as it is; nothing was created." : "Nothing has been created yet."
-        }
+        guard d.locked else { return d.connected ? keptWords(d) + "." : "Nothing has been created yet." }
         var parts: [String] = []
         if d.createdConfigDir != nil, let e = signedInEmail(d) { parts.append("signs out the Claude Code sign-in (\(AddressSettings.words(e)))") }
         if let a = ownWindow(d), ClaudeWindow.isOpen(a) { parts.append("quits its Claude window") }
@@ -695,7 +718,7 @@ struct NewAccountView: View {
     /// What's next: 1 Sign in (the Claude Code folder, then its sign-in in Terminal), 2 the Claude window (its folder after
     /// a look at the desktop app, then its own sign-in; only with a Claude window), 3 the Dock icon (or reading the usage).
     private var current: Int {
-        if !folders || signedIn == nil { return 1 }
+        if !folders || signedIn == nil || waiting { return 1 }       // (signing in again: step 1, whatever the folder still names)
         if windowDue || !desktopDone { return 2 }
         return 3
     }
@@ -764,10 +787,11 @@ struct NewAccountView: View {
     private func profileCard(stacked: Bool) -> some View {
         SCard(title: "Profile", info: "The new profile: one Claude account, with its Claude Code folder and, if you want them, a Claude window and a Dock icon. Its click and panel settings start as \(draft.template?.name ?? "the other profiles'").") {
             SRow(label: "Name", info: "What cl_audit calls this profile. Its Dock icon is “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)”, and a new Claude Code folder is \(draft.name.isEmpty ? "~/.claude-<name>" : draft.newConfigDir).", first: true, stacked: stacked) {
-                SField(placeholder: "e.g. personal", text: $draft.name, width: nil).disabled(draft.locked)
+                SField(placeholder: "e.g. personal", text: $draft.name, width: nil).disabled(draft.locked || waiting)   // (not while a sign-in waits)
             }
             if draft.locked { SRowLine(text: NewAccountSetup.lockedNote(draft)) }
-            if let clash = checks(.account).first { SRowLine(text: clash.text, color: face.danger) }
+            // a red line only (the name taken, or emptied after a connect); no name yet is Account's one grey line
+            if let clash = checks(.account).first(where: { $0.state == .bad }) { SRowLine(text: clash.text, color: face.danger) }
             SRow(label: "Colour", info: "The profile's colour in the launcher, on the dashboard and in its panels.", stacked: stacked) {
                 FlowLayout(spacing: 6) {
                     ForEach(TileColor.accents, id: \.self) { c in
@@ -799,7 +823,7 @@ struct NewAccountView: View {
     /// Dock icon: its switch first (layout A); the rest of its settings start as the template profile's.
     private func dockCard(stacked: Bool) -> some View {
         SCard(title: "Dock icon", info: "A Dock icon, “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)”, showing this profile's usage; how it runs, its click and its look start as \(draft.template?.name ?? "the other profiles'") and are in the profile's settings afterwards.") {
-            SRow(label: "Usage in the Dock", info: "On: Finish installs the Dock icon and puts it in the Dock. Off: nothing is installed and the Dock isn't touched; cl_audit still reads the usage for the dashboard, the launcher and alerts.", first: true, stacked: stacked) {
+            SRow(label: "Usage in the Dock", info: "On: Create installs the Dock icon and puts it in the Dock. Off: nothing is installed and the Dock isn't touched; cl_audit still reads the usage for the dashboard, the launcher and alerts.", first: true, stacked: stacked) {
                 SSwitch(isOn: $draft.usageInDock, on: "shows the usage", off: "no Dock icon")
             }
         }
@@ -871,9 +895,14 @@ struct NewAccountView: View {
     /// An existing folder chosen (a found account in Account, or a folder in the Folder pop-up): used as it is, connected at
     /// once (nothing is written, so another choice can still replace it until something is made), or as soon as what holds
     /// it clears (connectPicked runs again when the name or the red lines change).
-    private func useExisting(_ path: String) {
-        draft.source = .existing; draft.existingDir = path; draft.email = ""; draft.asking = false
-        draft.connected = false
+    private func useExisting(_ path: String) { replaceFolder(existing: path) }
+
+    /// Another folder before anything is made (NewAccountSetup.replaceFolder): a sign-in still running for the last one ends
+    /// first (the choices are off while one waits, so only a stale one), then the chosen existing folder connects.
+    private func replaceFolder(existing path: String?) {
+        if draft.signInRunning { model.cancelNewSignIn() }
+        NewAccountSetup.replaceFolder(&draft, existing: path)
+        draft.email = ""; draft.asking = false
         connectPicked()
     }
 
@@ -989,7 +1018,7 @@ struct NewAccountView: View {
             if draft.source == .new {
                 Toggle("New folder   \(draft.newConfigDir)", isOn: .constant(true))
             } else {
-                Button("New folder   \(draft.newConfigDir)") { draft.source = .new; draft.existingDir = nil; draft.connected = false }
+                Button("New folder   \(draft.newConfigDir)") { replaceFolder(existing: nil) }
             }
             ForEach(folderChoices, id: \.self) { p in
                 if let owner = FolderRules.configOwner(p, among: model.accounts) {
@@ -1012,7 +1041,7 @@ struct NewAccountView: View {
             MenuWell(text: draft.source == .new ? "New folder \(draft.newConfigDir)" : draft.existingDir ?? "Choose…", mono: true, fill: true)
         }
         .faceMenuFill()
-        .disabled(draft.locked)
+        .disabled(draft.locked || waiting)          // another folder never replaces one a sign-in is waiting on
     }
 
     /// Who is signed in in a folder, for the Folder pop-up.
@@ -1065,8 +1094,8 @@ struct NewAccountView: View {
         return n.text
     }
 
-    /// The Claude window step's look, made now (`continueAnyway` set first by its Continue anyway): the window's folder is
-    /// made only on its answer (makeWindowFolder); Cancel, the switch or leaving the page meanwhile drops it.
+    /// The Claude window step's look, made now (`anyway`: its Continue anyway, for this look only): the window's folder is
+    /// made only on its answer (windowStepLook); Cancel, the switch or leaving the page meanwhile drops it.
     private func lookForWindow(anyway: Bool = false) {
         guard !gate.busy, !windowBusy, windowLive else { return }   // never while the switch is turning the window off
         gate.look(monitor) { fresh in
@@ -1106,11 +1135,12 @@ struct NewAccountView: View {
         model.startNewSignIn(claude, email: e.isEmpty ? nil : e)
     }
 
-    /// "Sign in to another account…": the one-line address row, in place of the pop-up. Before any folder is made it
-    /// means a new folder; afterwards only the folder this setup made is signed in again.
+    /// "Sign in to another account…": the one-line address row, in place of the pop-up. Its Sign in decides the folder
+    /// (NewAccountSetup.forSignIn): a new one before anything is made, the folder this setup made, or a connected folder
+    /// waiting for its first sign-in.
     private func askAddress() {
-        // a new folder unless something is made or a connected folder waits for its first sign-in (NewAccountSetup.forSignIn)
-        draft = NewAccountSetup.forSignIn(draft, email: draft.email)
+        // only the row opens: the folder changes (NewAccountSetup.forSignIn) once Sign in passes its gates, so Cancel here
+        // leaves a connected folder as it was
         draft.asking = true; addressProblem = nil          // the address typed before stays: often the same one, again
     }
 
@@ -1151,7 +1181,7 @@ struct NewAccountView: View {
             HStack(spacing: 0) {
                 Text("Signed in as ")
                 AccountValue(text: email, size: 11.5, reserve: false)
-                if draft.source == .existing && !draft.started { Text(", already in the folder") }
+                if draft.source == .existing && !draft.locked { Text(", already in the folder") }
             }
             .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let note = NewAccountSetup.signInNote(draft, among: model.accounts) {
@@ -1174,8 +1204,8 @@ struct NewAccountView: View {
 
     /// Step 1's mark: waiting for the browser amber, a sign-in that failed red.
     private var signInState: StepState {
+        if waiting { return .held }                 // first: signing in again, the old account still in the folder
         if folders && signedIn != nil { return .done }
-        if waiting { return .held }
         if let s = signInFailed, s.danger { return .bad }
         return current == 1 ? .now : .todo
     }
@@ -1185,7 +1215,10 @@ struct NewAccountView: View {
     private var signInDetail: String {
         if folders { return draft.configDir }
         if blocked { return "fix the red lines first" }
-        if draft.source == .existing { return draft.existingDir.map { "\($0) as it is, then Claude Code in Terminal" } ?? "pick the folder first" }
+        if draft.source == .existing {
+            let dir = draft.existingDir ?? draft.configDir
+            return signedIn == nil ? "\(dir) as it is, then Claude Code in Terminal" : "\(dir) as it is, already signed in"
+        }
         let links = draft.share.isEmpty ? "" : ", sharing \(draft.share.count) item\(draft.share.count == 1 ? "" : "s") from \(draft.shareFrom)"
         return "\(draft.newConfigDir)\(links), then Claude Code in Terminal"
     }
@@ -1290,7 +1323,7 @@ struct NewAccountView: View {
                 }
             }
             stepRow(last, state: current == 3 ? .now : .todo, title: finishStep,
-                    detail: draft.usageInDock ? "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)” and puts it in the Dock"
+                    detail: draft.usageInDock ? "Create installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)” and puts it in the Dock"
                                               : "cl_audit reads its usage from now on; nothing is installed and the Dock isn't touched") { EmptyView() }
 
             if bar { actionBar(hint: false).padding(.top, 8) }
