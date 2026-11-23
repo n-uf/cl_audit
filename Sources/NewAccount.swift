@@ -631,7 +631,10 @@ struct NewAccountView: View {
     /// alone is a guess: Sign in again, or Refresh now in Settings once the profile is made).
     private var signedIn: String? { checks(.folder).contains { $0.blocks } || draft.unconfirmed ? nil : NewAccountSetup.signedInEmail(draft) }
     private var windowOpen: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.windowOpen(draft) }
-    private var tint: Color { Color(nsColor: draft.color.color(fiveHour: nil, stale: false)) }
+    /// The steps and their keys speak in progress colours, never the profile's (a pink profile's current step was pink):
+    /// the current step and the key that moves it on are green (FaceTheme.ledOn, a switch that's on), a done step green
+    /// with a check, a blocked one red (amber when it can go on anyway), one still to come grey.
+    private var go: Color { FaceTheme.ledOn }
     private var createTitle: String { draft.source == .new ? "Create" : "Connect" }
     /// The last step: a Dock icon, or (Usage in the Dock off) only reading its usage, which installs nothing.
     private var finishStep: String { draft.usageInDock ? "Add the Dock icon" : "Start reading usage" }
@@ -1061,7 +1064,7 @@ struct NewAccountView: View {
             .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         }
         SRow(label: "Shared", info: "Linked into the new folder from the folder above. Lit keys are shared; the rest start empty in the new folder.", stacked: true) {
-            WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }, tint: tint) { i in
+            WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }) { i in
                 let item = SharedItem.allCases[i]
                 if draft.share.contains(item) { draft.share.remove(item) } else { draft.share.insert(item) }
             }
@@ -1155,7 +1158,7 @@ struct NewAccountView: View {
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(gate.busy || windowBusy)
             } else {
                 Button(gate.busy ? "Checking…" : "Set up the Claude window") { lookForWindow() }
-                    .buttonStyle(.pill(tint, compact: true)).disabled(gate.busy || model.discarding || windowBusy)
+                    .buttonStyle(.pill(go, compact: true)).disabled(gate.busy || model.discarding || windowBusy)
             }
         }
         .padding(.top, 2)
@@ -1170,8 +1173,9 @@ struct NewAccountView: View {
             ZStack {
                 switch state {
                 case .done: Circle().fill(Color(nsColor: Painter.green)); Image(systemName: "checkmark").font(.system(size: 7.5, weight: .heavy)).foregroundStyle(.black.opacity(0.7))
-                case .warn, .bad: Circle().fill(Color.orange); Text("!").font(.system(size: 9, weight: .heavy)).foregroundStyle(.black.opacity(0.7))
-                case .now: Circle().strokeBorder(tint, lineWidth: 2)
+                case .bad: Circle().fill(Color.red); Text("!").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                case .warn: Circle().fill(Color.orange); Text("!").font(.system(size: 9, weight: .heavy)).foregroundStyle(.black.opacity(0.7))
+                case .now: Circle().strokeBorder(go, lineWidth: 2)
                 default: Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.3)
                 }
             }
@@ -1238,7 +1242,7 @@ struct NewAccountView: View {
                 case .done: Circle().fill(Color(nsColor: Painter.green)); Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.black.opacity(0.7))
                 case .bad: Circle().fill(Color.red); Text("!").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
                 case .warn: Circle().fill(Color.orange); Text("!").font(.system(size: 12, weight: .bold)).foregroundStyle(.black.opacity(0.7))
-                case .now: Circle().strokeBorder(tint, lineWidth: 2); Text("\(n)").font(.system(size: 11, weight: .bold))
+                case .now: Circle().strokeBorder(go, lineWidth: 2); Text("\(n)").font(.system(size: 11, weight: .bold)).foregroundStyle(go)
                 case .held: Circle().strokeBorder(Color.red.opacity(0.7), lineWidth: 1.5); Text("\(n)").font(.system(size: 11, weight: .bold)).foregroundStyle(.red)
                 case .todo: Circle().strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.5); Text("\(n)").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                 }
@@ -1349,11 +1353,11 @@ struct NewAccountView: View {
                     // the same sign-in as the address route's, followed to its end (the address typed before, if any, filled in)
                     if let c = model.requireClaude() { model.startNewSignIn(c, email: draft.email.isEmpty ? nil : draft.email) }
                 }
-                    .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding || waiting)
+                    .buttonStyle(.pill(go, compact: true)).disabled(model.discarding || waiting)
             } else if draft.claudeWindow, !waiting, !windowDue {
                 // (another profile's account too: the window opens all the same, shared seats)
                 Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
-                    .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding || windowBusy)   // (never while Cancel or the switch removes its folder)
+                    .buttonStyle(.pill(go, compact: true)).disabled(model.discarding || windowBusy)   // (never while Cancel or the switch removes its folder)
             }
         }
     }
