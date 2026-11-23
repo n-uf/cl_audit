@@ -8,6 +8,16 @@ the notes before updating.
 
 ## Unreleased
 
+- **The Claude app and Terminal on different accounts** now read in two names only: the Claude app and Terminal.
+  - Settings ▸ Accounts puts both accounts in one red band, which says why there are no numbers for the Claude app's account.
+  - Each account carries a TERMINAL APP badge: its own half green, the missing half red.
+  - Terminal's account has Sign the Claude app in, which opens the Switch page.
+  - The Claude app's account has Sign Terminal in.
+  - The Switch page opens for Terminal's account even when something is missing, and says what.
+  - The struck-through sign-in chips and the red "Terminal is signed in to …" lines are gone.
+  - The dashboard card and the menu bar row say "Claude window on another account" in red.
+  - That line is a link to the profile's Settings ▸ Accounts, at the band.
+  - On the card, Show window turns reddish.
 - The note after the standby list is tidied reads "The standby list was tidied. Each account is listed once per plan."
 - A profile's saved status and what its Dock icon shows now come from cl_kit, the code cl_audit shares with cl_quick, so both apps read and draw them the same way. Nothing you see changes, and Dock icons from earlier versions still read the new files.
 - Renew sign-in and sign-out now run Claude Code with only a known list of settings from your Mac's environment. Ones like NODE_OPTIONS, model overrides, telemetry export and cloud credentials are no longer passed on. The CLAUDE_CODE_CERT and CLIENT settings still are.
