@@ -2310,6 +2310,28 @@ do {
     check(rows.map(\.email) == [u4.email!, u1.email!, u2.email!, "ULTRA-3@example.com"]
           && rows.map { $0.title.components(separatedBy: "   ").last ?? "" } == ["Max · Main's", "Work's", "Ultra · Work's standby", "Work's standby"],
           "New profile's Account pop-up: in use first, then standby with its label, one row per seat: \(rows.map(\.title))")
+    // one address, Personal and Team: two seats, two rows
+    let personal = Seat(account: uuid(7), organization: uuid(107), email: "ultra-7@example.com")
+    let team = Seat(account: uuid(7), organization: uuid(207), email: "ultra-7@example.com")
+    let twoOrgs = profile("two", "~/.claude-ntwo", u5, standby: [StandbyAccount(email: personal.email!, seat: personal, id: "p7", plan: "max"),
+                                                                StandbyAccount(email: team.email!, seat: team, id: "t7", plan: "team")])
+    let orgRows = NewAccountSetup.otherAccounts(among: [twoOrgs], plan: { _ in nil }, expected: { _ in nil })
+    check(orgRows.filter { $0.email == personal.email }.count == 2 && Set(orgRows.map(\.title)).count == orgRows.count,
+          "Account pop-up: Personal and Team on one address are two rows, told apart: \(orgRows.map(\.title))")
+    // an empty address on a seat counts as none: the folder's for the account in use, the entry's own for a standby one
+    let blank = profile("blank", "~/.claude-nblank", Seat(account: uuid(8), organization: uuid(108), email: ""),
+                        standby: [StandbyAccount(email: "ultra-9@example.com", seat: Seat(account: uuid(9), organization: uuid(109), email: ""), id: "b9")])
+    let blankRows = NewAccountSetup.otherAccounts(among: [blank], plan: { _ in nil }, expected: { $0 == "~/.claude-nblank" ? "ultra-8@example.com" : nil })
+    check(blankRows.map(\.email) == ["ultra-8@example.com", "ultra-9@example.com"], "Account pop-up: an empty seat address is none: \(blankRows.map(\.email))")
+    // a standby account with no seat (remembered by its address only): a row all the same
+    let bare = profile("bare", "~/.claude-nbare", nil, standby: [StandbyAccount(email: "ultra-10@example.com", id: "b10")])
+    check(NewAccountSetup.otherAccounts(among: [bare], plan: { _ in nil }, expected: { _ in nil }).map(\.email) == ["ultra-10@example.com"],
+          "Account pop-up: a standby account with no seat still has its row")
+    // addresses hidden: two standby rows of one profile would read the same, so the later one gets a number, no address
+    let hiddenRows = NewAccountSetup.otherAccounts(among: [work], plan: { _ in nil }, expected: { _ in nil }, blur: true)
+    check(hiddenRows.count == 3 && Set(hiddenRows.map(\.title)).count == 3 && hiddenRows.last?.title.hasSuffix("Work's standby 2") == true
+          && !hiddenRows.contains { $0.title.contains("@") },
+          "Account pop-up, addresses hidden: same-reading rows are told apart without an address: \(hiddenRows.map(\.title))")
     // the note's address form: no address and no "hidden address" in it, whatever Show emails says (the field above shows it)
     for n in [NewAccountSetup.addressNote(u4.email!, among: list, signedIn: none), NewAccountSetup.addressNote("ULTRA-2@example.com", among: list, signedIn: none)] {
         check(n.map { !$0.contains("@") && !$0.contains("hidden address") && $0.first?.isUppercase == true } == true, "the note names no address in any form: \(n ?? "none")")

@@ -187,27 +187,35 @@ enum NewAccountSetup {
     /// can be picked (shared seats), which signs in to it in the new profile's own folder with its address filled in. One row
     /// per seat (account and organisation, by the one owner rule): the accounts in use first, then the standby ones, each in
     /// profile order; an account in use in one profile and standing by in another shows once, as the in-use one. The address
-    /// goes through AddressSettings.words (a menu row is plain text: "hidden address" while addresses are hidden).
+    /// goes through AddressSettings.words (a menu row is plain text: "hidden address" while addresses are hidden). Two rows
+    /// that would read the same (hidden addresses of one profile's standby accounts, or one address in two organisations)
+    /// are told apart by a number after the later ones ("Work's standby 2"), which names no address. An empty address on a
+    /// seat counts as none (the entry's own, or the folder's, is taken). `blur`: a test override of Show emails.
     static func otherAccounts(among accounts: [AccountEntry],
                               plan: (AccountEntry) -> String? = { Store.status($0.id)?.plan },
-                              expected: (String) -> String? = { Account.expectedEmail(configDir: $0) }) -> [(title: String, email: String)] {
+                              expected: (String) -> String? = { Account.expectedEmail(configDir: $0) },
+                              blur: Bool? = nil) -> [(title: String, email: String)] {
         var out: [(title: String, email: String)] = []
         var seen: [AccountIdentity] = []
-        func add(_ who: AccountIdentity, email: String, plan: String?, owner: String) {
-            guard !email.isEmpty, !seen.contains(where: { $0.sameAccount(who) }) else { return }
+        var bases: [String] = []            // each row's title before its number
+        func add(_ who: AccountIdentity, email: String?, plan: String?, owner: String) {
+            guard let email, !email.isEmpty, !seen.contains(where: { $0.sameAccount(who) }) else { return }
             seen.append(who)
             let detail = [plan.map(Account.planWords), owner].compactMap { $0 }
-            out.append((AddressSettings.words(email) + "   " + detail.joined(separator: " · "), email))
+            let base = AddressSettings.words(email, blur: blur) + "   " + detail.joined(separator: " · ")
+            let same = bases.filter { $0 == base }.count
+            bases.append(base)
+            out.append((same > 0 ? base + " \(same + 1)" : base, email))
         }
         for o in accounts {
-            guard let e = o.seat?.email ?? expected(o.configDir) else { continue }
+            let e = o.seat?.email.flatMap { $0.isEmpty ? nil : $0 } ?? expected(o.configDir)
             var who = o.seat.map { AccountIdentity($0) } ?? AccountIdentity(account: nil, email: e, organization: nil, source: .guessed)
             if (who.email ?? "").isEmpty { who.email = e }
             add(who, email: e, plan: plan(o), owner: o.name + "'s")
         }
         for o in accounts {
             for s in o.standby {
-                add(s.identity, email: s.seat?.email ?? s.email, plan: s.plan, owner: o.name + "'s standby")
+                add(s.identity, email: s.identity.email, plan: s.plan, owner: o.name + "'s standby")
             }
         }
         return out
