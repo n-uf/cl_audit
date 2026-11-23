@@ -120,6 +120,9 @@ enum AccountResolver {
                 }
             } ?? false
         } ?? false
+        // stale only because the seat isn't known yet (the same account, the organisation named on one side alone: A2, never
+        // taken for a match): said as such, not as another account
+        let seatUnknown = stale && reading.flatMap { r in codeAccount.map { r.match($0) == .seatNotKnown } } == true
         let readName = stale ? nil : loginEmail
         let codeLabel = (stale ? nil : reading?.email) ?? codeAccount?.email ?? codeAccount?.accountID.map { "account \($0.prefix(8))" }
         let codeEmail = (recordNamesIt ? answer.record?.email : nil) ?? codeAccount?.email
@@ -159,7 +162,7 @@ enum AccountResolver {
         } else if stale {
             // the numbers are hidden (read for another account than Claude Code's now: just after a sign-in, or the Keychain's
             // sign-in left behind) and nothing else says why: the way back, on every surface that shows the line
-            r.line = staleWords
+            r.line = seatUnknown ? seatUnknownWords : staleWords
         } else if e.claudeWindow, !r.fromApp, codeAccount != nil {
             // short enough for the card at 340; only when Claude Code has an account to show
             r.line = "Claude app signed out: Claude Code's account shows."
@@ -184,6 +187,11 @@ enum AccountResolver {
     /// back. True right after a sign-in (the new sign-in's first read is on its way) and when the Keychain's sign-in stays on
     /// another account than Claude Code's (only a sign-in helps then).
     static let staleWords = "Numbers for another account: if this stays, sign in to read again."
+
+    /// The line while the numbers are Claude Code's account's but its seat isn't known yet (a running claude names its
+    /// organisation by name, the reading by id alone, and no name has come to tell them apart): held back, never another
+    /// account's, until a read brings the name.
+    static let seatUnknownWords = "Numbers held back: which plan Claude Code is on isn't known yet."
 
     /// The active account (its id, its address) and an account a source names are the same: by the ids where both have
     /// one, else by the addresses (sameAddress); nil when neither pair is known.

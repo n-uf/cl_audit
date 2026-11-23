@@ -1987,27 +1987,48 @@ do {
                                          loginOrganization: mo.organization, loginOrganizationName: moOrgName, process: nameWord, names: [:], now: now)
     check(byName.readStale == nil && byName.codeName == mo.email,
           "a name-only word (any case) against a reading with the organisation's id and name: the same seat, the numbers stand")
-    // …against a reading with the id only: stale once; the reply's name is fetched once for that sign-in, then the names
-    // decide: the same seat. Never fetched or asked again
-    for (reply2, settles) in [(Data(#"{"organization":{"uuid":"\#(mo.organization!)","name":"\#(moOrgName)"}}"#.utf8), "named"),
-                              (Data(#"{"organization":{"uuid":"\#(mo.organization!)"}}"#.utf8), "unnamed")] {
-        var sn = profile("skn-\(settles)", "~/.claude-skn-\(settles)", mo); sn.claudeWindow = false
+    // …against a reading with the id only, the seat isn't known (A2, fail closed): held back, said as such, until the reply's
+    // organisation name comes, fetched once per read (never with another ask). A reply with the name: the same seat. One with
+    // no name, or a failed one (the network): still held back, fetched again at the next read; a name then: the same seat
+    let named = Data(#"{"organization":{"uuid":"\#(mo.organization!)","name":"\#(moOrgName)"}}"#.utf8)
+    let unnamed = Data(#"{"organization":{"uuid":"\#(mo.organization!)"}}"#.utf8)
+    for (first, what) in [(Optional(named), "named"), (Optional(unnamed), "unnamed"), (nil, "failed")] {
+        var sn = profile("skn-\(what)", "~/.claude-skn-\(what)", mo); sn.claudeWindow = false
         signIn(sn.configDir, pat)              // the record on pat, Anthropic's word for the kept sign-in mo: they disagree, so it asks
         var nameAsks = 0, fetches = 0
+        var replyNow: Data? = first
         UsageReader.askSeam = { _ in nameAsks += 1; return nameWord }
-        UsageReader.nameSeam = { _, done in fetches += 1; done(reply2) }
-        let rn = UsageReader(sn, defaults: UserDefaults(suiteName: "cl-audit-surfaces-askn-\(settles)-\(getpid())")!)
-        let fake = "fake-sign-in-\(settles)"
+        UsageReader.nameSeam = { _, done in fetches += 1; done(replyNow) }
+        let rn = UsageReader(sn, defaults: UserDefaults(suiteName: "cl-audit-surfaces-askn-\(what)-\(getpid())")!)
+        let fake = "fake-sign-in-\(what)"
         rn.keepForChecks(token: fake)
         rn.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: rn.generation, key: Account.sha8(fake))
         rn.profileFound(mo.email!, key: Account.sha8(fake), account: mo.account, organization: mo.organization); rn.save()
         RunLoop.main.run(until: Date().addingTimeInterval(0.8))
-        let settled = Store.status(sn.id)?.resolved
-        check(nameAsks == 1 && fetches == 1 && settled?.readStale == nil && settled?.codeName == mo.email,
-              "a name-only word against an id-only reading (\(settles) reply): one name fetch, then the same seat, the numbers stand: \(nameAsks) ask(s), \(fetches) fetch(es)")
+        let afterFirst = Store.status(sn.id)?.resolved
+        if what == "named" {
+            check(nameAsks == 1 && fetches == 1 && afterFirst?.readStale == nil && afterFirst?.codeName == mo.email,
+                  "a name-only word against an id-only reading, the reply named: one fetch, then the same seat, the numbers stand: \(fetches) fetch(es)")
+        } else {
+            check(nameAsks == 1 && fetches == 1 && afterFirst?.readStale == true && afterFirst?.line == AccountResolver.seatUnknownWords,
+                  "…the reply \(what): the seat isn't known, held back with \"\(AccountResolver.seatUnknownWords)\": \(afterFirst?.line ?? "-")")
+            rn.save(); RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            check(fetches == 1, "…no second fetch within one read (\(what))")
+            // the next regular read: fetched again; still no name, still held back; then a name: the same seat
+            rn.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: rn.generation, key: Account.sha8(fake)); rn.save()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            check(fetches == 2 && Store.status(sn.id)?.resolved?.readStale == true, "…the next read fetches again, still held back (\(what))")
+            replyNow = named
+            Thread.sleep(forTimeInterval: 1.1)    // (a read with its own time)
+            rn.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: rn.generation, key: Account.sha8(fake)); rn.save()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            check(fetches == 3 && Store.status(sn.id)?.resolved?.readStale == nil && Store.status(sn.id)?.resolved?.codeName == mo.email,
+                  "…a later read brings the name: the same seat, the numbers stand (\(what))")
+        }
         rn.save(); RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-        check(nameAsks == 1 && fetches == 1 && Store.status(sn.id)?.resolved?.readStale == nil,
-              "…and settled: no further fetch or ask (\(settles) reply)")
+        let settledFetches = fetches
+        rn.save(); RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        check(nameAsks == 1 && fetches == settledFetches, "…settled: no further fetch or ask (\(what))")
         rn.stop()
     }
     UsageReader.nameSeam = { _, done in done(nil) }
@@ -3463,7 +3484,8 @@ do {
     check(orglessWord.readStale == nil && orglessWord.line != AccountResolver.staleWords,
           "the short ask's word with no organisation: nothing said about the seat, the reading's numbers stand")
     let unbridged = teamReading(nil, word: personalWord)
-    check(unbridged.readStale == true && unbridged.line == AccountResolver.staleWords && shownWeekly(unbridged, id: h2.account) == nil,
+    check(unbridged.readStale == true && unbridged.line == AccountResolver.seatUnknownWords && shownWeekly(unbridged, id: h2.account) == nil
+          && !AccountResolver.seatUnknownWords.contains("@") && AccountResolver.seatUnknownWords.count <= 70,
           "A2: the short ask names a seat by name, the reading its seat by id only: the seat can't be told, stale, shown nowhere")
     check(teamReading("Personal Two", word: personalWord).readStale == nil
           && teamReading("Team Two", word: personalWord).readStale == true,

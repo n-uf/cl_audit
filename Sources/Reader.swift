@@ -716,6 +716,7 @@ final class UsageReader {
             lastStatus = Store.writeStatus(id, status)
         }
         considerAsk()
+        considerNameFetch()
     }
 
     /// The account answer for what this reader sees now (AccountResolver): Claude Code's account by cl_kit's rule (the
@@ -882,41 +883,42 @@ final class UsageReader {
                 self.processWord = (word, gen, dir, Date())
                 // Another account: the Keychain has moved on, so the sign-in is read again. The same account, its seat not told
                 // (a running claude names its organisation by name only, "<address>'s Organization" on a personal seat, and
-                // this reading has its id alone): the reply's organisation name is fetched once for this sign-in, then the
-                // names decide (A5). A word naming no organisation says nothing about the seat.
+                // this reading has its id alone): held back until the reply's organisation name comes (fetched once per read,
+                // considerNameFetch), then the names decide (A5). A word naming no organisation says nothing about the seat.
                 let m = self.readingAccount?.match(word)
                 if m == .different {
                     agentLog.log("reader \(self.id, privacy: .public): Claude Code is on another account than the sign-in read; reading the sign-in again")
                     self.forceFresh = true
                     self.send(.refreshRequested)
-                } else if m == .seatNotKnown, word.organizationName != nil, self.readingAccount?.organizationName == nil {
-                    self.fetchOrganizationName()
                 } else {
-                    agentLog.log("reader \(self.id, privacy: .public): Claude Code confirmed its account")
+                    agentLog.log("reader \(self.id, privacy: .public): Claude Code \(m == .seatNotKnown ? "named its account; its seat is told by the sign-in's organisation name" : "confirmed its account", privacy: .public)")
                 }
-                self.save()
+                self.save()             // (its save fetches the organisation name the seat needs: considerNameFetch)
             }
         }
     }
 
-    /// The sign-in the organisation name was fetched for: once per sign-in (never again for the same key).
-    private var nameFetchedFor: String?
+    /// The reading (its time) the organisation name was last fetched for: one fetch per read.
+    private var nameFetchedFor: Date?
 
-    /// The reply's organisation name for the kept sign-in, fetched once (Anthropic's profile reply), so the short ask's word
-    /// (a name) can be compared with the reading (an id). When none comes (no name, a failed reply), the word's own
-    /// organisation is set aside: it can't tell the seat, and the reading stands (never stale for good, never asked again).
-    private func fetchOrganizationName() {
-        guard let key = machine.numbersKey, nameFetchedFor != key,
-              case let .token(token, _, _)? = cachedLogin, Account.sha8(token) == key else { return }
-        nameFetchedFor = key
+    /// After each save: the reply's organisation name for the kept sign-in, when the short ask's word (an organisation by
+    /// name) can't be told from the reading (by id alone): fetched from Anthropic's profile reply, once per read. Until a
+    /// name comes the seat isn't known and the numbers stay held back (A2: fail closed, never taken for a match); a failed
+    /// reply or one with no name is tried again at the next regular read, never with another ask.
+    private func considerNameFetch() {
+        let look = Account.codeRecord(configDir: account.configDir)
+        guard let word = standingWord(look), word.organizationName != nil, let r = readingAccount, r.organizationName == nil,
+              r.match(word) == .seatNotKnown, let key = machine.numbersKey, let readAt = machine.usage?.fetchedAt,
+              nameFetchedFor != readAt, case let .token(token, _, _)? = cachedLogin, Account.sha8(token) == key else { return }
+        nameFetchedFor = readAt
         let dir = account.configDir
         Self.nameSeam(token) { [weak self] data in
             let name = data.flatMap(Self.organizationName)
             DispatchQueue.main.async {
                 guard let self, !self.machine.stopped, self.account.configDir == dir, self.machine.numbersKey == key else { return }
-                if let name { self.readingOrganizationName = (key, name) }
-                else if var p = self.processWord { p.word.organizationName = nil; self.processWord = p }
-                agentLog.log("reader \(self.id, privacy: .public): the sign-in's organisation \(name == nil ? "isn't named" : "is named", privacy: .public); its seat is told by it")
+                agentLog.log("reader \(self.id, privacy: .public): the sign-in's organisation \(name == nil ? "not named yet: held back until the next read" : "named: its seat is told by it", privacy: .public)")
+                guard let name else { return }
+                self.readingOrganizationName = (key, name)
                 self.save()
             }
         }
