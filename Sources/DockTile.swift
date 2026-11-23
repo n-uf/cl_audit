@@ -195,17 +195,22 @@ struct TileTracker {
     }
 }
 
+extension AccountEntry {
+    /// What decides the profile's face besides its record, in cl_kit's terms (ProfileLook).
+    var look: ProfileLook { ProfileLook(name: name, label: label, pollMinutes: pollMinutes, windowDot: windowDot) }
+}
+
 extension TileModel {
     /// A profile's Dock icon face from its one value (ProfileShow): the Dock icon app and the Dock tile plug-in draw this.
     /// Grey for old numbers or none (ProfileDisplay.grey), the warning for a sign-in on another account, the countdown
     /// for the full limit that holds the profile back (none once its reset has passed).
     static func face(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, now: Date = Date()) -> TileModel {
-        let d = show.display, u = show.usage
-        return TileModel(label: Account.label(e), fiveHour: u?.fiveHour, weekly: u?.weekly,
-                         stale: d.grey, style: e.style, warn: d.otherAccount,
+        // what the face shows is cl_kit's (StatusFace); how it looks (style, colours, frame, countdown) is cl_audit's
+        let f = StatusFace.of(show.display, look: e.look, windowOpen: windowOpen, now: now)
+        return TileModel(label: f.label, fiveHour: f.fiveHour, weekly: f.weekly,
+                         stale: f.grey, style: e.style, warn: f.otherAccount,
                          tint: e.color, frame: e.frame,
-                         fiveHourElapsed: windowElapsed(u?.fiveHourResets, 5 * 3600),
-                         weeklyElapsed: windowElapsed(u?.weeklyResets, 7 * 86400), windowOpen: windowOpen && e.windowDot,
-                         countdown: AtLimit.tileCountdown(d.full(now: now)))
+                         fiveHourElapsed: f.fiveHourElapsed, weeklyElapsed: f.weeklyElapsed, windowOpen: f.windowOpen,
+                         countdown: AtLimit.tileCountdown(f.full))
     }
 }

@@ -673,13 +673,13 @@ final class UsageReader {
     func save() {
         let m = machine, usage = m.usage, state = m.state
         guard !m.stopped else { return }
-        var status = IconStatus(loginEmail: m.loginEmail, expectedEmail: expectedEmail, state: "\(state)",
-                                fiveHour: usage?.fiveHour, weekly: usage?.weekly, updatedAt: usage?.fetchedAt,
-                                renewNote: m.renewNote, fiveHourResets: usage?.fiveHourResets,
-                                weeklyResets: usage?.weeklyResets, plan: planName ?? m.plan,
-                                source: usage?.source, problem: state.menuText, renewing: m.renewing,
-                                scoped: usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil, credits: usage?.credits,
-                                noFiveHour: usage?.noFiveHour == true ? true : nil)
+        var status = IconStatus(state: "\(state)")
+        status.loginEmail = m.loginEmail; status.expectedEmail = expectedEmail
+        status.fiveHour = usage?.fiveHour; status.weekly = usage?.weekly; status.updatedAt = usage?.fetchedAt
+        status.renewNote = m.renewNote; status.fiveHourResets = usage?.fiveHourResets; status.weeklyResets = usage?.weeklyResets
+        status.plan = planName ?? m.plan; status.source = usage?.source; status.problem = state.menuText; status.renewing = m.renewing
+        status.scoped = usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil; status.credits = usage?.credits
+        status.noFiveHour = usage?.noFiveHour == true ? true : nil
         // decided here, for every surface: no percent past its limit's reset, and an expired sign-in with no fresh numbers
         // has none at all (no bars, "login expired", Log in…). The reader keeps its own copy, to read again at a reset
         status = status.current()

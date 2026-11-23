@@ -131,7 +131,7 @@ wx="$app/Contents/PlugIns/$name Widget.appex"
 mkdir -p "$wx/Contents/MacOS"
 echo "compiling the widget…"
 swiftc -O -swift-version 5 -target arm64-apple-macos14.0 -application-extension -parse-as-library \
-  -o "$wx/Contents/MacOS/cl_audit-widget" "$here/Widget/Widget.swift" "$here/Widget/WidgetViews.swift" "$here/Sources/StatusRecord.swift" \
+  -o "$wx/Contents/MacOS/cl_audit-widget" "$here/Widget/Widget.swift" "$here/Widget/WidgetViews.swift" \
   -I "$out" -L "$out" -lProfileCore \
   -framework WidgetKit -framework SwiftUI -Xlinker -e -Xlinker _NSExtensionMain
 cat > "$wx/Contents/Info.plist" <<PLIST
