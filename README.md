@@ -648,9 +648,11 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
 folder, a summary with the live icon and numbered steps); narrower, one column with the next step pinned
 at the bottom.
 
-- **Account first:** the Claude Code card's **Account** pop-up lists the accounts signed
+- **Name first, then Account:** until the profile has a name, every Sign in is off, with one grey line saying so. The
+  Account card's **Account** pop-up lists the accounts signed
   in in Claude Code folders on this Mac that no profile uses, each with its folder (picking one connects that
-  folder as it is: its sign-in, settings and history stay), other profiles' accounts (picking one signs in to it
+  folder as it is, at once: its sign-in, settings and history stay; another choice can replace it until something is
+  made), other profiles' accounts (picking one signs in to it
   in the new profile's own folder, with its address filled in), and **Sign in to another account…**. That opens the one-line address row: **Sign in** makes a new folder, `~/.claude-<name>`,
   and Terminal runs `claude auth login --claudeai --email <address>` for it. The address is only filled in:
   the browser's claude.ai account decides which account it is (switch it there first if it shows another

@@ -25,7 +25,10 @@ the notes before updating.
   - **Claude window** (only with one) waits for the Claude app to close before it makes the window's folder, with Quit, Check again and Continue anyway. Then it checks the window's own sign-in.
   - A step waiting on the Claude app is amber, not red. Red is for failures.
   - The steps use progress colours: the current step green, a done one green with a check, one to come grey. They are never the profile's colour (a pink profile's current step was pink).
-  - Until the profile has a name, Sign in is dimmed, and "Name the profile first." is a grey hint, not red.
+  - Until the profile has a name, every Sign in is off (the Account pop-up and its keys), and "Name the profile first." is a grey hint, not red.
+  - Account is the one place to choose. Picking an account found on this Mac, or a folder in Folder, connects that folder as it is at once. Another choice can still replace it until something is made.
+  - The Claude window step waits until Sign in is done.
+  - The foot has Cancel and **Create**, which waits only on the folders the profile needs. A sign-in can follow from Settings.
 - **New profile's Account pop-up** lists the other profiles' standby accounts too, as "Plan · Name's standby", after the accounts in use.
   - The accounts found on this Mac now come last, before Sign in to another account.
 - **A usage-only profile's tile** shows its folder again, with "usage only" after it.
