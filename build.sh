@@ -44,9 +44,8 @@ echo "compiling MenuRows…"
 build_menurows "$out" -O
 privacy=(); while IFS= read -r f; do privacy+=("$f"); done < <(menurows_link "$out"; privacy_link "$out")
 echo "compiling…"
-# One compile for the app and its Dock tile plug-in (DockTile/): the same objects linked twice, so the plug-in draws a
-# tile with the app's own code. The plug-in's load-time function (docktile_load.c) goes into the plug-in only, and the
-# app's entry file (main.swift: its command line and start) stays out of it; what the plug-in never reaches is stripped.
+# One compile for the app (its Dock tile plug-in's sources included, so the app and the checks have its code too); the plug-in
+# itself is compiled on its own below, from its few sources and ProfileCore.
 mkdir -p "$out/obj"
 (cd "$out/obj" && swiftc -O -swift-version 5 -target arm64-apple-macos13.0 -module-name UsageDock -c \
   "$here"/Sources/*.swift "$here/Widget/WidgetViews.swift" "$here/DockTile/Plugin.swift" -I "$out")
@@ -54,12 +53,17 @@ frameworks=(-framework AppKit -framework SwiftUI -framework Charts -framework Se
   -framework UserNotifications -framework WidgetKit)
 swiftc -target arm64-apple-macos13.0 -o "$out/UsageDock" "$out"/obj/*.o \
   -L "$out" -lProfileCore -lClaudeAuth -lRuns "${privacy[@]}" "${frameworks[@]}"
-echo "linking the Dock tile plug-in…"
+# The Dock tile plug-in runs inside the Dock's shared process: it is built from its own few sources (what the tile draws
+# and its menu needs, each file saying so at its top) with ProfileCore and AppKit only, never the app's other code (no
+# sign-in, Keychain, process or network code is even linked in). A file here that reaches the app's other code fails this
+# compile. The load-time function (docktile_load.c) registers each copy's class.
+echo "compiling the Dock tile plug-in…"
 clang -O2 -arch arm64 -mmacosx-version-min=13.0 -c -o "$out/docktile_load.o" "$here/DockTile/docktile_load.c"
-objs=()
-for o in "$out"/obj/*.o; do [[ "$(basename "$o")" == main.o ]] || objs+=("$o"); done
-swiftc -target arm64-apple-macos13.0 -emit-library -module-name DockTile -o "$out/DockTile" "${objs[@]}" "$out/docktile_load.o" \
-  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${privacy[@]}" "${frameworks[@]}" -Xlinker -dead_strip -Xlinker -dead_strip_dylibs
+plugin_sources=(DockTile/Plugin.swift Sources/PluginProfile.swift Sources/DockTile.swift Sources/DockMenu.swift Sources/ClQuick.swift
+  Sources/SafeRead.swift Sources/Painter.swift Sources/IconDesigns.swift Sources/StatusStyles.swift Sources/TileCountdown.swift)
+swiftc -O -swift-version 5 -target arm64-apple-macos13.0 -emit-library -module-name DockTile -o "$out/DockTile" \
+  "${plugin_sources[@]/#/$here/}" "$out/docktile_load.o" -I "$out" -L "$out" -lProfileCore -framework AppKit \
+  -Xlinker -dead_strip -Xlinker -dead_strip_dylibs
 
 app="$out/$name.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -145,7 +149,7 @@ wx="$app/Contents/PlugIns/$name Widget.appex"
 mkdir -p "$wx/Contents/MacOS"
 echo "compiling the widget…"
 swiftc -O -swift-version 5 -target arm64-apple-macos14.0 -application-extension -parse-as-library \
-  -o "$wx/Contents/MacOS/cl_audit-widget" "$here/Widget/Widget.swift" "$here/Widget/WidgetViews.swift" \
+  -o "$wx/Contents/MacOS/cl_audit-widget" "$here/Widget/Widget.swift" "$here/Widget/WidgetViews.swift" "$here/Sources/TileCountdown.swift" \
   -I "$out" -L "$out" -lProfileCore \
   -framework WidgetKit -framework SwiftUI -Xlinker -e -Xlinker _NSExtensionMain
 cat > "$wx/Contents/Info.plist" <<PLIST
