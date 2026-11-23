@@ -363,26 +363,32 @@ do {
     check(run([(60, facts(beat: at(-31)))], &t) == [.none], "one stale tick after a minute isn't enough (two in a row)")
 }
 
-// 4. the Dock icon's menu (DockTileMenu), cl_quick's shape: the profile, its accounts with the status line under the one in
-// use, the Claude window and the actions; addresses whole or hidden; its actions are notices to the agent
+// 4. the Dock icon's menu (DockTileMenu): short, the profile, the Claude window and the actions (the accounts, numbers and
+// states are the Dock icon's panel's); its actions are notices to the agent. The menu bar's menu (header false) lists the
+// accounts under its row.
 do {
     var win = e; win.claudeWindow = true
     let show = ProfileShow.of(win, raw: record(), now: now)
     let rows = DockTileMenu.rows(win, show, windowOpen: false, now: now)
+    let dockItems = ["Claude Dock", "—", "Claude window ▸", "  Open", ClQuick.itemTitle, "Refresh now", "—", "Dashboard", "Profile settings…"]
     let shown = DockTileMenu.lines(rows, blur: false)
-    check(shown == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "bob@example.com", "Sign in to another account…", "—",
-                    "Claude window ▸", "  Open", ClQuick.itemTitle, "Refresh now", "—", "Dashboard", "Profile settings…"],
-          "the menu, addresses shown: the profile, the account in use ticked, its status line, the standby account, Sign in to "
-          + "another account…, Claude window ▸ Open, Quick chat (cl_quick, or Get cl_quick…), Refresh now, Dashboard, Profile settings… (got \(shown))")
-    let hiddenLines = DockTileMenu.lines(rows, blur: true)
-    let s = DockTileMenu.dockStandIn
-    check(hiddenLines[1] == "✓ \(s) 1" && hiddenLines[3] == "\(s) 2"
-          && !hiddenLines.joined().replacingOccurrences(of: s, with: "").contains("@")
-          && !hiddenLines.joined().contains("ann") && !hiddenLines.joined().contains("bob") && !hiddenLines.joined().contains("example"),
-          "addresses hidden: the Dock's text stand-in, the same for every account, numbered so the rows stay apart, nothing of any address (got \(hiddenLines))")
-    check(s.count == 13 && !s.contains { $0.isLetter || $0.isNumber }, "the Dock's stand-in: 13 characters, no letter or digit of anything")
-    check(rows.contains(.address(.init(address: "bob@example.com", act: .switchTo, target: AccountEntry.switchKey(id, standbyID))))
-          && rows.contains(.address(.init(address: "ann@example.com", ticked: true))),
+    check(shown == dockItems,
+          "the Dock menu: the profile, Claude window ▸ Open, Quick chat (cl_quick, or Get cl_quick…), Refresh now, Dashboard, "
+          + "Profile settings…; no account, number or status (got \(shown))")
+    check(DockTileMenu.lines(rows, blur: true) == dockItems && !rows.contains { if case .address = $0 { return true }; if case .status = $0 { return true }; return false },
+          "the Dock menu holds no address and no status line, whatever the setting")
+    for (what, raw) in [("full", record(five: 100, week: 40)), ("none", nil)] as [(String, StatusRecord?)] {
+        let l = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: raw, now: now), windowOpen: false, now: now), blur: false)
+        check(l == dockItems, "the Dock menu, \(what): the same items (got \(l))")
+    }
+    // the menu bar's rows under its row: the accounts, then the actions
+    let bar = DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: false, header: false, now: now), blur: false)
+    check(bar == ["✓ ann@example.com", "bob@example.com", "Sign in to another account…", "—",
+                  "Claude window ▸", "  Open", ClQuick.itemTitle, "Refresh now", "—", "Dashboard", "Profile settings…"],
+          "the menu bar's rows: the account in use ticked, the standby account, Sign in to another account…, then the actions (got \(bar))")
+    let barRows = DockTileMenu.rows(win, show, windowOpen: false, header: false, now: now)
+    check(barRows.contains(.address(.init(address: "bob@example.com", act: .switchTo, target: AccountEntry.switchKey(id, standbyID))))
+          && barRows.contains(.address(.init(address: "ann@example.com", ticked: true))),
           "a standby account's row opens the Switch page with it; the account in use's row does nothing")
     check(DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: true, now: now), blur: false).contains("  Show")
           && DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: true, now: now), blur: false).contains("  Quit")
@@ -391,66 +397,37 @@ do {
     var noWin = e; noWin.claudeWindow = false
     check(!DockTileMenu.lines(DockTileMenu.rows(noWin, show, windowOpen: false, now: now), blur: false).contains("Claude window ▸"),
           "no Claude window: no Claude window ▸")
-    let none = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: nil, now: now), windowOpen: false, now: now), blur: false)
-    check(none.contains("No usage yet"), "no reading yet: said so (got \(none))")
-    let full = DockTileMenu.rows(win, ProfileShow.of(win, raw: record(five: 100, week: 40), now: now), windowOpen: false, now: now)
-    check(full.contains { if case .status(let s, true) = $0 { return s.hasPrefix("5-hour full · in ") } else { return false } }
-          && DockTileMenu.lines(full, blur: false).contains("bob@example.com"),
-          "a full limit: the crimson status line, the standby account under it the way back")
-    let every = [rows, full].flatMap { DockTileMenu.lines($0, blur: false) } + none
-    check(every.allSatisfy { $0.count <= DockTileMenu.rowCharacters + 2 }, "every row at most 40 characters (the ticked row's mark aside)")
     check(DockTileMenu.fit(String(repeating: "a", count: 50)).count == 40 && DockTileMenu.fit("short") == "short",
           "a longer row is cut in the middle to 40 characters")
-    check(DockTileMenu.splitDiffers.count <= DockTileMenu.rowCharacters,
-          "the split's status line fits whole: its fallback (also its words while addresses are hidden)")
-    // one account reads the same wherever it is named: the ticked row and "Sign Terminal in to …" share its number
-    let named: [DockTileMenu.Row] = [.address(.init(address: "ann@example.com", ticked: true)),
-                                     .address(.init(address: "bob@example.com", suffix: " · Terminal")),
-                                     .address(.init(prefix: "Sign Terminal in to ", address: "ann@example.com", suffix: "…", account: false)),
-                                     .address(.init(address: "cy@example.com"))]
-    let namedLines = DockTileMenu.lines(named, blur: true)
-    check(namedLines == ["✓ \(s) 1", "\(s) 2 · Terminal", "Sign Terminal in to \(s) 1…", "\(s) 3"]
-          && namedLines.allSatisfy { $0.count <= DockTileMenu.rowCharacters + 2 },
-          "hidden: numbered by account, the sign-in row carrying the ticked account's number (got \(namedLines))")
-    // credits being spent and why the numbers aren't fresh: short fixed status lines of their own under the account
+    // the menu bar's problem line: a few fixed words for a failed read or a busy service, none of the system's own
     var troubled = record(); troubled.state = "rateLimited"; troubled.problem = "Usage service busy, retrying later"
-    troubled.credits = Credits(enabled: true, used: 4.2, cap: 50, currency: "USD", out: false, spentAt: now.addingTimeInterval(-60))
-    let troubledLines = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: troubled, now: now), windowOpen: false, now: now), blur: false)
-    check(Array(troubledLines.prefix(5)) == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "Credits · $4.20 of $50.00 spent",
-                                            "Usage service busy · retrying later"],
-          "credits being spent and the busy service: short grey status lines under the account's, never cut (got \(troubledLines))")
-    check(DockTileMenu.problemLine(state: "failed(\"The network connection was lost.\")", agentDown: false) == "Couldn't update · retrying"
-          && DockTileMenu.problemLine(state: "ok", agentDown: true) == DockTileMenu.agentDownWords
-          && ["expired", "noLogin", "denied", "unreadable", "ok", "idle"].allSatisfy { DockTileMenu.problemLine(state: $0, agentDown: false) == nil }
-          && [DockTileMenu.agentDownWords, "Couldn't update · retrying", "Usage service busy · retrying later"].allSatisfy { $0.count <= DockTileMenu.rowCharacters },
-          "the problem line: a few fixed words for a failed read, a busy service or no agent, none of the system's own; none where "
-          + "the status line says it (expired, signed out, refused, unreadable)")
-    var expiredRec = record(); expiredRec.state = "expired"; expiredRec.problem = FetchState.expired.menuText
-    let expiredLines = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: expiredRec, now: now), windowOpen: false, now: now), blur: false)
-    check(expiredLines.contains("The sign-in stopped working") && !expiredLines.contains { $0.hasPrefix("Sign-in expired") },
-          "an expired sign-in: one line says it (got \(expiredLines))")
-    check(DockTileMenu.lines(DockTileMenu.rows(win, show, windowOpen: false, agentDown: true, now: now), blur: false).contains(DockTileMenu.agentDownWords),
-          "the Dock icon app's word that the agent isn't running: its own line")
+    let troubledBar = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: troubled, now: now), windowOpen: false, header: false, now: now), blur: false)
+    check(Array(troubledBar.prefix(2)) == ["✓ ann@example.com", "Usage service busy · retrying later"]
+          && DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: troubled, now: now), windowOpen: false, now: now), blur: false) == dockItems,
+          "the busy service: a short grey line under the menu bar's account in use, never in the Dock menu (got \(troubledBar))")
+    check(DockTileMenu.problemLine(state: "failed(\"The network connection was lost.\")") == "Couldn't update · retrying"
+          && ["expired", "noLogin", "denied", "unreadable", "ok", "idle"].allSatisfy { DockTileMenu.problemLine(state: $0) == nil }
+          && ["Couldn't update · retrying", "Usage service busy · retrying later"].allSatisfy { $0.count <= DockTileMenu.rowCharacters },
+          "the problem line: a few fixed words for a failed read or a busy service, none of the system's own; none for a sign-in state")
     // (a row with words after its address, " · Terminal": only the address is cut, its words whole, within 40)
     let termRow = DockTileMenu.AddressRow(address: "ann@example.com", suffix: " · Terminal")
     let longTerm = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example.com", suffix: " · Terminal")
-    check(DockTileMenu.words(termRow, blur: true) == DockTileMenu.dockStandIn + " · Terminal"
-          && DockTileMenu.words(termRow, number: 2, blur: true) == DockTileMenu.dockStandIn + " 2 · Terminal" && DockTileMenu.words(termRow, blur: false) == "ann@example.com · Terminal"
+    check(DockTileMenu.words(termRow, blur: true) == AddressText.hidden + " · Terminal" && DockTileMenu.words(termRow, blur: false) == "ann@example.com · Terminal"
           && DockTileMenu.words(longTerm, blur: false).hasSuffix(" · Terminal") && DockTileMenu.words(longTerm, blur: false).count == DockTileMenu.rowCharacters,
-          "a row with words after its address: only the address is cut, its words whole, within 40 (got \(DockTileMenu.words(longTerm, blur: false)))")
+          "a row with words after its address: \"hidden address\" while hidden; only the address is cut, its words whole, within 40 (got \(DockTileMenu.words(longTerm, blur: false)))")
     let noAgent = DockTileMenu.rows(win, show, windowOpen: false, agentRuns: false, now: now)
-    check(DockTileMenu.lines(noAgent, blur: false) == ["Claude Dock", "✓ ann@example.com", "5-hour 12% · Week 40%", "—", "cl_audit's agent isn't running"]
-          && !noAgent.contains { if case .action = $0 { return true }; if case .address(let r) = $0 { return r.act != nil }; return false },
-          "no agent running: the account and its status, the menu says so and offers no action (none would happen)")
-    // the NSMenu: every item its own tag (the submenu's too), the account in use ticked, a standby row's ask
+    check(DockTileMenu.lines(noAgent, blur: false) == ["Claude Dock", "—", "cl_audit's agent isn't running"]
+          && !noAgent.contains { if case .action = $0 { return true }; return false },
+          "no agent running: the profile, the menu says so and offers no action (none would happen)")
+    // the NSMenu: every item its own tag (the submenu's too); the profile row disabled; the actions ask for their act
     let probe = NSObject()
     let m = DockTileMenu.menu(rows, light: nil, views: false, target: probe, action: Selector(("x:")))
     func all(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(all) ?? []) } }
     let tags = all(m).map(\.tag)
     check(Set(tags).count == tags.count && !tags.contains(0), "every item, the submenu's too, its own non-zero tag (got \(tags))")
-    check(m.items[1].state == .on && m.items[1].isEnabled && m.items[1].action == nil
-          && m.items[3].representedObject as? String == "switchTo:" + AccountEntry.switchKey(id, standbyID),
-          "the account in use ticked and enabled, doing nothing; the standby row asks for its Switch page")
+    check(!m.items[0].isEnabled && m.items.first { $0.title == "Dashboard" }?.representedObject as? String == "dashboard:\(id)"
+          && !all(m).contains { $0.title.contains("@") },
+          "the profile row disabled, Dashboard asking for its act, no address anywhere in the Dock menu")
     // the agent's mark (a capped read): written within three beats counts as running; none, old or in the future: not
     try? fm.removeItem(at: Agent.markURL)
     check(!DockTile.agentRuns(), "no agent mark: not running")
@@ -484,12 +461,11 @@ plugInfo(build: "b1")
 _ = Store.writeStatus(id, record())
 Agent.writeMark(AgentMark(pid: getpid(), started: Date(), beat: Date(), version: "check", build: "check", path: "/check"))
 let menu = child("menu")
-check(clean(menu, "menu") && menu.out.contains("menu: Claude Dock | \(DockTileMenu.dockStandIn) 1 | 5-hour 12% · Week 40% | \(DockTileMenu.dockStandIn) 2 | ")
-      && menu.out.contains("| Claude window | Open | Quick chat |")
-      && menu.out.contains("heard: openWindow:\(id)") && !menu.out.replacingOccurrences(of: DockTileMenu.dockStandIn, with: "").contains("@")
+check(clean(menu, "menu") && menu.out.contains("menu: Claude Dock |  | Claude window | Open | Quick chat | Refresh now |  | Dashboard | Profile settings…")
+      && menu.out.contains("heard: openWindow:\(id)") && !menu.out.contains("@")
       && log().contains("menu: openWindow"),
-      "the plug-in's menu in the Dock's place: built from the record, addresses hidden (the check's setting) and numbered, "
-      + "Claude window ▸ Open asks the agent, no tripwire (got \(menu.out))")
+      "the plug-in's menu in the Dock's place: the profile, Claude window ▸ Open (asking the agent), Quick chat, Refresh now, "
+      + "Dashboard, Profile settings…; no account or number, no tripwire (got \(menu.out))")
 check(menu.out.contains("tags unique"), "each item of the menu, the submenu's too, has its own non-zero tag (the Dock hands a click back by its tag)")
 check(menu.out.contains("plain titles"), "the Dock draws the menu itself: plain titles, no item views")
 check(menu.out.contains("menu kept") && menu.out.contains("menu replaced"),

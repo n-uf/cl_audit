@@ -1,32 +1,24 @@
-// DockMenu: a profile's right-click menu in cl_quick's shape, one design for the Dock icon app's menu (IconApp.profileMenu,
-// over the rows macOS adds: Options, Show All Windows, Hide, Quit), the Dock tile plug-in's while the app isn't running
-// (DockTile/Plugin.swift, macOS adding Options and Open) and the menu bar icon's under its row (MenuBar.menuNeedsUpdate):
+// DockMenu: a profile's right-click menus. The Dock menus (the Dock icon app's, IconApp.profileMenu, over the rows macOS adds:
+// Options, Show All Windows, Hide, Quit; and the Dock tile plug-in's while the app isn't running, DockTile/Plugin.swift, macOS
+// adding Options and Open) are short, since the Dock icon's own panel (Details.swift) shows the accounts, numbers and states
+// with views the Dock menu can't draw (it takes plain titles only, no hover reaches the app: probed live 2026-11-22):
 //
 //   ● Claude Main                          the profile and its light (its own colour)
-//   ✓ ann@example.com                      the account in use, ticked; choosing it does nothing
-//     5-hour 34% · Week 12%                its one grey status line (a full limit in crimson)
-//     bob@example.com · Terminal           in the split: Terminal's account, a click switches to it,
-//     Sign Terminal in to ann@example.com… and the one extra action
-//     cy@example.com                       each standby account: a click opens the Switch page with it
-//     Sign in to another account…
 //   ———
 //     Claude window ▸                      Open while it's closed; Show, Quit (and Quit and keep, the app running)
 //     Quick chat · Refresh now
 //   ———
 //     Dashboard · Profile settings…
 //
-// Addresses are whole, never a name made from one, and go through AddressPrivacy (Settings ▸ General ▸ Emails): shown as they
-// are, or hidden. The menu bar's menu draws a hidden one as AddressMenuRow (the blurred stand-in, the address while the row
-// has the pointer on it). The Dock draws the Dock menus itself from plain titles (it leaves out an item's view, image and
-// attributed title, and no highlight reaches the app: probed live 2026-11-22), so there a hidden address is a fixed text
-// stand-in, "░░░░░░░@░░░░░" (dockStandIn), the same for every account, numbered by account when two or more are hidden, the
-// same number wherever one account is named. A status line never holds a hidden address of its own. Every
-// row is at most 40 characters (a longer one is cut in the middle). Every item has its own tag, the submenu's too: the
-// Dock hands a click on a Dock tile's menu back by the item's tag (_sendDockMenuCommand:withTag:).
+// The menu bar icon's menu (MenuBar.menuNeedsUpdate) draws its own views, so under its row it also lists the accounts: the
+// account in use ticked, in the split Terminal's account and the sign-in, each standby account, Sign in to another account….
+// Addresses there are whole, never a name made from one, through AddressPrivacy (Settings ▸ General ▸ Emails): a hidden one
+// is AddressMenuRow (the blurred stand-in, the address while the row has the pointer on it). Every row is at most 40
+// characters (a longer one is cut in the middle). Every item has its own tag, the submenu's too: the Dock hands a click on a
+// Dock tile's menu back by the item's tag (_sendDockMenuCommand:withTag:).
 //
-// The plug-in starts nothing itself: Quick chat (cl_quick, opened by the agent: ClQuick) and Refresh now post their notices; the rest ask the
-// agent (DockTile.menuNote), which does them. It reads no sign-in and no standby account's record: the standby rows are
-// the profiles file's list (AccountEntry), the status line the profile's own record.
+// The plug-in starts nothing itself: Quick chat (cl_quick, opened by the agent: ClQuick) and Refresh now post their notices;
+// the rest ask the agent (DockTile.menuNote), which does them. It reads no sign-in and no record.
 
 import AddressPrivacy
 import AppKit
@@ -65,22 +57,20 @@ enum DockTileMenu {
 
     /// The longest row, in characters.
     static let rowCharacters = 40
-    /// The split's status line when "Usage hidden: Terminal on <address>" wouldn't fit.
-    static let splitDiffers = "Usage hidden: Terminal's account differs"
 
     /// "Claude Main"; a name that starts with Claude as it is (cl_quick's rule).
     static func title(_ name: String) -> String { name.lowercased().hasPrefix("claude") ? name : "Claude " + name }
 
-    /// The menu's rows for a profile and its value now. `windowOpen`: its Claude window runs; `appRunning`: the Dock icon
-    /// app's own menu (Quit and keep is its own); `header` false: the menu bar's, under its row, which already says the
-    /// profile and its numbers (no profile row, no status line). Without the agent (`agentRuns` false: the Dock tile's) the
-    /// actions, the agent's to do, are left out and the menu says so. `agentDown`: the Dock icon app's word that the agent
-    /// isn't running, so its numbers aren't updating (problemLine).
+    /// The menu's rows for a profile and its value now. `header` true: a Dock menu, the profile row then the actions (no
+    /// accounts, numbers or states: the Dock icon's panel has them); false: the menu bar's, under its row (which says the
+    /// profile and its numbers), the accounts then the actions. `windowOpen`: its Claude window runs; `appRunning`: the Dock
+    /// icon app's own menu (Quit and keep is its own). Without the agent (`agentRuns` false: the Dock tile's) the actions, the
+    /// agent's to do, are left out and the menu says so.
     static func rows(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, agentRuns: Bool = true, appRunning: Bool = false,
-                     header: Bool = true, agentDown: Bool = false, now: Date = Date()) -> [Row] {
+                     header: Bool = true, now: Date = Date()) -> [Row] {
         var rows: [Row] = []
         if header { rows.append(.profile(title(e.name.isEmpty ? Account.label(e) : e.name))) }
-        rows += accounts(e, show, header: header, actions: agentRuns, agentDown: agentDown, now: now)
+        else { rows += accounts(e, show, actions: agentRuns, now: now) }
         guard agentRuns else {
             rows.append(.separator)
             rows.append(.info("cl_audit's agent isn't running"))
@@ -102,11 +92,10 @@ enum DockTileMenu {
         return rows
     }
 
-    /// The accounts: the one in use ticked with its status line under it (`header`), in the split Terminal's account and the
-    /// sign-in to the app's, each standby account, Sign in to another account…. `actions` false (no agent to do them): the
-    /// account in use and its status only.
-    static func accounts(_ e: AccountEntry, _ show: ProfileShow, header: Bool, actions: Bool = true, agentDown: Bool = false,
-                         now: Date = Date()) -> [Row] {
+    /// The menu bar menu's accounts: the one in use ticked (with why its numbers aren't fresh, problemLine), in the split
+    /// Terminal's account and the sign-in to the app's, each standby account, Sign in to another account…. `actions` false
+    /// (no agent to do them): the account in use only.
+    static func accounts(_ e: AccountEntry, _ show: ProfileShow, actions: Bool = true, now: Date = Date()) -> [Row] {
         let d = show.display
         let listed = e.listed(by: show.view)                    // never the account in use on standby too
         let lines = SwitchMenu.lines(listed, now: now)
@@ -115,7 +104,7 @@ enum DockTileMenu {
         if d.sign != .signedOut, let inUse = show.view.label {
             out.append(.address(AddressRow(address: inUse, ticked: true)))
         }
-        out += statusLines(show, header: header, agentDown: agentDown, now: now)
+        if let why = problemLine(state: show.record?.state) { out.append(.status(why, full: false)) }
         guard actions else { return out }
         // the split by hand: Terminal's account is its own row (a click switches to it, as the card's row does)
         var terminal: String?
@@ -142,68 +131,14 @@ enum DockTileMenu {
         return out
     }
 
-    /// The grey lines under the account in use: its status line (`header`: the menu bar's row says it already), then, each as
-    /// a status line of its own in a short fixed form (never cut, never a system's own words), usage credits while they're
-    /// being spent (`header` too: the row shows them) and why the numbers aren't fresh when the status line doesn't say it.
-    static func statusLines(_ show: ProfileShow, header: Bool, agentDown: Bool = false, now: Date = Date()) -> [Row] {
-        var out: [Row] = []
-        if header {
-            out.append(status(show, now: now))
-            if let u = show.usage, let c = u.credits, c.inUse(fiveHour: u.fiveHour, weekly: u.weekly, now: now) {
-                out.append(.status(creditsLine(c), full: false))
-            }
-        }
-        if let why = problemLine(state: show.record?.state, agentDown: agentDown) { out.append(.status(why, full: false)) }
-        return out
-    }
-
-    /// "Credits · $4.20 of $50.00 spent": the menus' short form of Credits.line (at most 40 characters).
-    static func creditsLine(_ c: Credits) -> String {
-        let s = c.spentWords.map { "Credits · " + $0 } ?? "Using usage credits"
-        return s.count <= rowCharacters ? s : "Using usage credits"
-    }
-
-    /// Why the numbers aren't fresh, in a few words, only where the status line doesn't say it already: the agent not
-    /// running (the Dock icon app's word: `agentDown`), a read that failed, the usage service busy. A sign-in that expired,
-    /// is signed out, refused or unreadable is the status line's (The sign-in stopped working, Signed out, Can't read…).
-    static func problemLine(state: String?, agentDown: Bool) -> String? {
-        if agentDown { return agentDownWords }
+    /// Why the numbers aren't fresh, in a few fixed words (never a system's own), under the menu bar menu's account in use: a
+    /// read that failed, the usage service busy. A sign-in that expired, is signed out, refused or unreadable is the menu bar
+    /// row's to say.
+    static func problemLine(state: String?) -> String? {
         guard let state else { return nil }
         if state.hasPrefix("failed") { return "Couldn't update · retrying" }
         if state == "rateLimited" { return "Usage service busy · retrying later" }
         return nil
-    }
-    static let agentDownWords = "Agent not running · open cl_audit"
-
-    /// The account's one status line: a full limit (crimson), why the numbers aren't shown, the numbers, or why there are none.
-    /// `blur`: a test override of the setting.
-    static func status(_ show: ProfileShow, now: Date = Date(), blur: Bool? = nil) -> Row {
-        let d = show.display
-        if let full = d.full(now: now) {
-            return .status(full.title + (full.resets.map { " · in \(TimeWords.countdown($0, now: now))" } ?? ""), full: true)
-        }
-        if d.split != nil, let w = show.splitWords {
-            if w.switched { return .status(SplitUsage.switchingHead(w.code), full: false) }
-            // Terminal's account is the row below: its address here only while addresses are shown and the line still fits
-            // whole; while hidden the row below draws it (a status line never holds a hidden address of its own)
-            let named = "Usage hidden: Terminal on " + w.code
-            let shown = !(AddressSettings.hides(w.code) && (blur ?? AddressPrivacy.shared.blur))
-            return .status(shown && named.count <= rowCharacters ? named : splitDiffers, full: false)
-        }
-        // the record's one line of state (the card's, cut to the row), then the sign-in, then why the numbers are another's
-        if let line = show.lineWords(short: true), !line.contains("\n") { return .status(line, full: false) }
-        switch d.sign {
-        case .expired: return .status("The sign-in stopped working", full: false)
-        case .signedOut: return .status("Signed out", full: false)
-        case .unreadable: return .status("Can't read Terminal's sign-in", full: false)
-        default: break
-        }
-        if d.otherAccount { return .status("Terminal is on another account", full: false) }
-        if let u = d.usage, u.fiveHour != nil || u.weekly != nil {
-            return .status([u.noFiveHour ? nil : "5-hour \(Painter.pct(u.fiveHour))", "Week \(Painter.pct(u.weekly))"]
-                .compactMap { $0 }.joined(separator: " · "), full: false)
-        }
-        return .status(show.record == nil ? "No usage yet" : "No recent numbers", full: false)
     }
 
     // MARK: words
@@ -220,49 +155,26 @@ enum DockTileMenu {
         AddressSettings.hides(r.address) && (blur ?? AddressPrivacy.shared.blur)
     }
 
-    /// A Dock menu's hidden address: a fixed text stand-in that reads as a smudge, the same for every account (the Dock draws
-    /// plain titles only, so this is the nearest it gets to the menu bar's blurred stand-in). Nothing of any address; the
-    /// operator's pick (2026-11-22). VoiceOver reads it as shade characters.
-    static let dockStandIn = "░░░░░░░@░░░░░"
-
-    /// A row's words as plain text (a Dock menu's title): the address as it is, or while hidden the Dock's stand-in
-    /// (dockStandIn), with `number` after it ("░░░░░░░@░░░░░ 2"), the account's number wherever it is named. Only the address
-    /// is cut to keep the row within 40 characters, never the words around it ("Sign Terminal in to …", " · Terminal").
-    static func words(_ r: AddressRow, number: Int? = nil, blur: Bool? = nil) -> String {
-        let shown = hidden(r, blur: blur) ? dockStandIn + (number.map { " \($0)" } ?? "")
-                                          : AddressSettings.words(r.address, blur: blur)
+    /// A row's words as plain text (a native item's title, the checks' lines): the address as it is, or "hidden address"
+    /// while hidden (the menu bar draws a hidden one as AddressMenuRow, whose title this is). Only the address is cut to keep
+    /// the row within 40 characters, never the words around it ("Sign Terminal in to …", " · Terminal").
+    static func words(_ r: AddressRow, blur: Bool? = nil) -> String {
+        let shown = AddressSettings.words(r.address, blur: blur)
         let room = rowCharacters - r.prefix.count - r.suffix.count
         return r.prefix + (shown.count > room ? fit(shown, max: max(room, 9)) : shown) + r.suffix
-    }
-
-    /// Each hidden address row's number, by its address: the accounts numbered in the order they are first shown, and every
-    /// row that names one of them (Sign Terminal in to …) carrying that account's number, so one account reads the same
-    /// wherever it is mentioned. None when fewer than two accounts are hidden.
-    static func numbers(_ rows: [Row], blur: Bool? = nil) -> [Int: Int] {
-        var order: [String] = []
-        var at: [(row: Int, address: String)] = []
-        for (n, row) in rows.enumerated() {
-            guard case .address(let r) = row, hidden(r, blur: blur) else { continue }
-            let key = r.address.lowercased()
-            if !order.contains(key) { order.append(key) }
-            at.append((n, key))
-        }
-        guard order.count > 1 else { return [:] }
-        return Dictionary(uniqueKeysWithValues: at.map { ($0.row, order.firstIndex(of: $0.address)! + 1) })
     }
 
     /// The rows as plain lines, top to bottom (the checks read the menu this way): "✓ " before the ticked row, "▸" after a
     /// submenu's title and its rows indented.
     static func lines(_ rows: [Row], blur: Bool? = nil) -> [String] {
-        let nums = numbers(rows, blur: blur)
         var out: [String] = []
-        for (n, row) in rows.enumerated() {
+        for row in rows {
             switch row {
             case .profile(let s), .info(let s): out.append(fit(s))
             case .status(let s, _): out.append(fit(s))
             case .separator: out.append("—")
             case .action(let s, _, _): out.append(fit(s))
-            case .address(let r): out.append((r.ticked ? "✓ " : "") + words(r, number: nums[n], blur: blur))
+            case .address(let r): out.append((r.ticked ? "✓ " : "") + words(r, blur: blur))
             case .submenu(let s, let inside): out.append(fit(s) + " ▸"); out += lines(inside, blur: blur).map { "  " + $0 }
             }
         }
@@ -296,8 +208,7 @@ enum DockTileMenu {
 
     /// The rows' items added to `m` (the menu bar's menu adds them under its own row).
     static func add(_ rows: [Row], to m: NSMenu, light: NSColor?, views: Bool, target: AnyObject, action: Selector) {
-        let nums = numbers(rows)
-        for (n, row) in rows.enumerated() {
+        for row in rows {
             switch row {
             case .separator: m.addItem(.separator())
             case .profile(let s):
@@ -321,7 +232,7 @@ enum DockTileMenu {
                 i.target = target; i.representedObject = object(act, what)
                 m.addItem(i)
             case .address(let r):
-                m.addItem(item(r, number: nums[n], views: views, target: target, action: action))
+                m.addItem(item(r, views: views, target: target, action: action))
             case .submenu(let s, let inside):
                 let i = NSMenuItem(title: fit(s), action: nil, keyEquivalent: "")
                 let sub = NSMenu(title: s); sub.autoenablesItems = false
@@ -335,7 +246,7 @@ enum DockTileMenu {
     /// An address row's item: AddressMenuRow while its address is hidden in a menu this process draws, else a native item
     /// titled with its words. The account in use is ticked and enabled (so it doesn't read as broken); choosing it does
     /// nothing unless it has an act.
-    static func item(_ r: AddressRow, number: Int?, views: Bool, target: AnyObject, action: Selector) -> NSMenuItem {
+    static func item(_ r: AddressRow, views: Bool, target: AnyObject, action: Selector) -> NSMenuItem {
         let what = r.act.map { object($0, r.target) }
         let i: NSMenuItem
         if views, hidden(r) {
@@ -346,7 +257,7 @@ enum DockTileMenu {
                 NSApp.sendAction(action, to: target, from: sender)
             }
         } else {
-            i = NSMenuItem(title: words(r, number: number), action: what == nil || !r.enabled ? nil : action, keyEquivalent: "")
+            i = NSMenuItem(title: words(r), action: what == nil || !r.enabled ? nil : action, keyEquivalent: "")
             i.target = target
             i.isEnabled = r.enabled
             if r.ticked { i.state = .on }

@@ -3017,10 +3017,10 @@ do {
     let staleShow = ProfileShow.load(me, now: t0)
     let (staleNote, staleMenu, staleAge) = MainActor.assumeIsolated { let d = dockOf(me, staleShow); return (d.panel.activeNote, titles(d.menu), d.panel.noNumbers) }
     let staleLine = AccountResolver.staleWords
-    check(bothOther.line == staleLine && cardRow(me, now: t0).line == staleLine && staleNote == staleLine && staleMenu.contains(DockTileMenu.fit(staleLine))
+    check(bothOther.line == staleLine && cardRow(me, now: t0).line == staleLine && staleNote == staleLine && !staleMenu.contains(DockTileMenu.fit(staleLine))
           && MenuBarRow.lineWords(MenuBarItems.Profile(show: staleShow)) == staleLine && staleLine.contains("sign in to read again") && staleLine.count <= 70
           && staleAge == "Not read for this account",
-          "a stale reading: \"\(staleLine)\" on the card, in the Dock panel and menu, on the menu bar row; the age line: \(staleAge ?? "-")")
+          "a stale reading: \"\(staleLine)\" on the card, in the Dock panel (not the Dock menu: no states there), on the menu bar row; the age line: \(staleAge ?? "-")")
     let lone = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, names: [:], now: t0)
     let loneWeekly = shownWeekly(lone), loneShow = ProfileShow.load(me, now: t0)
     let (loneNote, loneMenu) = MainActor.assumeIsolated { let d = dockOf(me, loneShow); return (d.panel.activeNote, titles(d.menu)) }
@@ -3029,10 +3029,10 @@ do {
           && lone.codeName == short8 && lone.line == words && loneWeekly == nil
           && AccountView.of(Store.status(for: me, now: t0)).label == short8,
           "folder {id, no address} + a reading with an address and no id, no app: stale, numbers shown nowhere, never labelled with the reading's address")
-    check(cardRow(me, now: t0).line == words && loneNote == words && loneMenu.contains(DockTileMenu.fit(words))
+    check(cardRow(me, now: t0).line == words && loneNote == words && !loneMenu.contains(DockTileMenu.fit(words))
           && MenuBarRow.lineWords(MenuBarItems.Profile(show: loneShow)) == words && words.contains("sign in")
           && words.count <= "Claude Code's .claude.json is too large to read: its account isn't known here.".count,
-          "…and the reason shows: on the card, in the Dock panel and menu, on the menu bar row (sign in, the sweep's verb), no longer than the too-large line those rows show")
+          "…and the reason shows: on the card, in the Dock panel (not the Dock menu), on the menu bar row (sign in, the sweep's verb), no longer than the too-large line those rows show")
     let appOnIt = AccountResolver.resolve(me, among: [me], app: appH2, code: idOnly, loginEmail: foreign, names: [:], now: t0)
     check(appOnIt.readStale == true && !appOnIt.differs && appOnIt.fromApp && appOnIt.email == h2.email && appOnIt.line == words
           && shownWeekly(appOnIt) == nil,
@@ -3515,16 +3515,13 @@ MainActor.assumeIsolated {
     check(tickedRow?.1.ticked == true && tickedRow?.0.title == "hidden address" && tickedRow?.1.prefix == "",
           "hidden, the menu bar icon's menu: the account in use ticks as the native rows do (its state, a mark in the margin), "
           + "no \"✓\" in its words, its address in the standby rows' column")
-    // the Dock icon's menu (the Dock draws it, no item views): plain titles, the Dock's text stand-in numbered so the rows
-    // stay apart
+    // the Dock icon's menu (the Dock draws it, no item views): no account rows at all (the panel has them), so nothing of
+    // any address
     let dockMenu = dockOf(e, show).menu
-    let st = DockTileMenu.dockStandIn
-    let dockAccounts = all(dockMenu).filter { $0.title.hasPrefix(st) }
     check(!all(dockMenu).contains { $0.view != nil } && titles(dockMenu).allSatisfy(clean)
-          && dockAccounts.map(\.title) == ["\(st) 1", "\(st) 2", "\(st) 3"]
-          && dockAccounts[0].state == .on
-          && Set(dockAccounts.dropFirst().compactMap { $0.representedObject as? String }) == Set(keys),
-          "hidden, the Dock icon's menu: plain titles, numbered, the account in use ticked, the standby rows naming their Switch pages: \(titles(dockMenu))")
+          && !all(dockMenu).contains { ($0.representedObject as? String)?.hasPrefix("switchTo:") == true }
+          && !titles(dockMenu).contains("hidden address"),
+          "hidden, the Dock icon's menu: plain titles, no account row and nothing of any address: \(titles(dockMenu))")
     // picking a row sends its action with the Switch page's key (as a native item does)
     let probe = PickProbe()
     let pickRow = DockTileMenu.AddressRow(address: a2, act: .switchTo, target: "pa~k2")

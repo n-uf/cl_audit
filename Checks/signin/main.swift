@@ -1667,7 +1667,8 @@ do {
     // (26.11.32: no "in use" text outside the card; the lamp and the menus' checkmark say it, so the lines show the account plain)
     check(SwitchMenu.inUseLine(cmView) == "\(sh(u1.email!))", "under the profile's name: 'ultra-1'")   // release A: AccountView
     check(SwitchMenu.inUseLine(noView) == nil, "no account known: no in-use line")                    // release A: AccountView
-    // (the Dock and menu bar menus' account rows, built from these lines, are DockTileMenu's: Checks/docktile and surfaces)
+    // (the menu bar menu's account rows, built from these lines, are DockTileMenu's: Checks/docktile and surfaces; the Dock
+    // menus list no accounts, the Dock icon's panel does)
 
     // the waiting alert: words, buttons, which phase
     check(SwitchWaiting.words(profile: "Main", phase: .waiting)?.title == "Claude Main: the switch is waiting for you", "waiting alert: the title")

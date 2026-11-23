@@ -1133,7 +1133,7 @@ MainActor.assumeIsolated {
                 MenuBarRow(profile: mp, now: now).frame(width: min(w, 320))
                 Text("Dock menu").font(.caption.bold())
                 VStack(alignment: .leading, spacing: 3) {
-                    // (its top: the profile, the account in use ticked and its status line, DockTileMenu)
+                    // (its top: the profile and the Claude window, DockTileMenu; no accounts or numbers)
                     Text(DockTileMenu.lines(DockTileMenu.rows(main, ProfileShow.load(main, now: now), windowOpen: false)).prefix(3).joined(separator: "\n"))
                 }.font(.system(size: 13))
                 Text("Dock panel").font(.caption.bold())

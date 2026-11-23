@@ -102,15 +102,11 @@ final class AgentRules {
                 guard e.claudeWindow, self.windowOpen(e) else { return }
                 self.actions[id] = AgentAction(kind: .windowQuits, at: now)
                 _ = ClaudeWindow.quit(Account(e))
-            case .signIn: ClaudeCLI.logIn(profile: e)     // the card's and the menu bar's Sign in: the same flow
-            case .addAccount: ClaudeCLI.logIn(Account(e), email: nil)   // Settings ▸ Accounts' Sign in with another account…
-            case .switchTo:
-                // only a key of this profile's own standby accounts (the Switch page checks it again)
-                guard e.standby.contains(where: { target == AccountEntry.switchKey(id, $0.id) }) else { return }
-                Installer.openSwitch(target)
             case .dashboard: Installer.openDashboard()
             case .settings: Installer.openSettings(account: id)
-            case .quickChat, .refresh, .quitKeep: break  // (the plug-in posts the first two's own notices; the last is the app's)
+            // (the plug-in posts Quick chat's and Refresh now's own notices; Quit and keep is the app's; the Dock menus
+            // have no account rows, so a switch, a sign-in or an added account never comes from here)
+            case .quickChat, .refresh, .quitKeep, .switchTo, .signIn, .addAccount: break
             }
         })
         observers.append(dn.addObserver(forName: Installer.quietQuitNote, object: nil, queue: .main) { [weak self] note in

@@ -476,13 +476,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return profileMenu()
     }
 
-    /// The Dock icon's own menu (right-click), all from the one value (ProfileShow): the profile and its light, its accounts
-    /// with the status line under the one in use, the Claude window and the actions (DockTileMenu).
+    /// The Dock icon's own menu (right-click): the profile and its light, the Claude window and the actions (DockTileMenu);
+    /// the accounts, numbers and states are the panel's.
     func profileMenu() -> NSMenu {
-        // one design with the Dock tile's and the menu bar's (DockTileMenu): the Dock draws this menu itself, so its rows are
-        // plain titles (no item views)
+        // one design with the Dock tile's (DockTileMenu): the Dock draws this menu itself, so its rows are plain titles
         let s = show ?? ProfileShow.of(entry, raw: nil)
-        let rows = DockTileMenu.rows(entry, s, windowOpen: claudeOpen, appRunning: true, agentDown: !Agent.isAlive(Agent.readMark()))
+        let rows = DockTileMenu.rows(entry, s, windowOpen: claudeOpen, appRunning: true)
         return DockTileMenu.menu(rows, light: ProfileLED.lamp(entry.ownColor).color, views: false,
                                  target: self, action: #selector(menuPicked(_:)))
     }
@@ -492,9 +491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let (act, target) = DockTileMenu.parse(sender.representedObject),
               DockTileMenu.profile(act, target) == accountID else { return }
         switch act {
-        case .switchTo: Installer.openSwitch(target)
-        case .signIn: logIn()
-        case .addAccount: ClaudeCLI.logIn(Account(entry), email: nil)  // Settings ▸ Accounts' Sign in with another account…
+        case .switchTo, .signIn, .addAccount: break      // (the Dock menu has no account rows: the panel has them)
         case .quickChat: quickChat()
         case .openWindow: openClaude()
         case .quitWindow: quitClaudeWindow()
