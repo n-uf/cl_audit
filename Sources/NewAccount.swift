@@ -183,6 +183,36 @@ enum NewAccountSetup {
         }
     }
 
+    /// The Account pop-up's other profiles' accounts, "address   Plan · Name's" and "address   Plan · Name's standby": each
+    /// can be picked (shared seats), which signs in to it in the new profile's own folder with its address filled in. One row
+    /// per seat (account and organisation, by the one owner rule): the accounts in use first, then the standby ones, each in
+    /// profile order; an account in use in one profile and standing by in another shows once, as the in-use one. The address
+    /// goes through AddressSettings.words (a menu row is plain text: "hidden address" while addresses are hidden).
+    static func otherAccounts(among accounts: [AccountEntry],
+                              plan: (AccountEntry) -> String? = { Store.status($0.id)?.plan },
+                              expected: (String) -> String? = { Account.expectedEmail(configDir: $0) }) -> [(title: String, email: String)] {
+        var out: [(title: String, email: String)] = []
+        var seen: [AccountIdentity] = []
+        func add(_ who: AccountIdentity, email: String, plan: String?, owner: String) {
+            guard !email.isEmpty, !seen.contains(where: { $0.sameAccount(who) }) else { return }
+            seen.append(who)
+            let detail = [plan.map(Account.planWords), owner].compactMap { $0 }
+            out.append((AddressSettings.words(email) + "   " + detail.joined(separator: " · "), email))
+        }
+        for o in accounts {
+            guard let e = o.seat?.email ?? expected(o.configDir) else { continue }
+            var who = o.seat.map { AccountIdentity($0) } ?? AccountIdentity(account: nil, email: e, organization: nil, source: .guessed)
+            if (who.email ?? "").isEmpty { who.email = e }
+            add(who, email: e, plan: plan(o), owner: o.name + "'s")
+        }
+        for o in accounts {
+            for s in o.standby {
+                add(s.identity, email: s.seat?.email ?? s.email, plan: s.plan, owner: o.name + "'s standby")
+            }
+        }
+        return out
+    }
+
     /// The address row's field and its grey line: the address only fills in the sign-in, the browser's account decides.
     static let addressPlaceholder = "name@example.com (optional)"
     static let addressHelp = "Terminal signs in through your browser. The claude.ai account open there is the one it uses."
@@ -768,19 +798,10 @@ struct NewAccountView: View {
         }
     }
 
-    /// The Account menu's other profiles' accounts, "address   Plan · Name's": each can be picked (shared seats), which signs
-    /// in to it in this profile's own folder (another profile's folder is never shared) with its address filled in.
-    private var otherAccountLines: [(title: String, email: String)] {
-        var out: [(title: String, email: String)] = []
-        for o in model.accounts {
-            guard let e = o.seat?.email ?? Account.expectedEmail(configDir: o.configDir), !out.contains(where: { $0.email.lowercased() == e.lowercased() }) else { continue }
-            var detail: [String] = []
-            if let plan = Store.status(o.id)?.plan { detail.append(Account.planWords(plan)) }
-            detail.append(o.name + "'s")
-            out.append((AddressSettings.words(e) + "   " + detail.joined(separator: " · "), e))
-        }
-        return out
-    }
+    /// The Account menu's other profiles' accounts, in use and standing by (NewAccountSetup.otherAccounts): each can be
+    /// picked (shared seats), which signs in to it in this profile's own folder (another profile's folder is never shared)
+    /// with its address filled in.
+    private var otherAccountLines: [(title: String, email: String)] { NewAccountSetup.otherAccounts(among: model.accounts) }
 
     private func pickFreeAccount(_ path: String) {
         draft.source = .existing; draft.existingDir = path; draft.email = ""; draft.asking = false
@@ -814,8 +835,11 @@ struct NewAccountView: View {
             let free = freeAccountLines
             let others = otherAccountLines
             Menu {
-                // once a folder is made or connected, the account comes with it: only signing in again in the
-                // folder this setup made is left
+                // the other profiles' accounts (in use, then standby), then the ones found on this Mac. Once a folder is
+                // made or connected, the account comes with it: only signing in again in the folder this setup made is left
+                ForEach(Array(others.enumerated()), id: \.offset) { _, o in
+                    Button(o.title) { pickOtherAccount(o.email) }.disabled(draft.started && !canSignInAgain)
+                }
                 ForEach(free, id: \.path) { a in
                     if a.picked {
                         Toggle(a.title, isOn: .constant(true))
@@ -823,7 +847,6 @@ struct NewAccountView: View {
                         Button(a.title) { pickFreeAccount(a.path) }.disabled(draft.started)
                     }
                 }
-                ForEach(others, id: \.email) { o in Button(o.title) { pickOtherAccount(o.email) }.disabled(draft.started && !canSignInAgain) }
                 Divider()
                 if model.claudeKnownMissing { Button(ClaudeInstall.missingInstall) { model.showInstallHelp() } }
                 Button("Sign in to another account…") { askAddress() }

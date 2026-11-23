@@ -2303,6 +2303,13 @@ do {
           && NewAccountSetup.addressNote(u5.email!, among: list, signedIn: none) == nil
           && NewAccountSetup.addressProblem(u4.email!) == nil
           && NewAccountSetup.addressProblem("nope") == "That isn't an email address. Leave it empty to pick the account in the browser.", "an account in use: the in-use note, not refused; a free one: nothing")
+    // the New profile Account pop-up: the accounts in use, then each standby seat once, labelled "Plan · Name's standby"
+    var mainStandby = main; mainStandby.standby = [StandbyAccount(email: u1.email!, seat: u1, id: "m1")]   // Work's in use: shows once, as Work's
+    var workPlans = work; workPlans.standby[0].plan = "ultra"
+    let rows = NewAccountSetup.otherAccounts(among: [mainStandby, workPlans], plan: { $0.id == "main" ? "Max" : nil }, expected: { _ in nil })
+    check(rows.map(\.email) == [u4.email!, u1.email!, u2.email!, "ULTRA-3@example.com"]
+          && rows.map { $0.title.components(separatedBy: "   ").last ?? "" } == ["Max · Main's", "Work's", "Ultra · Work's standby", "Work's standby"],
+          "New profile's Account pop-up: in use first, then standby with its label, one row per seat: \(rows.map(\.title))")
     // the note's address form: no address and no "hidden address" in it, whatever Show emails says (the field above shows it)
     for n in [NewAccountSetup.addressNote(u4.email!, among: list, signedIn: none), NewAccountSetup.addressNote("ULTRA-2@example.com", among: list, signedIn: none)] {
         check(n.map { !$0.contains("@") && !$0.contains("hidden address") && $0.first?.isUppercase == true } == true, "the note names no address in any form: \(n ?? "none")")
