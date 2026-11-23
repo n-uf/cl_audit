@@ -3259,6 +3259,18 @@ do {
     var finWin = fin; NewAccountSetup.windowOn(&finWin)
     check(!NewAccountSetup.canFinish(finWin, accounts: [], discarding: false, windowBusy: false), "Create: with the window on, not before its folder")
     NewAccountSetup.discard(fin, claude: nil)
+    // On this Mac's menu bar icon: on from New profile's page (startNew), off for first run's and the default profile's
+    // drafts; a new profile's look is Two bars, Levels, its label, Countdown, while MenuBarLook's own default keeps no label
+    var mb = NewAccountDraft(); mb.name = "Mbar"
+    let mbLook = mb.entry.menuBarLook
+    check(!mb.entry.menuBar && mbLook.label && mbLook.style == .bars && mbLook.colours == .levels && mbLook.whenFull == .countdown
+          && !MenuBarLook().label,
+          "a new profile's menu bar look: Two bars, Levels, its label, Countdown (MenuBarLook's own default unchanged), the icon off unless asked")
+    mb.menuBar = true
+    let mbModel = SettingsModel(); mbModel.accounts = []
+    mbModel.startNew()
+    check(mb.entry.menuBar && mbModel.draft?.menuBar == true, "New profile's page starts with the menu bar icon on, and the profile gets it")
+    mbModel.draft = nil
     // Continue anyway: the look made with it makes the window's folder while the desktop app is open, and keeps the answer
     var dCA = NewAccountDraft(); dCA.name = "Anyway"
     try! NewAccountSetup.createCode(&dCA)

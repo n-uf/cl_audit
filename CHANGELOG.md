@@ -20,6 +20,11 @@ the notes before updating.
   - A personal plan and a Team seat on one address stay apart: when only one side names the organisation, cl_audit no longer borrows it from the other.
   - The line "Claude Code's record has no address: sign in again in Claude Code." is gone; such numbers now show under Anthropic's account, or hide with the usual "Numbers for another account" line.
 - A standby account whose organisation is found later no longer carries its old week onto that seat (the week was read before the seat was known).
+- **New profile** puts the Claude window, the Dock icon and the menu bar in one ON THIS MAC card, under Profile, then Account, then the steps.
+  - It gains a **Menu bar** switch, on to start. A new profile's icon is Two bars in the level colours, with its label and a countdown when full. Style and colours are set in Settings afterwards.
+  - The colours sit in one row, as in Settings.
+  - "Set when the folder was made" is said once, under Folder.
+  - Profile settings keep their own Claude window, Dock icon and Menu bar cards.
 - **New profile's steps** are now Sign in, Claude window, then the Dock icon.
   - **Sign in** makes the Claude Code folder and its links first. The Claude app may stay open: it never writes that folder.
   - **Claude window** (only with one) waits for the Claude app to close before it makes the window's folder, with Quit, Check again and Continue anyway. Then it checks the window's own sign-in.

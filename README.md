@@ -665,11 +665,15 @@ at the bottom.
   they are: Claude Code names a folder's Keychain sign-in after its path, so moving or renaming one loses it.
   Folders are compared after resolving `~`, links and letter case; a folder inside or around another profile's
   folder counts as the same.
-- **Usage in the Dock** and **Claude window**, the same two keys as in profile settings. Which Claude window
-  isn't asked: a new profile on `~/.claude` gets the usual Claude app while no profile has it, any other new profile
-  its own Claude window; it is saved in the profile and doesn't change with the folder's name. With Claude
-  window off, the Claude app sign-in step drops out; with Usage in the Dock off, the last step is **Start
-  reading usage**, which installs nothing and leaves the Dock alone: the agent reads its usage from then on.
+- **On this Mac**, under Profile: **Claude window**, **Dock icon** and **Menu bar**, one switch each (profile settings
+  keep each in its own card).
+  - Which Claude window isn't asked: a new profile on `~/.claude` gets the usual Claude app while no profile has it,
+    any other new profile its own Claude window; it is saved in the profile and doesn't change with the folder's name.
+    With Claude window off, the Claude app sign-in step drops out.
+  - With Dock icon off, the last step is **Start reading usage**, which installs nothing and leaves the Dock alone:
+    the agent reads its usage from then on.
+  - **Menu bar** starts on: the new profile's icon is Two bars in the level colours, with its label and a countdown
+    when full. Style and colours are set in its settings afterwards.
 - **The steps:** a profile is a pair, the Claude Code folder and the Claude window's data folder, each signed in on
   its own.
   1. **Sign in** makes the Claude Code folder first (`~/.claude-<name>` with its shared links, or the existing folder
