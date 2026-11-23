@@ -13,6 +13,7 @@
 
 import AddressPrivacy
 import AppKit
+import ClaudeAuth
 import ProfileCore
 import SwiftUI
 
