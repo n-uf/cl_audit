@@ -1896,7 +1896,7 @@ struct AccountSettings: View {
             limitsOrWhy(own, entry: entry, none: nil)
             splitKey(SplitUsage.appSignInKey) { if let p = pick { model.showSwitch(AccountEntry.switchKey(entry.id, p.id)) } }
                 .disabled(pick == nil)
-                .help("Opens the Switch page: the Claude window closes, its sessions move to \(AddressSettings.words(code)), and you sign the Claude app in there.")
+                .help("Opens the Switch page. The Claude window closes, its sessions move to Terminal's account, and you sign the app in there.")
         }
     }
 
@@ -1913,10 +1913,14 @@ struct AccountSettings: View {
         return AccountBox(lamp: FaceTheme.ledAmber, badge: "", detail: inUsePlan.map(Account.planWords), inUse: true, split: .app) {
             loginPopUp(v.label ?? (v.recordTooLarge ? "account not known (record too large)" : "not signed in yet"))
         } content: {
-            splitKey(SplitUsage.terminalSignInKey) { signInAgain(email: show.loginAddress) }
-                .disabled(signingIn)
-                .help(show.loginAddress.map { "Sign Terminal in to \(AddressSettings.words($0)), the Claude app's account" }
-                      ?? "Sign Terminal in to the Claude app's account")
+            if let address = show.loginAddress {
+                splitKey(SplitUsage.terminalSignInKey) { signInAgain(email: address) }
+                    .disabled(signingIn)
+                    .help("Sign Terminal in to this account.")
+            } else {
+                // the app's account known by its id only: a sign-in can't be filled in, so one line instead of the key
+                BoxNote(text: SplitUsage.appUnknownWords).fixedSize(horizontal: false, vertical: true)
+            }
             signInAgainLine
         }
     }

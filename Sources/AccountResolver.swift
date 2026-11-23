@@ -207,6 +207,8 @@ struct SplitUsage: Equatable {
     static let terminalSignInKey = "Sign Terminal in"
     /// The Dock panel's compact key in the split: Terminal's sign-in to the window's account.
     static let panelSignInKey = "Sign in"
+    /// In place of "Sign Terminal in" while the Claude app's account is known by its id only (no address to sign in to).
+    static let appUnknownWords = "Open the Claude window once, so cl_audit learns its account."
     /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…"; a switch waiting for the app:
     /// its first clause, "Switching to M@…: one step left".
     var shortLine: String {
@@ -217,7 +219,8 @@ struct SplitUsage: Equatable {
     /// Under the line, in place of "No numbers yet": what gives the numbers. Nil while a switch waits for the app (nothing
     /// to sign in to then).
     var numbersHint: String? {
-        switched ? nil : "Sign Terminal in to \(loginEmail.map { AddressSettings.words($0) } ?? "the Claude app's account") to see its numbers."
+        // (no address in a sentence: "the Claude app's account" names it)
+        switched ? nil : "Sign Terminal in to the Claude app's account to see its numbers."
     }
     /// The key: the existing Sign in (Claude Code's own sign-in in Terminal, with the app's address filled in), the Claude
     /// app's row's key in Settings ▸ Accounts. Not a switch. None while a switch waits for the app, and none when the app's
