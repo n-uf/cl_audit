@@ -36,8 +36,29 @@ sign_plan=(
   "cl_audit.app|the app (local.usage-n-uf), with Signing/cl_audit.entitlements under a Developer ID, sealing all of the above"
 )
 
-# The identity is in this Mac's Keychain (no secret read: find-identity lists names and hashes only).
-sign_id_found() { [ -n "$sign_id" ] && security find-identity -v -p codesigning 2>/dev/null | grep -qF "$sign_id"; }
+# The identity's line in this Mac's Keychain, or nothing (no secret read: find-identity lists names and hashes only).
+# Only a Developer ID Application identity counts, named exactly: its 40-character SHA-1 (any case) or its whole quoted
+# name. A fragment ("Developer") or an Apple Development identity doesn't. awk reads every line (no early exit to break
+# the pipe under pipefail).
+sign_id_line() {
+  [ -n "$sign_id" ] || return 0
+  security find-identity -v -p codesigning 2>/dev/null | awk -v id="$sign_id" \
+    'index($0, "\"Developer ID Application:") && (toupper($2) == toupper(id) || index($0, "\"" id "\"")) { print }'
+}
+sign_id_found() { [ -n "$(sign_id_line)" ]; }
+# The identity's team ID (the ten characters in "… (TEAMID)" at the end of its name), for the release's requirement check.
+sign_team() { sign_id_line | sed -n 's/.*(\([A-Z0-9]\{10\}\))"$/\1/p' | head -1; }
+
+# staple FILE: the notarization ticket into it, again up to twice 20 s later (a fresh ticket can take a moment to be
+# found: "Record not found").
+staple() {
+  local i
+  for i in 1 2 3; do
+    xcrun stapler staple -q "$1" && return 0
+    [ "$i" = 3 ] || { echo "stapling $(basename "$1") didn't work yet; trying again in 20 s…" >&2; sleep 20; }
+  done
+  return 1
+}
 
 # The notary profile answers (one call to Apple's notary service, nothing printed; its credentials stay in the Keychain).
 notary_profile_found() {
@@ -47,16 +68,22 @@ notary_profile_found() {
 # notarize FILE: sends it to Apple's notary service and waits for the verdict; anything but Accepted fails, with the
 # command that shows Apple's log. Only the verdict and the submission id are read from the answer.
 notarize() {
-  local f="$1" out status id
-  echo "notarizing $(basename "$f") (Apple's notary service; usually a few minutes)…"
-  out="$(xcrun notarytool submit "$f" --keychain-profile "$notary_profile" --wait --output-format json 2>/dev/null)" || true
+  local f="$1" out status id err
+  echo "notarizing $(basename "$f") (Apple's notary service; usually a few minutes, at most 45)…"
+  # notarytool's own messages kept aside, shown when there's no verdict (a profile, network or upload problem); they
+  # hold no secret (the profile's password stays in the Keychain)
+  err="$(mktemp)"
+  out="$(xcrun notarytool submit "$f" --keychain-profile "$notary_profile" --wait --timeout 45m --output-format json 2>"$err")" || true
   status="$(printf '%s' "$out" | plutil -extract status raw -o - - 2>/dev/null || true)"
   id="$(printf '%s' "$out" | plutil -extract id raw -o - - 2>/dev/null || true)"
   if [ "$status" != Accepted ]; then
     echo "the notarization of $(basename "$f") ended ${status:-without an answer}${id:+ (submission $id)}" >&2
+    [ -n "$status" ] || cat "$err" >&2
     [ -z "$id" ] || echo "Apple's log of it: xcrun notarytool log $id --keychain-profile \"$notary_profile\"" >&2
+    rm -f "$err"
     return 1
   fi
+  rm -f "$err"
   echo "notarized $(basename "$f") (submission $id)"
 }
 

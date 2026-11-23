@@ -121,12 +121,17 @@ if [ $push = 1 ]; then
     sig="$(codesign -dvv "$stage/cl_audit.app" 2>&1 || true)"
     grep -q '^Authority=Developer ID Application' <<<"$sig" && grep -qE '^CodeDirectory .*flags=0x[0-9a-f]*\(.*runtime' <<<"$sig" \
       || { echo "the app isn't signed with a Developer ID and the hardened runtime" >&2; exit 1; }
+    # and the whole app, nested pieces included, by this identity's team
+    team="$(sign_team)"
+    [ -n "$team" ] || { echo "couldn't read the team ID from CL_SIGN_ID's identity" >&2; exit 1; }
+    codesign --verify --deep --strict -R="anchor apple generic and certificate leaf[subject.OU] = \"$team\"" "$stage/cl_audit.app" \
+      || { echo "the app isn't signed by team $team throughout" >&2; exit 1; }
   fi
   if [ -n "$notary_profile" ]; then
     # Apple notarizes the app (the zip is what goes to it); its ticket is stapled into the app, and the zip made again
     # from the stapled app, so the download opens without a network check too
     notarize dist/cl_audit.zip || exit 1
-    xcrun stapler staple -q "$stage/cl_audit.app"
+    staple "$stage/cl_audit.app" || { echo "the app's notarization ticket couldn't be stapled" >&2; exit 1; }
     rm -f dist/cl_audit.zip
     ditto -c -k --keepParent "$stage/cl_audit.app" dist/cl_audit.zip
   fi
@@ -140,7 +145,7 @@ if [ $push = 1 ]; then
     codesign --force --sign "$sign_id" --timestamp dist/cl_audit.dmg
     if [ -n "$notary_profile" ]; then
       notarize dist/cl_audit.dmg || exit 1
-      xcrun stapler staple -q dist/cl_audit.dmg
+      staple dist/cl_audit.dmg || { echo "the disk image's notarization ticket couldn't be stapled" >&2; exit 1; }
     fi
   fi
   hdiutil verify -quiet dist/cl_audit.dmg
@@ -157,6 +162,9 @@ if [ $push = 1 ]; then
   dmg_cd="$(codesign -dvvv "$stage/mnt/cl_audit.app" 2>&1 | grep '^CDHash=' || true)"
   # the same hash says the same signature; this says the files on the image still match it
   codesign --verify --deep --strict "$stage/mnt/cl_audit.app" || { echo "the disk image's app fails its signature check" >&2; exit 1; }
+  if [ -n "$notary_profile" ]; then
+    xcrun stapler validate -q "$stage/mnt/cl_audit.app" || { echo "the disk image's app has no valid notarization ticket" >&2; exit 1; }
+  fi
   hdiutil detach -quiet "$stage/mnt" || hdiutil detach -quiet -force "$stage/mnt"
   rm -rf "$stage"
   [ -n "$zip_cd" ] && [ "$zip_cd" = "$dmg_cd" ] || { echo "the disk image's app differs from the zip's ($zip_cd vs $dmg_cd)" >&2; exit 1; }
