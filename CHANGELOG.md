@@ -14,7 +14,7 @@ the notes before updating.
 - **Terminal's account follows cl_kit's one account rule, the same as cl_quick's.**
   - Claude Code's .claude.json is only a guess. Anthropic's answer for the sign-in cl_audit reads with is the verified word, and it wins when the two disagree.
   - So numbers that Anthropic says are this sign-in's now show under that account, where before they hid behind "Numbers for another account".
-  - When the file and Anthropic's answer disagree, or the sign-in changes, cl_audit asks Claude Code itself once: a short claude in the profile's own folder that sends no message and keeps nothing. At most once every 10 minutes per profile, never for a standby account.
+  - When the file and Anthropic's answer disagree, or the sign-in changes, cl_audit asks Claude Code itself once: a short claude in the profile's own folder that sends no message and keeps nothing. At most once every 10 minutes per profile, never for a standby account, never while a sign-in renewal runs, and only once the file has been left alone for a few seconds. At start-up only a profile whose file and Anthropic's answer disagree asks.
   - If Claude Code says another account than the sign-in read, those numbers hide again and the sign-in is read afresh.
   - A .claude.json that names an address but no account id now counts as signed in to that address. (Not yet in the quick look for a new sign-in, which still waits for an account id: a follow-up.)
   - A personal plan and a Team seat on one address stay apart: when only one side names the organisation, cl_audit no longer borrows it from the other.
