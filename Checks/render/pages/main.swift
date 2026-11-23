@@ -777,7 +777,7 @@ if ProcessInfo.processInfo.environment["TWONAMES_ONLY"] != nil { print("done"); 
                     .background(Color(white: 0.1)).environment(\.face, face).environment(\.colorScheme, .dark),
                  "newprofile-\(name)-std-w1180", 1180, 760)
     }
-    var d = NewAccountDraft(); d.color = .teal
+    var d = NewAccountDraft(); d.color = .teal; d.menuBar = true      // (as New profile's page starts it: SettingsModel.startNew)
     page(d, "unnamed")
     d.name = "Work"
     page(d, "named")

@@ -668,6 +668,9 @@ struct NewAccountView: View {
     static let column: CGFloat = 340
     static let rowsFit = SRow<EmptyView>.stackBelow   // Claude Code's rows side by side from here (Settings uses it too)
     static let smallRowsFit: CGFloat = 330     // the small cards' rows (a name, swatches, a switch) fit down to here
+    /// The ten colour swatches (SwatchRow: 22 pt each with 2 pt between) beside the label column, with the card's padding:
+    /// narrower, the Colour row stacks so they stay one row.
+    static let swatchesInline: CGFloat = 430
     static let pad: CGFloat = 16, gap: CGFloat = 12
 
     static func columns(for w: CGFloat) -> Columns {
@@ -763,7 +766,7 @@ struct NewAccountView: View {
         ScrollView {
             HStack(alignment: .top, spacing: Self.gap) {
                 VStack(spacing: 10) {
-                    profileCard(stacked: c.widths[0] < Self.smallRowsFit)
+                    profileCard(stacked: c.widths[0] < Self.smallRowsFit, width: c.widths[0])
                     onThisMacCard(stacked: c.widths[0] < Self.smallRowsFit)
                 }
                 .frame(width: c.widths[0])
@@ -780,7 +783,7 @@ struct NewAccountView: View {
         ScrollView {
             HStack(alignment: .top, spacing: Self.gap) {
                 VStack(spacing: 10) {
-                    profileCard(stacked: c.widths[0] < Self.smallRowsFit)
+                    profileCard(stacked: c.widths[0] < Self.smallRowsFit, width: c.widths[0])
                     onThisMacCard(stacked: c.widths[0] < Self.smallRowsFit)
                     folderCard(stacked: c.widths[0] < Self.rowsFit)
                 }
@@ -798,7 +801,7 @@ struct NewAccountView: View {
         return VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    profileCard(stacked: cw < Self.smallRowsFit)
+                    profileCard(stacked: cw < Self.smallRowsFit, width: cw)
                     onThisMacCard(stacked: cw < Self.smallRowsFit)
                     folderCard(stacked: cw < Self.rowsFit)
                     stepsPanel(bar: false)
@@ -813,8 +816,9 @@ struct NewAccountView: View {
 
     // MARK: cards
 
-    /// Profile: who it is (name and colour), in rows like Settings ▸ Profile.
-    private func profileCard(stacked: Bool) -> some View {
+    /// Profile: who it is (name and colour), in rows like Settings ▸ Profile. `width`: the card's column; narrower than
+    /// `swatchesInline`, the Colour row stacks (its label above) so its ten swatches stay one row.
+    private func profileCard(stacked: Bool, width: CGFloat) -> some View {
         SCard(title: "Profile", info: "The new profile: one Claude account, with its Claude Code folder and, if you want them, a Claude window and a Dock icon. Its click and panel settings start as \(draft.template?.name ?? "the other profiles'").") {
             SRow(label: "Name", info: "What cl_audit calls this profile. Its Dock icon is “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)”, and a new Claude Code folder is \(draft.name.isEmpty ? "~/.claude-<name>" : draft.newConfigDir).", first: true, stacked: stacked) {
                 SField(placeholder: "e.g. personal", text: $draft.name, width: nil).disabled(draft.locked || waiting)   // (not while a sign-in waits)
@@ -822,7 +826,7 @@ struct NewAccountView: View {
             // (the locked note is said once, under Folder, the last locked row: it covers the name too)
             // a red line only (the name taken, or emptied after a connect); no name yet is Account's one grey line
             if let clash = checks(.account).first(where: { $0.state == .bad }) { SRowLine(text: clash.text, color: face.danger) }
-            SRow(label: "Colour", info: "The profile's colour in the launcher, on the dashboard and in its panels.", stacked: stacked) {
+            SRow(label: "Colour", info: "The profile's colour in the launcher, on the dashboard and in its panels.", stacked: stacked || width < Self.swatchesInline) {
                 // Settings ▸ Profile's own swatch row: the colours in one row
                 SwatchRow(colors: TileColor.accents, selected: draft.color) { if let c = $0 { draft.color = c } }
             }
