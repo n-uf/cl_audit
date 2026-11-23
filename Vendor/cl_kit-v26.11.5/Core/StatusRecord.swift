@@ -146,7 +146,9 @@ public struct StatusRecord: Codable, Equatable {
         var out = self
         if !a.readTime { out.updatedAt = nil }
         if !a.plan(split: split) { out.plan = nil }
-        guard a.numbers(split: split) else { out.dropNumbers(); return out }
+        // (past hiddenAfter, a caller that keeps dated fulls still keeps a dated full: Headline.Answer.datedFullOnly)
+        guard a.numbers(split: split) || a.datedFullOnly(split: split) else { out.dropNumbers(); return out }
+        if !a.numbers(split: split) { out.credits = nil }                          // only the dated full limit, nothing else
         // each limit as the answer lets it show: none past its reset, none full unless the numbers may act
         func limit(_ p: Double?, _ resets: Date?) -> (Double?, Date?) {
             a.limit(p, resets: resets, readAt: updatedAt, split: split, now: now).map { ($0.percent, $0.resets) } ?? (nil, nil)

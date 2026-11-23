@@ -268,6 +268,196 @@ do {
     check(r6 == nil && gone(p6) && groupGone(p6), "group: killGroupOnEnd false: a timeout still ends the whole group")
 }
 
+// ============ 4e. the claude finder: stand-in files in the throwaway home, every look a closure ============
+do {
+    let fm = FileManager.default
+    func make(_ path: String, _ text: String = "#!/bin/sh\n", mode: Int = 0o755) {
+        try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        fm.createFile(atPath: path, contents: Data(text.utf8), attributes: [.posixPermissions: mode])
+    }
+    let places = ClaudeFinder.usualPlaces(home: home)
+    check(places == ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", home + "/.local/bin/claude", home + "/.claude/local/claude",
+                     home + "/.npm-global/bin/claude", home + "/.bun/bin/claude"], "the usual places, in their fixed order")
+    var asked: [String] = []
+    func lookup(_ candidates: [String], shell: String? = nil, more: [String] = [], npm: String? = nil, app: String? = nil) -> ClaudeFinder.Lookup {
+        ClaudeFinder.Lookup(candidates: { asked.append("candidates"); return candidates }, shell: { asked.append("shell"); return shell },
+                            more: { asked.append("more"); return more }, npmPrefix: { asked.append("npm"); return npm },
+                            appCopy: { asked.append("app"); return app })
+    }
+    let local = home + "/.local/bin/claude", bun = home + "/.bun/bin/claude"
+    make(local); make(bun)
+    check(ClaudeFinder.find(lookup: lookup([home + "/.npm-global/bin/claude", local, bun])) == ClaudeFound(path: local) && asked == ["candidates"],
+          "the first usual place there wins; nothing else is asked")
+    asked = []
+    check(ClaudeFinder.find(quick: true, lookup: lookup([], shell: local, app: bun)) == nil && asked == ["candidates"],
+          "quick: only the usual places (no program run), never the app's copy")
+    asked = []
+    make(home + "/shell-claude")
+    check(ClaudeFinder.find(lookup: lookup([], shell: home + "/shell-claude", more: [bun])) == ClaudeFound(path: home + "/shell-claude")
+          && asked == ["candidates", "shell"], "then what the login shell finds")
+    let npmPrefix = home + "/npm-prefix"
+    make(npmPrefix + "/bin/claude")
+    check(ClaudeFinder.find(lookup: lookup([], shell: "claude: aliased", more: [home + "/nowhere"], npm: npmPrefix))
+            == ClaudeFound(path: npmPrefix + "/bin/claude"), "then Volta and nvm, then npm's prefix (an alias from the shell says nothing)")
+    check(ClaudeFinder.find(lookup: lookup([], app: bun)) == ClaudeFound(path: bun, fromApp: true), "last, the app's own copy, said so")
+    make(home + "/not-runnable", mode: 0o644)
+    try? fm.createDirectory(atPath: home + "/a-folder", withIntermediateDirectories: true)
+    check(!ClaudeFinder.isExecutable(home + "/not-runnable") && !ClaudeFinder.isExecutable(home + "/a-folder")
+          && !ClaudeFinder.isExecutable("relative/claude") && ClaudeFinder.find(lookup: lookup([home + "/not-runnable"])) == nil,
+          "never a file that can't run, a folder, or a relative path")
+    // nvm's node versions, newest first, by number
+    for v in ["v9.11.2", "v22.1.0", "v18.20.4"] { try? fm.createDirectory(atPath: home + "/.nvm/versions/node/\(v)/bin", withIntermediateDirectories: true) }
+    check(ClaudeFinder.nvmNodeBins(home: home).map { ($0 as NSString).deletingLastPathComponent.components(separatedBy: "/").last ?? "" }
+            == ["v22.1.0", "v18.20.4", "v9.11.2"]
+          && ClaudeFinder.morePlaces(home: home).first == home + "/.volta/bin/claude", "Volta first, then nvm's newest node first")
+    // the app's copy: a Mach-O only, a finished download first, then the newest
+    let support = home + "/Support"
+    func copy(_ app: String, _ v: String, _ id: String, machO: Bool = true) -> String {
+        let p = support + "/\(app)/claude-code/\(v)/\(id)/claude.app/Contents/MacOS/claude"
+        try? fm.createDirectory(atPath: (p as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        fm.createFile(atPath: p, contents: machO ? Data([0xCF, 0xFA, 0xED, 0xFE, 0, 0]) : Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        return p
+    }
+    let script = copy("Claude", "2.1.400", "s", machO: false)
+    check(ClaudeFinder.appCopy(support: support) == nil && !ClaudeFinder.isMachO(script), "a script in the app's folder is never taken")
+    let old = copy("Claude", "2.1.300", "a"), newest = copy("Claude", "2.1.320", "b")
+    check(ClaudeFinder.appCopy(support: support) == newest, "the newest Mach-O copy")
+    fm.createFile(atPath: (old as NSString).deletingLastPathComponent + "/../../../../a.verified", contents: Data())
+    check(ClaudeFinder.appCopy(support: support) == old, "a finished download (.verified) before a newer unfinished one")
+}
+
+// ============ 4f. the one allow-list for a claude run ============
+do {
+    var base = ["HOME": home, "USER": "sample", "LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8", "HTTPS_PROXY": "http://proxy.example.test:8080",
+                "PATH": "/usr/bin::/sbin", "CLAUDE_CONFIG_DIR": "/tmp/elsewhere", "ANTHROPIC_MODEL": "set", "NODE_OPTIONS": "--require x",
+                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector.example.test", "AWS_ACCESS_KEY_ID": "made-up", "SSH_AUTH_SOCK": "/tmp/s"]
+    for k in ProviderEnvironment.variables { base[k] = "set-by-the-shell" }
+    let env = ClaudeEnvironment.make(base, claude: "/opt/sample/bin/claude", configDir: home + "/.claude-work")
+    check(ProviderEnvironment.variables.allSatisfy { env[$0] == nil }
+          && ["ANTHROPIC_MODEL", "NODE_OPTIONS", "OTEL_EXPORTER_OTLP_ENDPOINT", "AWS_ACCESS_KEY_ID", "SSH_AUTH_SOCK"].allSatisfy { env[$0] == nil },
+          "an allow-list: no key, token, provider, model override, Node options, telemetry export, cloud credential or agent socket")
+    check(env["HOME"] == home && env["USER"] == "sample" && env["LANG"] == "en_US.UTF-8" && env["LC_ALL"] == "en_US.UTF-8"
+          && env["HTTPS_PROXY"] == "http://proxy.example.test:8080", "who and where the user is, the language, the proxies")
+    check(env["CLAUDE_CONFIG_DIR"] == home + "/.claude-work" && ClaudeEnvironment.make(base, configDir: nil)["CLAUDE_CONFIG_DIR"] == nil,
+          "the folder given, never the shell's; the default folder leaves it unset")
+    check(env["PATH"] == "/opt/sample/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/bin:/sbin"
+          && ClaudeEnvironment.make([:], configDir: nil)["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+          "claude's own folder, then the install places, then the caller's PATH without empty entries")
+    check(env["DISABLE_TELEMETRY"] == "1" && env["DISABLE_ERROR_REPORTING"] == "1" && env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+          && env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == nil
+          && ClaudeEnvironment.make(base, configDir: nil, traceless: true)["CLAUDE_CODE_AGENTS_MD_ROWS_EVERY_PROCESS"] == "1",
+          "non-essential traffic off; traceless only when asked")
+    let mtls = ["CLAUDE_CODE_CERT_STORE", "CLAUDE_CODE_CLIENT_CERT", "CLAUDE_CODE_CLIENT_KEY", "CLAUDE_CODE_CLIENT_KEY_PASSPHRASE"]
+    var corporate = base
+    for k in mtls { corporate[k] = "/etc/sample/" + k.lowercased() }
+    check(mtls.allSatisfy { ClaudeEnvironment.make(corporate, configDir: nil)[$0] == "/etc/sample/" + $0.lowercased() },
+          "a company's certificate store and client certificate (mTLS, a TLS-inspecting proxy) are passed")
+    check(ClaudeEnvironment.make(["PATH": "bin:./x:/usr/sbin::"], claude: "/claude", configDir: nil)["PATH"]
+            == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin"
+          && ClaudeEnvironment.make([:], claude: "claude", configDir: nil)["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+          "PATH: absolute entries only (no relative or empty one), never \"/\" for a claude at the root, nor a relative claude's folder")
+    check(ClaudeFinder.lookupEnvironment([:], path: "/opt/sample/bin")["PATH"] == "/opt/sample/bin:/usr/bin:/bin"
+          && ClaudeFinder.lookupEnvironment(["PATH": "rel::/sbin"], path: "/opt/sample/bin")["PATH"] == "/opt/sample/bin:/usr/bin:/bin:/sbin"
+          && ClaudeFinder.lookupEnvironment(["ANTHROPIC_API_KEY": "made-up"], path: nil)["ANTHROPIC_API_KEY"] == nil,
+          "the finder's programs: no trailing \":\" without a PATH, absolute entries only, no provider variable")
+    // a finder program's output is taken only whole: one cut at the cap (1 MB) is no answer
+    check(ClaudeFinder.output("/bin/sh", ["-c", "echo /opt/sample/bin/claude"], environment: [:], timeout: 5) == "/opt/sample/bin/claude"
+          && ClaudeFinder.output("/bin/sh", ["-c", "head -c 1200000 /dev/zero | tr '\\0' a"], environment: ["PATH": "/usr/bin:/bin"], timeout: 10) == nil,
+          "the finder's output: taken when whole, never when cut at the cap")
+}
+
+// ============ 4g. the short ask, with a stand-in claude (a shell script that answers its control requests) ============
+do {
+    let fm = FileManager.default
+    let work = home + "/ask-work"
+    try? fm.createDirectory(atPath: work, withIntermediateDirectories: true)
+    func standIn(_ name: String, _ body: String) -> String {
+        let p = home + "/" + name
+        fm.createFile(atPath: p, contents: Data(("#!/bin/sh\n" + body).utf8), attributes: [.posixPermissions: 0o755])
+        return p
+    }
+    let initialize = #"{"type":"control_response","response":{"subtype":"success","request_id":"ask-1","response":{"account":{"email":"wu@example.com","organization":"Example Team","subscriptionType":"max"}}}}"#
+    let usage = #"{"type":"control_response","response":{"subtype":"success","request_id":"ask-2","response":{"rate_limits_available":true,"rate_limits":{"five_hour":{"utilization":142.5,"resets_at":"2026-11-12T18:00:00.123456Z","locked_reason":null},"seven_day":{"utilization":68,"resets_at":"2026-11-14T09:00:00Z","locked_reason":"weekly_limit"}}}}}"#
+    // it answers each request on its own line, records its arguments and what it was sent, and never sees a model message
+    let seen = home + "/ask-seen.txt"
+    let answering = standIn("claude-answers", """
+        printf '%s\\n' "$*" > '\(seen)'
+        pwd >> '\(seen)'
+        printf 'traceless=%s,%s\\n' "$CLAUDE_CODE_AGENTS_MD_ROWS_EVERY_PROCESS" "$CLAUDE_CODE_DISABLE_AUTO_MEMORY" >> '\(seen)'
+        echo '{"type":"system","subtype":"init"}'
+        while IFS= read -r line; do
+          printf '%s\\n' "$line" >> '\(seen)'
+          case "$line" in
+            *'"initialize"'*) printf '%s\\n' '\(initialize)' ;;
+            *'"get_usage"'*) printf '%s\\n' '\(usage)' ;;
+          esac
+        done
+        """)
+    // (made without the traceless pair: the ask adds it itself)
+    let env = ClaudeEnvironment.make(["HOME": home, "PATH": "/usr/bin:/bin"], claude: answering, configDir: home + "/.claude-work")
+    let a = ClaudeAsk.ask(claude: answering, environment: env, folder: work, usage: true, timeout: 10)
+    check(a.end == .answered && a.account == ["email": "wu@example.com", "organization": "Example Team"], "initialize's account: \(a)")
+    check(a.limits?.available == true && a.limits?.fiveHour?.used == 100 && a.limits?.fiveHour?.locked == false
+          && a.limits?.fiveHour?.resets == ClaudeAsk.isoDate("2026-11-12T18:00:00Z")
+          && a.limits?.week == ClaudeAsk.Window(used: 68, resets: ClaudeAsk.isoDate("2026-11-14T09:00:00Z"), locked: true),
+          "get_usage: clamped to 100, any fraction of a second read, a lock seen")
+    let sent = (try? String(contentsOfFile: seen, encoding: .utf8)) ?? ""
+    check(sent.hasPrefix(ClaudeAsk.arguments.joined(separator: " ")) && sent.contains("--no-session-persistence")
+          && sent.contains(#""subtype":"initialize""#) && sent.contains(#""subtype":"get_usage""#) && !sent.contains(#""type":"user""#),
+          "the ask's arguments, the two control requests, and never a model message: \(sent)")
+    check(sent.contains(work), "it runs in the folder given")
+    check(sent.contains("traceless=1,1"), "always traceless, whatever the environment passed: no marker, no memory folder in the profile")
+    let one = ClaudeAsk.ask(claude: answering, environment: env, folder: work, usage: false, timeout: 10)
+    check(one.end == .answered && one.account?["email"] == "wu@example.com" && one.limits == nil
+          && !((try? String(contentsOfFile: seen, encoding: .utf8)) ?? "").contains("get_usage"), "initialize only: no get_usage asked")
+    // silent: the timeout ends it, and the process is gone
+    let pidFile = home + "/ask-silent.pid"
+    let silent = standIn("claude-silent", "echo $$ > '\(pidFile)'\nwhile IFS= read -r line; do :; done\nexec sleep 30\n")
+    var t = Date()
+    let s = ClaudeAsk.ask(claude: silent, environment: env, folder: work, usage: true, timeout: 1, grace: 0.5)
+    check(s.end == .timedOut && s.account == nil && Date().timeIntervalSince(t) < 4, "nothing said: timed out at its limit")
+    let spid = Int32((try? String(contentsOfFile: pidFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? -1
+    var spidGone = false
+    let until = Date().addingTimeInterval(3)
+    while spid > 0 && !spidGone && Date() < until { spidGone = kill(spid, 0) != 0; if !spidGone { usleep(50_000) } }
+    check(spid > 0 && spidGone, "...and the stand-in was stopped (\(spid))")
+    // ends before answering; an error to get_usage; an initialize answer naming nobody
+    t = Date()
+    check(ClaudeAsk.ask(claude: standIn("claude-quits", "exit 3\n"), environment: env, folder: work, usage: true, timeout: 10).end == .exited
+          && Date().timeIntervalSince(t) < 5, "it ends before answering: exited, at once")
+    let refusing = standIn("claude-refuses", """
+        while IFS= read -r line; do
+          case "$line" in
+            *'"initialize"'*) echo '{"type":"control_response","response":{"subtype":"success","request_id":"ask-1","response":{"models":[],"account":{}}}}' ;;
+            *'"get_usage"'*) echo '{"type":"control_response","response":{"subtype":"error","request_id":"ask-2","error":"not allowed"}}' ;;
+          esac
+        done
+        """)
+    let r = ClaudeAsk.ask(claude: refusing, environment: env, folder: work, usage: true, timeout: 10)
+    check(r.end == .answered && r.account == [:] && r.limits == nil && r.usageError == "not allowed",
+          "a key or token names nobody (an empty account); get_usage said no: answered, its error kept")
+    check(ClaudeAsk.ask(claude: home + "/no-such-claude", environment: env, folder: work, usage: true).end == .couldNotStart
+          && ClaudeAsk.ask(claude: answering, environment: env, folder: home + "/no-such-folder", usage: true).end == .couldNotStart
+          && !fm.fileExists(atPath: home + "/no-such-folder"), "no claude, or no folder (never made): couldn't start")
+    check(ClaudeAsk.ask(claude: answering, environment: env, folder: answering, usage: true).end == .couldNotStart,
+          "a file given as the folder: couldn't start")
+    // the parse alone
+    check(ClaudeAsk.event(Data(#"{"type":"control_response","response":{"subtype":"success","request_id":"ask-1","response":{"account":{"email":" wu@example.com ","organization":""}}}}"#.utf8))
+            == .account(["email": "wu@example.com"])
+          && ClaudeAsk.event(Data(#"{"type":"control_response","response":{"subtype":"success","request_id":"qc-9","response":{}}}"#.utf8)) == .ignored
+          && ClaudeAsk.event(Data("not json".utf8)) == .ignored
+          && ClaudeAsk.limits(["rate_limits": NSNull()]).available == false,
+          "the parse: an account trimmed, an empty organisation left out; another request's answer and other lines ignored")
+    check(ClaudeAsk.event(Data(#"{"type":"control_response","response":{"subtype":"success","request_id":"ask-1","response":{}}}"#.utf8)) == .ignored
+          && ClaudeAsk.event(Data(#"{"type":"control_response","response":{"subtype":"success","request_id":"ask-1","response":{"models":[]}}}"#.utf8)) == .account([:])
+          && ClaudeAsk.event(Data(#"{"type":"control_response","response":{"subtype":"success","request_id":"ask-1","response":{"account":{"email":"wu@example.com"}}}}"#.utf8)) == .account(["email": "wu@example.com"]),
+          "initialize with neither models nor an account: ignored (not \"names nobody\"); models alone: names nobody; an account alone counts")
+    check(ClaudeAsk.isoDate("2026-11-12T18:00:00+01:00") != nil && ClaudeAsk.isoDate("2026-11-12T18:00:00.5Z") == ClaudeAsk.isoDate("2026-11-12T18:00:00Z")
+          && ClaudeAsk.isoDate("soon") == nil, "ISO dates: an offset, a fraction dropped, words never")
+    check(String(decoding: ClaudeAsk.controlLine(id: "ask-1", subtype: "initialize"), as: UTF8.self)
+            == #"{"request":{"subtype":"initialize"},"request_id":"ask-1","type":"control_request"}"# + "\n", "one control request, one line")
+}
+
 // ============ 5. lint: Run/ stays Foundation only, starts processes only here, never logs ============
 do {
     let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

@@ -22,7 +22,9 @@ Who runs through it:
 | `Runner.swift` | `Program` (executable, arguments, environment, folder, input, timeout, grace, killed after it or not, output and errors kept or not, their cap, the drain), `Ran` (status, ended by a signal, output, errors, complete, stopped), `Runner.run` (with a poll and a started hook), `Runner.stop` (SIGTERM, the grace, SIGKILL or not, reaped), `Runner.waitQuietly` |
 | `Group.swift` | `Program.ownGroup`'s run: posix_spawn in a group of its own, every other descriptor closed, the group stopped and cleaned up as one |
 | `Running.swift` | `RunningProgram`: one that keeps running and is talked to: `start`, `write`, `onOutput` / `onErrors` (each chunk, in order, off the main thread; output's end as nil), `onExit`, `stop(grace:)` (input closed, SIGTERM, SIGKILL after the grace, without blocking) |
-| `Environment.swift` | `ProviderEnvironment`: the variables a `claude` run never gets (a key, a token, another provider, a base URL, extra headers) and `cleaned(_:)` (without them and without CLAUDE_CONFIG_DIR) |
+| `Environment.swift` | `ClaudeEnvironment`: the one allow-list for a `claude` run (`passed`: who and where the user is, the language, proxies and certificates, `LC_*`; `make`: the folder, `claude`'s own folder and the install places first on PATH, `quiet` (non-essential traffic off), `traceless` when asked); `ProviderEnvironment`: the variables a `claude` run never gets (a key, a token, another provider, a base URL, extra headers) and `cleaned(_:)`, for the finder's own programs |
+| `ClaudeFinder.swift` | `ClaudeFinder.find`: the one claude finder (the usual places, the login shell, Volta, nvm newest first, npm's prefix, the desktop app's own Mach-O copy last; `quick`: files only), every look a `Lookup` closure; `version(of:)` |
+| `ClaudeAsk.swift` | `ClaudeAsk.ask`: the short ask (`claude` with nothing kept or loaded, the `initialize` and `get_usage` control requests, no model message, a timeout, then stopped): `Answer` (the account as `initialize` says it, `Limits`, how it ended); `event` and `limits`, the parse |
 
 ## Rules
 

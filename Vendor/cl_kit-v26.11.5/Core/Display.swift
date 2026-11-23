@@ -95,11 +95,20 @@ public struct ProfileDisplay: Equatable {
     public var sign: SignIn
     /// The sign-in is on another account than the folder names.
     public var otherAccount: Bool
+    /// What holds the profile back, from the numbers as read and a standing refusal (AtLimit.heldBack): while they act,
+    /// any; else, for a caller that keeps dated fulls, one whose end is known and still ahead (a dated full number, or a
+    /// refusal until a known time), however old the reading, past `hiddenAfter` too. It never acts: `full` is the one that
+    /// does. nil: nothing, or not the profile's numbers (another reading, the split, signed out).
+    public var heldBack: HeldBack?
+    /// The 5-hour row shows (Usage.hasFiveHour, the week-only rule), from the numbers as read, never the filtered `usage`.
+    public var hasFiveHour: Bool
 
     public init(usage: Usage?, none: NoNumbers?, readAt: Date?, tier: Tier, full: FullLimit?, lamp: Bool, key: Key?, line: Line?,
-                clash: Clash?, split: Headline.Split?, sign: SignIn, otherAccount: Bool) {
+                clash: Clash?, split: Headline.Split?, sign: SignIn, otherAccount: Bool, heldBack: HeldBack? = nil,
+                hasFiveHour: Bool = true) {
         self.usage = usage; self.none = none; self.readAt = readAt; self.tier = tier; self.full = full; self.lamp = lamp
         self.key = key; self.line = line; self.clash = clash; self.split = split; self.sign = sign; self.otherAccount = otherAccount
+        self.heldBack = heldBack; self.hasFiveHour = hasFiveHour
     }
 
     /// The full limit that holds the profile back at `now`, the moment it is drawn: `full` until its reset passes (a value
@@ -116,20 +125,23 @@ public struct ProfileDisplay: Equatable {
     /// The value for one profile. `answer`: the headline's (Headline.of) for the same reading; `read`: the numbers as read
     /// (nil: none, or no read time); `sign`: the state of the sign-in that reads them; `otherAccount`: that sign-in is on
     /// another account than the folder names; `inUse`: an account in use is known; `note`: the caller's own line;
-    /// `splitTo`: the account in use's address, for the split's key; `ages`: the same thresholds the answer was made with.
+    /// `splitTo`: the account in use's address, for the split's key; `ages`: the same thresholds the answer was made with;
+    /// `refusal`: a refusal standing on the reading's account (the reader's), for `heldBack` and `hasFiveHour`.
     public static func make(_ answer: Headline.Answer, read: Usage?, sign: SignIn, otherAccount: Bool = false, inUse: Bool,
                             clash: Clash? = nil, note: String? = nil, splitTo: String? = nil, ages: Headline.Ages,
-                            now: Date = Date()) -> ProfileDisplay {
+                            refusal: Refusal? = nil, now: Date = Date()) -> ProfileDisplay {
         let readAt = answer.readTime ? read?.fetchedAt : nil
         // the numbers: each limit as the answer lets it show
         var usage: Usage? = nil
-        if answer.numbers(), var u = read {
+        // (past hiddenAfter, a dated full limit still shows when the caller keeps dated fulls: Headline.Answer.datedFullOnly)
+        if answer.numbers() || answer.datedFullOnly(), var u = read {
             func limit(_ p: Double?, _ resets: Date?) -> (Double?, Date?) {
                 answer.limit(p, resets: resets, readAt: u.fetchedAt, now: now).map { ($0.percent, $0.resets) } ?? (nil, nil)
             }
             (u.fiveHour, u.fiveHourResets) = limit(u.fiveHour, u.fiveHourResets)
             (u.weekly, u.weeklyResets) = limit(u.weekly, u.weeklyResets)
             u.scoped = u.scoped.map { l in let s = limit(l.percent, l.resets); return ScopedLimit(name: l.name, percent: s.0, resets: s.1) }
+            if !answer.numbers() { u.credits = nil }                                 // the dated full limit only, as StatusRecord.shown
             if u.fiveHour != nil || u.weekly != nil { usage = u }
         }
         let none: NoNumbers? = usage != nil ? nil
@@ -155,7 +167,21 @@ public struct ProfileDisplay: Equatable {
         let key: Key? = otherAccount || clash != nil || sign == .expired || sign == .signedOut ? .logIn
             : answer.split.flatMap { s in s.switchWaits ? nil : splitTo.map { Key.logInCode(to: $0) } }
         let line: Line? = answer.unconfirmed ? .unconfirmed : answer.split.map { Line.split($0) } ?? note.map { Line.given($0) }
+        // what holds it back, from the raw read: any while the numbers act; else (dated fulls kept) only one with a known end
+        // still ahead, however old the reading
+        let ours = answer.signedIn && !answer.otherReading && answer.split == nil
+        // `dated`: a full number with no reset is left out first (it can't be said to still hold), so it never hides a dated one
+        func held(dated: Bool) -> HeldBack? {
+            func n(_ p: Double?, _ r: Date?) -> Double? { dated && AtLimit.isFull(p) && r == nil ? nil : p }
+            return AtLimit.heldBack(fiveHour: n(read?.fiveHour, read?.fiveHourResets), fiveHourResets: read?.fiveHourResets,
+                                    weekly: n(read?.weekly, read?.weeklyResets), weeklyResets: read?.weeklyResets, refusal: refusal, now: now)
+        }
+        let heldBack: HeldBack? = !ours ? nil
+            : answer.acts ? held(dated: false)
+            : answer.datedFullStays ? held(dated: true).flatMap { h in h.resets.map { $0 > now } == true ? h : nil }
+            : nil
         return ProfileDisplay(usage: usage, none: none, readAt: readAt, tier: tier, full: full, lamp: lamp, key: key, line: line,
-                              clash: clash, split: answer.split, sign: sign, otherAccount: otherAccount)
+                              clash: clash, split: answer.split, sign: sign, otherAccount: otherAccount, heldBack: heldBack,
+                              hasFiveHour: read?.hasFiveHour(refusal: refusal, now: now) ?? true)
     }
 }

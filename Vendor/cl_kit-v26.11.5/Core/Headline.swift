@@ -12,7 +12,8 @@
 // - numbers whose account couldn't be confirmed show as read, but never full and never act;
 // - by age (the caller's thresholds): fresh numbers act (a full limit is full: a full face, an offer, an alert); older ones
 //   are only last known, where a full limit is left out, or (when the caller keeps dated fulls) shows as last known until
-//   its known reset; older than `hiddenAfter`, none show;
+//   its known reset; older than `hiddenAfter`, none show, except (when the caller keeps dated fulls) a full limit whose
+//   known reset is still ahead, as last known until that reset;
 // - a limit whose reset has passed shows no percent and no reset (Freshness.current).
 //
 // Identity: two accounts are the same by their ids when both have one, else by address and organisation
@@ -29,7 +30,8 @@ public enum Headline {
         /// Numbers older than this show not at all; nil: never hidden by age.
         public var hiddenAfter: TimeInterval?
         /// A last-known full limit whose reset is known and still ahead stays, as last known, until that reset
-        /// (AtLimit.full in `.display` mode); false: a last-known full limit is left out.
+        /// (AtLimit.full in `.display` mode), however old the reading, past `hiddenAfter` too; false: a last-known full
+        /// limit is left out.
         public var datedFullStays: Bool
         /// Numbers older than this are drawn grey (stale); nil, or a value below `freshFor`: as soon as they are only last
         /// known (older than `freshFor`). ProfileDisplay's tier; the answer itself doesn't use it.
@@ -119,14 +121,32 @@ public enum Headline {
         /// The numbers may act: a full limit is full (a full face, an offer, an alert).
         public var acts: Bool { !unconfirmed && (age == .fresh || age == .undated) }
 
+        /// Past `hiddenAfter`, only a dated full limit may still show (the caller keeps dated fulls): `numbers()` is false,
+        /// and `limit` gives only such a full limit, as last known.
+        public func datedFullOnly(split: Bool = true) -> Bool {
+            age == .hidden && datedFullStays && signedIn && !otherReading && !(split && self.split != nil)
+        }
+
         /// One limit as read (`readAt`: when), as it may show: nil when it shows not at all.
         public func limit(_ percent: Double?, resets: Date?, readAt: Date?, split: Bool = true, now: Date) -> Limit? {
-            guard numbers(split: split) else { return nil }
             let c = Freshness.current(percent, resets: resets, now: now)
-            // a full limit that may not act: left out, or kept as last known while its known reset is ahead
+            // past `hiddenAfter`, a caller that keeps dated fulls still sees a full limit whose known reset is ahead, as
+            // last known, however old the reading: until that reset it is still full
+            if datedFullOnly(split: split) {
+                guard AtLimit.full(c.percent, resets: c.resets, readAt: readAt, mode: .display, now: now) else { return nil }
+                return Limit(percent: c.percent, resets: c.resets, lastKnown: true)
+            }
+            guard numbers(split: split) else { return nil }
+            // a full limit that may not act: left out, or (a caller that keeps dated fulls) kept as last known while its
+            // known reset is ahead; a dateless one only last known (before hiddenAfter), with no reset to say
             let heldFull = AtLimit.isFull(c.percent) && !acts
             if heldFull {
-                guard datedFullStays, AtLimit.full(c.percent, resets: c.resets, readAt: readAt, mode: .display, now: now) else { return nil }
+                guard datedFullStays else { return nil }
+                if AtLimit.full(c.percent, resets: c.resets, readAt: readAt, mode: .display, now: now) {
+                    return Limit(percent: c.percent, resets: c.resets, lastKnown: true)
+                }
+                guard c.resets == nil, age == .lastKnown else { return nil }
+                return Limit(percent: c.percent, resets: nil, lastKnown: true)
             }
             return Limit(percent: c.percent, resets: c.resets, lastKnown: age == .lastKnown || heldFull)
         }

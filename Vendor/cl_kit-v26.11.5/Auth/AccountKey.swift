@@ -66,9 +66,22 @@ public struct AccountKey: Codable, Hashable {
                                organizationID: org, organizationName: after(Self.namePrefix, organization), origin: .record)
     }
 
+    /// The key as an account with the address the app keeps beside it: a key with an account id holds no address of its
+    /// own (only a placeholder does), so the address an entry was saved with is added where the key has none. An empty
+    /// address is none; a placeholder's own address is kept over the one given.
+    public func identity(email: String?) -> SignedInAccount {
+        var a = identity
+        if a.email == nil, let e = email?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty { a.email = e }
+        return a
+    }
+
     /// How `a` compares with this key (the one seat comparison). A key with an account id is compared by ids: an
-    /// account that names no id (a running claude's word alone) isn't this key's by the key alone.
+    /// account that names no id (a running claude's word alone) isn't this key's by the key alone; `match(_:email:)`
+    /// adds the key's saved address so such a word can be compared by it.
     public func match(_ a: SignedInAccount) -> SeatMatch { identity.match(a) }
+
+    /// How `a` compares with this key and the address it was saved with (`identity(email:)`).
+    public func match(_ a: SignedInAccount, email: String?) -> SeatMatch { identity(email: email).match(a) }
 
     /// This key with what `a` knows better filled in: the account id for an address placeholder, and the organisation's id
     /// for a name placeholder of the same seat. The key itself when `a` adds nothing; nil when `a` is another account or

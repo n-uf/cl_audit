@@ -85,8 +85,13 @@ do {
     let other = AuthFolder(path: "~/.claude-work", home: home).environment(base)
     check(AuthFolder.providerVariables.allSatisfy { other[$0] == nil }, "no key, token or other provider is passed on")
     check(other["CLAUDE_CONFIG_DIR"] == home + "/.claude-work", "another folder: CLAUDE_CONFIG_DIR is that folder, never the shell's")
-    check(other["KEEP"] == "1" && other["HOME"] == home, "the rest stays")
+    check(other["KEEP"] == nil && other["HOME"] == home, "an allow-list: HOME stays, anything not on it (KEEP) doesn't")
     check(other["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/bin", "the install places first on PATH: \(other["PATH"] ?? "")")
+    check(AuthFolder(path: "~/.claude-work", home: home).environment(base, claude: "/opt/sample/bin/claude")["PATH"]
+            == "/opt/sample/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/bin"
+          && other["DISABLE_TELEMETRY"] == "1" && other["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == nil
+          && AuthFolder(path: "~/.claude-work", home: home).environment(base, traceless: true)["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1",
+          "claude's own folder first when given; non-essential traffic off; traceless only when asked")
     let def = AuthFolder(path: "~/.claude", home: home).environment(base)
     check(def["CLAUDE_CONFIG_DIR"] == nil, "the default folder: CLAUDE_CONFIG_DIR unset (set, Claude Code takes it for a custom folder)")
     check(AuthFolder(path: "~/.claude", home: home).environment([:])["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
@@ -249,6 +254,18 @@ do {
     check((try? JSONDecoder().decode(AccountKey.self, from: savedUpper)) == AccountKey(wuTeam)
           && (try? JSONDecoder().decode(AccountKey.self, from: JSONEncoder().encode(placeholder!))) == placeholder,
           "a saved key read back: in lower case, its round trip unchanged")
+    // a key with an id holds no address: the address the app saved beside it is added for the comparison
+    let teamKey = AccountKey(wuTeam)!
+    check(teamKey.identity.email == nil && teamKey.identity(email: "wu@example.com").email == "wu@example.com"
+          && teamKey.identity(email: "wu@example.com").accountID == wuID && teamKey.identity(email: " ").email == nil
+          && placeholder!.identity(email: "zedekiah@example.com").email == "wu@example.com",
+          "identity(email:): the saved address beside an id key; an empty one is none; a placeholder keeps its own")
+    check(teamKey.match(word("wu@example.com", "Example Team")) == .different
+          && teamKey.match(word("wu@example.com", "Example Team"), email: "wu@example.com") == .seatNotKnown
+          && teamKey.match(word("zedekiah@example.com", "Example Team"), email: "wu@example.com") == .different
+          && AccountKey(account: wuID, organization: AccountKey.namePrefix + "example team")
+               .match(word("WU@example.com", "EXAMPLE TEAM"), email: "wu@example.com") == .seat,
+          "match(_:email:): a running claude's word (no id) compared with an id key by its saved address; the organisation by name where the key keeps one")
     check(AccountKey(account: AccountKey.addressPrefix + "wu@example.com", organization: AccountKey.namePrefix + "example team")
             .upgraded(with: wuTeam) == AccountKey(wuTeam)
           && AccountKey(account: wuID, organization: AccountKey.namePrefix + "example team").upgraded(with: wuPersonal) == nil,
@@ -511,7 +528,7 @@ do {
     // renew
     check(auth.renew(claude: claude) == .done && ran.count == 1, "renew runs once")
     check(ran.last == ClaudeCommand(executable: claude, arguments: ["-p", "Reply with OK.", "--model", "haiku", "--no-session-persistence"],
-                                    environment: folder.environment(tools.environment()), timeout: 120),
+                                    environment: folder.environment(tools.environment(), claude: claude), timeout: 120),
           "renew: the one-line prompt on Haiku, nothing saved, on this folder only, 2 minutes at most")
     check(ran.last?.environment["CLAUDE_CONFIG_DIR"] == folder.path && ran.last?.environment["ANTHROPIC_API_KEY"] == nil, "renew's environment")
     let ann = SignedInAccount(accountID: uuid(1), organizationID: uuid(51), origin: .record)

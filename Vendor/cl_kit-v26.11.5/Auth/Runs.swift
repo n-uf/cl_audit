@@ -28,11 +28,11 @@ public enum AuthRun {
     public static let signOutArguments = ["auth", "logout"]
 
     public static func renewCommand(_ claude: String, _ folder: AuthFolder, base: [String: String]) -> ClaudeCommand {
-        ClaudeCommand(executable: claude, arguments: renewArguments, environment: folder.environment(base), timeout: 120)
+        ClaudeCommand(executable: claude, arguments: renewArguments, environment: folder.environment(base, claude: claude), timeout: 120)
     }
 
     public static func signOutCommand(_ claude: String, _ folder: AuthFolder, base: [String: String]) -> ClaudeCommand {
-        ClaudeCommand(executable: claude, arguments: signOutArguments, environment: folder.environment(base), timeout: 120)
+        ClaudeCommand(executable: claude, arguments: signOutArguments, environment: folder.environment(base, claude: claude), timeout: 120)
     }
 
     /// The real runner (Runs' Runner): in the temporary folder, no input, output dropped, in a process group of its own

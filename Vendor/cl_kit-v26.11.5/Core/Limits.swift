@@ -81,7 +81,60 @@ public struct ScopedLimit: Codable, Equatable {
     }
 }
 
+// MARK: - The week-only rule
+
+extension Usage {
+    /// The 5-hour row shows: the one week-only rule, in its exact form, from the raw numbers (never `current()`'s, which drop
+    /// a 5-hour number past its reset, an idle 5-hour account's case too):
+    /// `fiveHour != nil || week == nil || refusedOn == .fiveHour || heldBack?.window == .fiveHour`.
+    /// So it hides only for an account with a week that has never had a 5-hour number, and an old 5-hour number is never
+    /// dropped. A plan without the window (`noFiveHour`, whose reader never keeps a 5-hour number) falls out of it too.
+    public static func hasFiveHour(fiveHour: Double?, week: Double?, refusedOn: Refusal.On?, heldBack: HeldBack?) -> Bool {
+        fiveHour != nil || week == nil || refusedOn == .fiveHour || heldBack?.window == .fiveHour
+    }
+
+    /// The rule for these numbers, a standing refusal's window, and what holds them back now (AtLimit.heldBack). A plan
+    /// without the window (`noFiveHour`) never shows it.
+    public func hasFiveHour(refusal: Refusal? = nil, now: Date = Date()) -> Bool {
+        !noFiveHour && Usage.hasFiveHour(fiveHour: fiveHour, week: weekly, refusedOn: refusal?.on,
+                          heldBack: AtLimit.heldBack(fiveHour: fiveHour, fiveHourResets: fiveHourResets, weekly: weekly,
+                                                     weeklyResets: weeklyResets, refusal: refusal, now: now))
+    }
+}
+
 // MARK: - Full limits
+
+/// What holds a profile back now: a full limit (FullLimit), or a refusal standing while the numbers show none full. A
+/// refusal's window is the one the numbers leave: the week when only the 5-hour number is known (below 100), the 5-hour
+/// one when only the week is; `any` when both are known (not known which); with neither known, the window the refusal
+/// named, else `any`. Data only.
+public struct HeldBack: Equatable {
+    public enum Window: Equatable { case fiveHour, week, any }
+    public let window: Window
+    public let resets: Date?
+    /// With a full limit: the other one, when both are full.
+    public let alsoFull: FullLimit.Kind?
+    /// Held back by a refusal, not by a number at 100%.
+    public let refused: Bool
+
+    public init(window: Window, resets: Date?, alsoFull: FullLimit.Kind? = nil, refused: Bool) {
+        self.window = window; self.resets = resets; self.alsoFull = alsoFull; self.refused = refused
+    }
+
+    public init(_ f: FullLimit) {
+        self.init(window: f.kind == .fiveHour ? .fiveHour : .week, resets: f.resets, alsoFull: f.alsoFull, refused: false)
+    }
+
+    /// The full limit, when a number holds it back.
+    public var full: FullLimit? {
+        guard !refused else { return nil }
+        switch window {
+        case .fiveHour: return FullLimit(kind: .fiveHour, resets: resets, alsoFull: alsoFull)
+        case .week: return FullLimit(kind: .week, resets: resets, alsoFull: alsoFull)
+        case .any: return nil
+        }
+    }
+}
 
 /// The full limit that holds a profile back: of the full ones, the one that resets last (an unknown reset counts as
 /// last). `alsoFull` is the other limit, when both are full. Data only: each app names the limits and words the times.
@@ -121,6 +174,31 @@ public enum AtLimit {
             return fiveLater ? FullLimit(kind: .fiveHour, resets: fiveHourResets, alsoFull: .week)
                              : FullLimit(kind: .week, resets: weeklyResets, alsoFull: .fiveHour)
         }
+    }
+
+    /// What holds the profile back now: the full limit (`blocker`), else a standing refusal (its `until` ahead, or not given:
+    /// the caller lifts it), its window by what the numbers leave (HeldBack); nil when neither.
+    public static func heldBack(fiveHour: Double?, fiveHourResets: Date?, weekly: Double?, weeklyResets: Date?, refusal: Refusal?,
+                                now: Date = Date()) -> HeldBack? {
+        if let b = blocker(fiveHour: fiveHour, fiveHourResets: fiveHourResets, weekly: weekly, weeklyResets: weeklyResets, now: now) {
+            return HeldBack(b)
+        }
+        guard let r = refusal, r.until.map({ $0 > now }) ?? true else { return nil }
+        // the numbers as they count now (a passed reset's number is no one's); none of them is full here
+        let five = Freshness.current(fiveHour, resets: fiveHourResets, now: now).percent
+        let week = Freshness.current(weekly, resets: weeklyResets, now: now).percent
+        let window: HeldBack.Window
+        switch (five != nil, week != nil, r.on) {
+        case (true, false, _): window = .week
+        case (false, true, _): window = .fiveHour
+        // both known (both below 100): which one refuses isn't known, whatever the refusal named (cl_quick's rule)
+        case (true, true, _): window = .any
+        // neither known: the window the refusal named, else not known
+        case (false, false, .fiveHour): window = .fiveHour
+        case (false, false, .week): window = .week
+        case (false, false, .unknown): window = .any
+        }
+        return HeldBack(window: window, resets: r.until, refused: true)
     }
 
     /// Whether a limit counts as full, in one of two modes (the thresholds are the caller's):

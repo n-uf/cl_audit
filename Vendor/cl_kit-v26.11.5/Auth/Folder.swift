@@ -88,16 +88,12 @@ public struct AuthFolder: Equatable, Hashable {
     /// ProviderEnvironment, the one list).
     public static var providerVariables: [String] { ProviderEnvironment.variables }
 
-    /// The environment a `claude` run on this folder gets: `base` without the provider variables and without any
-    /// CLAUDE_CONFIG_DIR it had, then CLAUDE_CONFIG_DIR set to this folder unless it is the default one; the usual
-    /// install places first on PATH.
-    public func environment(_ base: [String: String]) -> [String: String] {
-        var env = ProviderEnvironment.cleaned(base)
-        if !isDefault { env["CLAUDE_CONFIG_DIR"] = path }
-        // never an empty entry (the current folder)
-        let rest = (base["PATH"] ?? "").split(separator: ":").joined(separator: ":")
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" + (rest.isEmpty ? "" : ":" + rest)
-        return env
+    /// The environment a `claude` run on this folder gets: Runs' one allow-list (ClaudeEnvironment: who and where the user
+    /// is, the language, the network's proxies and certificates; never a key, a token, another provider or anything else of
+    /// the caller's), CLAUDE_CONFIG_DIR set to this folder unless it is the default one, `claude`'s own folder (when given)
+    /// and the usual install places first on PATH, Claude Code's non-essential traffic off.
+    public func environment(_ base: [String: String], claude: String? = nil, traceless: Bool = false) -> [String: String] {
+        ClaudeEnvironment.make(base, claude: claude, configDir: isDefault ? nil : path, traceless: traceless)
     }
 
     /// The folder is there to run `claude` on: the default one always; any other only as a plain folder, never a link.

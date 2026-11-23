@@ -3,6 +3,46 @@
 All notable changes to cl_kit are listed here, newest first. Calendar versions, `YY.M.R`, tagged `vYY.M.R` (see README ▸
 Versions and release).
 
+## 26.11.5
+
+The usage rules and the runner cl_quick still copies (stage 5 of the platform concept; no app changes yet). ProfileCore: no
+source breaks, every addition is new API or a new parameter with a default.
+
+- **The week-only rule.** `Usage.hasFiveHour(fiveHour:week:refusedOn:heldBack:)`, cl_quick's exact form, and
+  `Usage.hasFiveHour(refusal:now:)` from the raw numbers (never `current()`'s; a plan without the window, `noFiveHour`, never
+  shows it); `ProfileDisplay.hasFiveHour`, from the raw read.
+- **What holds a profile back.** `AtLimit.heldBack` and `HeldBack`: the full limit (`blocker`, unchanged), else a standing
+  refusal: the window the numbers leave (only one known: the other), `any` when both are known, the refusal's own window
+  only when neither is. `ProfileDisplay.heldBack`, from the raw read and the refusal `make` is given.
+- **Behaviour change, for callers that keep dated fulls (`datedFullStays`, cl_quick's ages) only:**
+  - past `hiddenAfter`, `Headline.Answer.limit`, `ProfileDisplay.make` and `StatusRecord.shown` keep a full limit whose known
+    reset is ahead, grey, until that reset (`Answer.datedFullOnly`): `ProfileDisplay.usage` is then non-nil (that limit only)
+    and `none` nil; `ProfileDisplay.heldBack` keeps a refusal with a known end in the same way;
+  - a dateless 100% read between `freshFor` and `hiddenAfter` shows as a grey, last-known 100% with no reset; it never acts
+    and never sets `full`.
+  Callers without dated fulls (cl_audit) are unchanged.
+- **Not taken in this stage** (the reader's rules, where cl_quick still differs): a rate-limit event's `used × 100` clamped
+  to 0…100; `get_usage`'s `locked_reason` as a refusal; the refusal lift (cl_quick lifts only when every window given is
+  below 100, the kit when the refusing window has room).
+- **One claude finder** (Runs): `ClaudeFinder.find` (the usual places, the login shell, Volta, nvm, npm's prefix, the
+  desktop app's own Mach-O copy last; `quick`: files only), every look a `Lookup` closure; `version(of:)`.
+- **One environment allow-list for a claude run** (Runs): `ClaudeEnvironment.make` (who and where the user is, the
+  language, proxies and certificates, a company's certificate store and client certificate (`CLAUDE_CODE_CERT_STORE`,
+  `CLAUDE_CODE_CLIENT_CERT`, `CLAUDE_CODE_CLIENT_KEY`, `CLAUDE_CODE_CLIENT_KEY_PASSPHRASE`); the folder; claude's own folder
+  first on PATH, absolute entries only (`ClaudeEnvironment.path`); non-essential traffic off; `traceless` when asked).
+  **Behaviour change for renew and sign-out:** `AuthFolder.environment` is now that allow-list (was a deny-list), so they
+  no longer pass on anything else of the caller's environment (`NODE_OPTIONS`, a model override, telemetry export, cloud
+  credentials are dropped), and get the non-essential traffic off.
+- **The short ask** (Runs): `ClaudeAsk.ask`, claude with nothing kept or loaded and always traceless, the `initialize` and
+  `get_usage` control requests, never a model message, a timeout, then stopped; the account as `initialize` says it (an
+  answer with neither models nor an account is ignored) and the two windows. Run so far against stand-in `claude` scripts;
+  its run against a real `claude` comes with cl_quick's move onto it (stage 6).
+- **AccountKey with its address.** `AccountKey.identity(email:)` and `match(_:email:)`: an id key with the address the app
+  saved beside it (from cl_quick's own helper).
+- **Checks:** the core suite gains `heldBack`, the week-only rule and a dated full past the hour; the runs suite gains the
+  finder, the allow-list and the short ask against stand-in `claude` scripts; the auth suite the allow-list's use and the
+  key's address.
+
 ## 26.11.4
 
 The account rule, one for both apps (stage 1 of the platform concept, `docs/design/platform-concept.html`; no app changes
