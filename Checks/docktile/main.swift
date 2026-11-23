@@ -480,5 +480,50 @@ let update = child("update")
 check(!update.signal && update.code == 0 && !update.out.contains("still here") && log().contains("the copy is now build b2: leaving"),
       "an update to build b2: the plug-in leaves once the copy says b2 for 10 s (got \(update.code), signal \(update.signal))")
 
+// 6. the slim plug-in's own reading (PluginProfile.swift): the profile from accounts.json is the app's entry's, and its face
+// from the record is the face the Dock icon app draws from ProfileShow, for every kind of record
+do {
+    func words(_ m: TileModel) -> String {
+        "\(m.label)|\(String(describing: m.fiveHour))|\(String(describing: m.weekly))|\(m.stale)|\(m.style)|\(m.warn)|\(m.tint)|"
+            + "\(String(describing: m.frame))|\(String(describing: m.fiveHourElapsed))|\(String(describing: m.weeklyElapsed))|"
+            + "\(m.windowOpen)|\(String(describing: m.countdown))"
+    }
+    var looks = e
+    looks.style = .twinRings; looks.color = .teal; looks.frame = .pink; looks.accent = .blue; looks.windowDot = false
+    looks.pollMinutes = 15; looks.windowFollowsDock = true
+    try! Store.save([looks])
+    check(PluginProfile.load(id) == PluginProfile(looks) && PluginProfile.load("nobody") == nil,
+          "the plug-in's profile from accounts.json is the app's entry's (style, colours, frame, poll, window dot, window)")
+    var hidden = looks; hidden.iconHidden = true
+    try! Store.save([hidden])
+    check(PluginProfile.load(id) == PluginProfile(hidden) && PluginProfile.load(id)?.windowFollowsDock == false,
+          "…Usage in the Dock off: the window follows no Dock icon, as ProfileRuns says")
+    // an entry the app's decoder refuses (a style it doesn't know) still draws, from defaults
+    let odd = #"{"accounts":[{"id":"\#(id)","name":"Dock","style":"nope","pollMinutes":"x"},{"name":"no id"}]}"#
+    try! Data(odd.utf8).write(to: Store.configURL)
+    check((try? JSONDecoder().decode(ConfigFile.self, from: Data(odd.utf8))) == nil
+          && PluginProfile.load(id).map { $0.style == .bars && $0.pollMinutes == 5 && $0.name == "Dock" } == true,
+          "an entry the app can't read still draws in the Dock, its unreadable fields at their defaults")
+    try? fm.removeItem(at: Store.configURL)          // (Store.save never writes over a profiles file it can't read)
+    saveProfiles()
+    // the face: the same from the record (the plug-in) as from ProfileShow (the Dock icon app)
+    var mismatch = record(); mismatch.loginEmail = "bob@example.com"
+    var old = record(); old.updatedAt = now.addingTimeInterval(-3 * 3600)
+    var expired = record(); expired.state = "expired"
+    var noLogin = record(); noLogin.state = "noLogin"; noLogin.loginEmail = nil
+    let cases: [(String, StatusRecord?)] = [("fresh", record()), ("five full", record(five: 100)), ("week full", record(week: 100)),
+        ("no numbers", record(five: nil, week: nil)), ("old", old), ("expired", expired), ("signed out", noLogin),
+        ("another account", mismatch), ("no record", nil)]
+    for entry in [e, looks] {
+        for (name, r) in cases {
+            for open in [false, true] {
+                let app = TileModel.face(entry, ProfileShow.of(entry, raw: r, now: now), windowOpen: open, now: now)
+                let plug = TileModel.face(PluginProfile(entry), record: r, windowOpen: open, now: now)
+                check(words(app) == words(plug), "the plug-in's face is the app's: \(name), window \(open): \(words(plug)) vs \(words(app))")
+            }
+        }
+    }
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
