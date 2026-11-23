@@ -744,10 +744,11 @@ final class SettingsModel: ObservableObject {
         return s
     }
 
-    /// Adds the new account and installs its Dock icon.
-    func finishNew() {
-        // never a profile whose folders aren't there for the switches as they are now (its window's folder included)
-        guard let d = draft, NewAccountSetup.foldersReady(d) else { return }
+    /// Adds the new account and installs its Dock icon. `windowBusy`: New profile's Claude window switch is turning it off.
+    func finishNew(windowBusy: Bool = false) {
+        // the page's own rule (NewAccountSetup.canFinish): never a profile whose folders aren't there for the switches as
+        // they are now (its window's folder included), nor one with a red line, a sign-in under way or a removal under way
+        guard let d = draft, NewAccountSetup.canFinish(d, accounts: accounts, discarding: discarding, windowBusy: windowBusy) else { return }
         var e = d.entry
         e.seat = Self.seatToLink(d, among: accounts)
         accounts.append(e)
