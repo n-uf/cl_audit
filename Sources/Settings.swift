@@ -1025,6 +1025,8 @@ struct SettingsPage: View {
                 withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) }
                 model.scrollTo = nil
             }
+            // (a page left before its scroll ran: the link's section isn't kept for a later visit)
+            .onDisappear { model.scrollTo = nil }
             } }
             } // the setting note floats over the whole window (MainWindowView), so the Emails key shows it on the dashboard too
         }

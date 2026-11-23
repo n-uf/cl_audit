@@ -253,6 +253,9 @@ struct SwitchPage: View {
         }
     }
 
+    /// The in-use box's note when no numbers were read yet (in the split too: Terminal's, not read yet).
+    static let notReadYet = "No numbers yet. The agent reads them within a few minutes."
+
     /// The in-use box's name: the account in use as every surface names it (AccountView.label); for an old record with none
     /// worked out, the folder's own address; else "its account".
     static func inUseName(_ s: ProfileShow, expected: String?) -> String {
@@ -277,8 +280,9 @@ struct SwitchPage: View {
             if limits.contains(where: { $0.p != nil }) {
                 CardLimits(limits: limits, design: DashboardPrefs.shared.cardStyle, credits: row.usage?.credits, fullBox: false)
             } else {
-                // (in the split the line above says why: here, what gives the numbers)
-                BoxText(text: row.show.numbersHint ?? "No numbers yet: the agent reads them within a few minutes.", role: .note)
+                // (in the split the line above says why: here, what gives the numbers; numbers not read yet say so instead)
+                let notRead = row.show.display.none == .notRead
+                BoxText(text: notRead ? Self.notReadYet : row.show.numbersHint ?? Self.notReadYet, role: .note)
             }
         }
     }
