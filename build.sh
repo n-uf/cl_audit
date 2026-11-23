@@ -23,9 +23,9 @@ build="$(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 1)"
 rm -rf "$out"; mkdir -p "$out"
 # The shared modules, from the vendored cl_kit tag (Vendor/CL_KIT; scripts/vendor.sh copies a tag), built first as static
 # libraries in their layers by cl_kit's own recipe (scripts/modules.sh): ProfileCore (Core/: the rules, Foundation only,
-# built as an app extension may use it, so the widget links it too), Runs (Run/: the one runner and the cleaned environment
-# of a `claude` run; the widget doesn't link it) and ClaudeAuth (Auth/: a profile's one folder's Claude Code sign-in, with
-# Auth/Keychain.swift, the read-only Keychain read; the app and the Dock tile plug-in link it, the widget doesn't).
+# built as an app extension may use it, so the widget and the Dock tile plug-in link it too), Runs (Run/: the one runner and
+# the cleaned environment of a `claude` run; the app only) and ClaudeAuth (Auth/: a profile's one folder's Claude Code
+# sign-in, with Auth/Keychain.swift, the read-only Keychain read; the app only: never the widget or the plug-in).
 repo="$here"
 . "$here/scripts/modules.sh"
 # sign(): ad hoc, or the Developer ID with the hardened runtime when CL_SIGN_ID is set; inside out, in sign_plan's order
@@ -33,8 +33,8 @@ repo="$here"
 ent=(); while IFS= read -r f; do ent+=("$f"); done < <(dev_entitlements "$here")   # (none for an ad hoc build)
 echo "compiling the shared modules (cl_kit $modules_tag)…"
 build_modules "$out" keychain -O
-# and AddressPrivacy (cl_kit's Privacy/: how an account address is hidden on screen), a fourth, standalone one: the app links
-# it, and so does the Dock tile plug-in, which is the same objects (the plug-in itself draws no address); the widget doesn't
+# and AddressPrivacy (cl_kit's Privacy/: how an account address is hidden on screen), a fourth, standalone one: the app
+# links it; the widget and the Dock tile plug-in (which draw no address) don't
 echo "compiling AddressPrivacy…"
 build_privacy "$out" -O
 # and MenuRows (cl_kit's MenuRows/: the menu bar menu's account rows, over ProfileCore and AddressPrivacy). Its flags go
@@ -64,6 +64,18 @@ plugin_sources=(DockTile/Plugin.swift Sources/PluginProfile.swift Sources/DockTi
 swiftc -O -swift-version 5 -target arm64-apple-macos13.0 -emit-library -module-name DockTile -o "$out/DockTile" \
   "${plugin_sources[@]/#/$here/}" "$out/docktile_load.o" -I "$out" -L "$out" -lProfileCore -framework AppKit \
   -Xlinker -dead_strip -Xlinker -dead_strip_dylibs
+# and it stays that way: the built plug-in links nothing but the system's own libraries, and carries no Keychain, process,
+# network, sign-in (ClaudeAuth) or runner (Runs) code. Anything else fails the build.
+plugin_id="$(otool -D "$out/DockTile" | tail -n 1)"
+plugin_libs="$(otool -L "$out/DockTile" | tail -n +2 | awk '{print $1}' | grep -vxF "$plugin_id" \
+  | grep -vE '^(/System/Library/|/usr/lib/)' || true)"
+plugin_syms="$(nm "$out/DockTile" | grep -E '_SecItem|_SecKeychain|_OBJC_CLASS_\$_NSTask|_posix_spawn|_fork$|_execv|_nw_|_CFNetwork|_CFHTTP|_CFSocket|_OBJC_CLASS_\$_NSURLSession|\$s10ClaudeAuth|\$s4Runs' || true)"
+if [ -n "$plugin_libs" ] || [ -n "$plugin_syms" ]; then
+  echo "the Dock tile plug-in reaches more than it may:" >&2
+  [ -n "$plugin_libs" ] && echo "  links: $plugin_libs" >&2
+  [ -n "$plugin_syms" ] && echo "  symbols: $(echo "$plugin_syms" | awk '{print $NF}' | sort -u | head -20 | tr '\n' ' ')" >&2
+  exit 1
+fi
 
 app="$out/$name.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
