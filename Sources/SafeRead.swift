@@ -26,8 +26,6 @@ enum SafeRead {
     struct Read {
         var data: Data
         var size: Int                   // the file's whole size
-        var modified: Date
-        var inode: UInt64
     }
 
     /// Up to `max` bytes of a regular file, from its start (or its end), opened non-blocking. nil when it isn't there,
@@ -43,8 +41,7 @@ enum SafeRead {
         var buf = Data(count: n)
         let got = n == 0 ? 0 : buf.withUnsafeMutableBytes { pread(fd, $0.baseAddress, n, off_t(fromEnd ? size - n : 0)) }
         guard got == n else { return nil }
-        let modified = Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec) + TimeInterval(st.st_mtimespec.tv_nsec) / 1e9)
-        return Read(data: buf, size: size, modified: modified, inode: UInt64(st.st_ino))
+        return Read(data: buf, size: size)
     }
 
     /// A whole file of at most `max` bytes: nil when it's larger (never half of one), or not a regular file.

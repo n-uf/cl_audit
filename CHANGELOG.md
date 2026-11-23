@@ -9,7 +9,8 @@ the notes before updating.
 ## Unreleased
 
 - **Finding accounts on this Mac** now uses cl_kit's sources (26.11.9), the same as cl_quick's. The accounts found are the same.
-  - Fixed: New profile's Folder pop-up no longer offers ~/.claude-switch, claude-transplant's store of accounts, as a Claude Code folder. ~/.claude stays first.
+  - Fixed: New profile's Folder pop-up no longer offers ~/.claude-switch, claude-transplant's store of accounts, as a Claude Code folder, nor names like ~/.claudeX or ~/.claude.old: only ~/.claude and ~/.claude-* folders. ~/.claude stays first.
+  - An export still scrubs the addresses and ids in every ~/.claude* record, those folders included.
   - Only Claude Code's own backup names are read (.claude.json.backup, or with a time after it), and no link inside a folder is followed to a transcript or a session.
 - **The Dock tile plug-in** (what draws a profile's icon inside the Dock) is built from its own few files: 791 KB instead of 20.6 MB.
   - It holds no sign-in, Keychain, process or network code, and the build fails if any reaches it.

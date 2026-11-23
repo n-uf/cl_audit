@@ -3,8 +3,9 @@
 //
 // - the profile's Claude window: its data folder's claude-code-sessions/<account>/<org>/ and
 //   local-agent-mode-sessions/<account>/<org>/ (with when a session was last written there);
-// - the profile's Claude Code folder: its .claude.json oauthAccount and the backups Claude Code keeps of it
-//   (<folder>/backups/.claude.json.backup*; for ~/.claude also ~/.claude.json.backup* and ~/.claude/backups/…);
+// - the profile's Claude Code folder: its .claude.json oauthAccount and the backups Claude Code keeps of it, by Claude
+//   Code's own names (.claude.json.backup, or .claude.json.backup.<digits>) in <folder>/backups/; for ~/.claude also in
+//   the home folder;
 // - the accountUuid in the folder's transcripts (the first 64 KB of each, at most 400 of them): an account id with no
 //   organisation known is listed by its id alone;
 // - for the profile on ~/.claude, also every ~/.claude* .claude.json and ~/.claude-switch/accounts/*/.claude.json
