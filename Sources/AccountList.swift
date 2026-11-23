@@ -235,6 +235,12 @@ enum AccountList {
                 guard let org = recordOrg[a] ?? window.filter({ $0.key.account == a }).max(by: { $0.value < $1.value })?.key.organization,
                       !org.isEmpty else { continue }
                 out[i].standby[j].seat?.organization = org
+                // cl_kit's saved-key rule (AccountKey.upgraded, `seatOfTheNumbers`): a seat that wasn't known takes an
+                // organisation for its numbers only from the numbers' own source. A record or a window folder isn't that
+                // source, so the week kept on the entry (read while it was in use, its seat not named then: maybe the other
+                // seat on its address) isn't moved onto the seat found; it goes, and the next time in use reads it again
+                out[i].standby[j].lastWeek = nil
+                out[i].standby[j].lastWeekResets = nil
             }
         }
         return out

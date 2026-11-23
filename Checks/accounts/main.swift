@@ -1576,6 +1576,17 @@ do {
     let filled = AccountList.adding(found, to: [orgless, workB], now: t0)[0].standby
     check(filled.map(\.id) == ["op", "om"] && filled[0].seat?.organization == o4 && filled[1].seat?.organization == o5,
           "org-less entries: P gets its record's organisation (o4), M its newest-used folder's (o5); nothing added twice")
+    // cl_kit's saved-key rule (AccountKey.upgraded, seatOfTheNumbers): a record or a window folder isn't the source of the
+    // week kept on an org-less entry, so that week is never put on the seat found: the organisation comes, the week goes
+    var weekly = mainB
+    weekly.standby = [StandbyAccount(email: "", seat: Seat(account: P, organization: nil, email: nil), id: "wp", lastWeek: 80, lastWeekResets: t0)]
+    let weekFilled = AccountList.adding(found, to: [weekly, workB], now: t0)[0].standby
+    check(weekFilled.first?.seat?.organization == o4 && weekFilled.first?.lastWeek == nil && weekFilled.first?.lastWeekResets == nil,
+          "an org-less entry with a last week: its organisation filled in (o4), its week not moved onto that seat")
+    var keptWeek = mainB
+    keptWeek.standby = [StandbyAccount(email: "", seat: Seat(account: P, organization: o4, email: nil), id: "wk", lastWeek: 80, lastWeekResets: t0)]
+    check(AccountList.adding(found, to: [keptWeek, workB], now: t0)[0].standby.first?.lastWeek == 80,
+          "…an entry whose seat was known when its week was read keeps it")
     var noneOrg = mainB
     noneOrg.standby = [StandbyAccount(email: "", seat: Seat(account: P, organization: "", email: nil), id: "on"),
                        StandbyAccount(email: "", seat: Seat(account: M, organization: o3, email: nil), id: "ok")]
