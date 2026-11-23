@@ -1266,12 +1266,30 @@ do {
             check(pt.finishLine && pt.from.account == ann.account && pt.from.organization == annTeam,
                   "05 followed: the app on ann's other organisation: the sessions go from that one (\(pt.from.organization ?? "-"))")
         } else { check(false, "05 followed: the plan with the app on ann's other organisation failed") }
-        // the app on an account that is no standby of the profile (or not known): nothing to switch from, so no key at all
+        check(e5.codeTargetMissing(v) == nil, "05 followed: everything the finish line needs is known: nothing said missing")
+        // the app on an account that is no standby of the profile (or not known): the target is still offered (the Terminal
+        // row's key always opens the Switch page), and the page says what's missing; the switch refuses with those words
         appLogin = AppSignIn.Login(account: uuid(14), org: uuid(54), state: .known, source: "log", at: t0)
         let vOther = AccountView.of(rec)
-        check(e5.codeTarget(vOther) == nil, "05 followed: the app's own sign-in not the record's active standby: no finish-line target")
+        check(e5.codeTarget(vOther)?.id == AccountEntry.codeStandbyID && e5.codeTargetMissing(vOther) == AccountEntry.appSeatMissingWords,
+              "05 followed: the app's own sign-in not the record's active standby: still offered, the app's account said missing")
         appLogin = AppSignIn.Login(account: nil, org: nil, state: .unknown, source: "unknown", at: nil)
-        check(e5.codeTarget(v) == nil && e5.appSeat(v) == nil, "05 followed: the app's sign-in unknown: no finish-line target")
+        check(e5.codeTarget(v)?.id == AccountEntry.codeStandbyID && e5.appSeat(v) == nil && e5.codeTargetMissing(v) == AccountEntry.appSeatMissingWords,
+              "05 followed: the app's sign-in unknown: still offered, the app's account said missing")
+        do {
+            let smMissing = SettingsModel(); smMissing.accounts = [e5, w0]
+            smMissing.showSwitch(AccountEntry.switchKey(e5.id, AccountEntry.codeStandbyID))
+            check(smMissing.switchTarget?.standby.id == AccountEntry.codeStandbyID,
+                  "05 followed: with the app's account unknown the Switch page still opens on Terminal's account")
+            let rMissing = smMissing.runner(of: e5.id)
+            rMissing.start(smMissing.switchTarget!.standby)
+            check(rMissing.phase == .failed(AccountEntry.appSeatMissingWords) && rMissing.failedStep == .notStarted,
+                  "05 followed: pressed with the app's account unknown, the switch refuses with the page's words, nothing started: \(rMissing.phase)")
+        }
+        // the folder's seat with no organisation: offered, the folder's account said missing
+        var e5NoOrg = e5; e5NoOrg.seat?.organization = nil
+        check(e5NoOrg.codeTarget(v)?.id == AccountEntry.codeStandbyID && e5NoOrg.codeTargetMissing(v) == AccountEntry.codeSeatMissingWords,
+              "05 followed: the folder's account without its organisation: still offered, Terminal's account said missing")
         appLogin = AppSignIn.Login(account: ann.account, org: ann.organization, state: .known, source: "log", at: t0)
         // the agent never links a finish line's receipt before its move finished (a stop keeps Undo); once finished it may
         var fr = SwitchReceipt(id: SwitchEngine.receiptID(t0, e5.id), profile: e5.id, standby: AccountEntry.codeStandbyID, dataDir: wd,

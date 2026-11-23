@@ -314,6 +314,8 @@ struct SwitchPage: View {
                 BoxText(text: s.label, role: selected ? .title : .softTitle)
             } content: {
                 BoxText(text: Self.boxWords(s, name: name), role: .note)
+                // Terminal's account, always offered: what the switch still needs, before it is pressed
+                if s.id == AccountEntry.codeStandbyID, let why = entry.codeTargetMissing(view) { BoxText(text: why, role: .note) }
             }
         }
         // the lit badge while it's going: "Switching to" when the address fits beside it in the box's own width, else the

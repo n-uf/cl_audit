@@ -211,6 +211,11 @@ final class SwitchRunner: ObservableObject {
                      from: Account.signedInSeat(configDir: e.configDir) ?? e.seat, started: Date())
         // the profile's folder deleted: nothing closes, moves or signs in (a sign-in would make it again), said instead
         if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; fail(.notStarted, why); return }
+        // Terminal's account (always offered, AccountEntry.codeTarget): nothing starts while the switch lacks a part of
+        // what it needs (the page says which, the same words); never a sign-in in its place
+        if s.id == AccountEntry.codeStandbyID, let why = e.codeTargetMissing(AccountView.of(Store.status(for: e))) {
+            goal = g; fail(.notStarted, why); return
+        }
         // a switch that stopped half way is put back first: never a second move on top of it
         if let u = SwitchEngine.unfinished(profile: profile).first {
             goal = g

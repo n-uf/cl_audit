@@ -42,17 +42,34 @@ extension AccountEntry {
     /// entry is it (codeTarget): a switch made elsewhere (cl_quick) put the folder on it, and only the Claude app is left.
     static let codeStandbyID = "claude-code"
 
-    /// Claude Code's own account as a switch target, the finish line: the folder's account (the profile's seat) when the
-    /// record says Claude Code is on it while the Claude app is on another (AccountView.codeRow), and no standby entry is it
-    /// (then that entry is the target). A switch to it moves the Claude app's sessions to it; there is no sign-in to open.
+    /// Claude Code's own account as a switch target, the finish line: Terminal's account whenever the record says the
+    /// Claude app is on another (AccountView.codeRow) and no standby entry is it (then that entry is the target). Always
+    /// offered, so the Terminal row's "Sign the Claude app in…" always opens the Switch page: when something the switch
+    /// needs isn't known, the page says what (codeTargetMissing) and the switch refuses to start. Its seat is the folder's
+    /// (the profile's seat) when that is Terminal's account, else none. A switch to it moves the Claude app's sessions to
+    /// it; there is no sign-in to open.
     func codeTarget(_ v: AccountView) -> StandbyAccount? {
-        guard let code = v.codeRow, let s = seat, s.organization != nil, AccountID.same(v.codeAccount, s.account),
-              !standby.contains(where: { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() || ($0.seat.map { $0.same(s) } ?? false) }),
-              // only when the switch can go: the Claude app's account known (with its organisation) and not this one
-              appSeat(v).map({ !$0.same(s) }) == true
-        else { return nil }
-        return StandbyAccount(email: s.email ?? code, seat: s, addedAt: nil, id: Self.codeStandbyID)
+        guard let code = v.codeRow else { return nil }
+        let s = seat.flatMap { AccountID.same(v.codeAccount, $0.account) ? $0 : nil }
+        guard !standby.contains(where: { b in
+            (b.seat?.email ?? b.email).lowercased() == code.lowercased() || (s.map { s in b.seat.map { $0.same(s) } ?? false } ?? false)
+        }) else { return nil }
+        return StandbyAccount(email: s?.email ?? code, seat: s, addedAt: nil, id: Self.codeStandbyID)
     }
+
+    /// What a switch to Terminal's account (codeTarget) still needs to know, in one sentence, or nil when it can go: the
+    /// folder's account with its organisation (the sessions' folder to move to), and the Claude app's own account with
+    /// its organisation (the sessions' folder to move from), not Terminal's. The Switch page says it under the account,
+    /// and the switch refuses with it.
+    func codeTargetMissing(_ v: AccountView) -> String? {
+        guard v.codeRow != nil else { return nil }
+        guard let s = seat, s.organization != nil, AccountID.same(v.codeAccount, s.account) else { return Self.codeSeatMissingWords }
+        guard let app = appSeat(v) else { return Self.appSeatMissingWords }
+        return app.same(s) ? Self.sameAccountWords : nil
+    }
+    static let codeSeatMissingWords = "Terminal's account isn't fully known yet (its organisation), so there is no folder to move the sessions to. Refresh now, then try again."
+    static let appSeatMissingWords = "The Claude app's account isn't known yet (its window's sign-in, with its organisation), so there are no sessions to move. Open the Claude window once, then try again."
+    static let sameAccountWords = "The Claude app is on Terminal's account already: nothing to switch."
 
     /// How the Claude app's sign-in is read for a profile (its window's account and organisation); checks give their own.
     nonisolated(unsafe) static var appLogin: (AccountEntry) -> AppSignIn.Login = { AppSignIn.cached(for: $0) }
