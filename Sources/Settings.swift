@@ -1331,6 +1331,8 @@ struct AddressRow: View {
     let canSignIn: Bool
     /// The key's words: "Sign in" (a new profile's sign-in).
     var signInTitle = "Sign in"
+    /// The field's grey words; New profile's says the address is optional.
+    var placeholder = "name@example.com"
     let signIn: () -> Void
     let cancel: () -> Void
 
@@ -1351,7 +1353,7 @@ struct AddressRow: View {
     }
 
     private var field: some View {
-        WellField(placeholder: "name@example.com", text: $email, onSubmit: signIn, onCancel: cancel)
+        WellField(placeholder: placeholder, text: $email, onSubmit: signIn, onCancel: cancel)
     }
     private var signInKey: some View {
         Button(signInTitle, action: signIn)

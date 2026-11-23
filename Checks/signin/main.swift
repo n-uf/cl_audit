@@ -217,8 +217,15 @@ MainActor.assumeIsolated {
     check(NewAccountSetup.wellAddress(wellAddr) == wellAddr && NewAccountSetup.wellAddress("account 1a2b3c4d") == "account 1a2b3c4d"
           && NewAccountSetup.wellAddress("Choose an account") == nil && NewAccountSetup.wellAddress("not signed in yet") == nil,
           "wellAddress (Account pop-up): the real address (or an account id) for the label to hide; its other words as they are")
-    check(NewAccountSetup.addressProblem("nope") == "Type the account's email address.", "address route: an address is needed")
-    check(NewAccountSetup.addressProblem("a b@example.com") == "Type the account's email address.", "address route: no spaces")
+    let notAnAddress = "That isn't an email address. Leave it empty to pick the account in the browser."
+    check(NewAccountSetup.addressProblem("nope") == notAnAddress, "address route: something typed must be an address")
+    check(NewAccountSetup.addressProblem("a b@example.com") == notAnAddress, "address route: no spaces")
+    check(NewAccountSetup.addressProblem("") == nil && NewAccountSetup.addressProblem("  ") == nil
+          && NewAccountSetup.addressNote("", among: accounts) == nil && NewAccountSetup.freeFolder(for: "", among: accounts, folders: folders) == nil,
+          "address route: the address is optional (empty signs in with none; no note, no free folder for it)")
+    check(NewAccountSetup.addressPlaceholder == "name@example.com (optional)"
+          && NewAccountSetup.addressHelp == "Terminal signs in through your browser. The claude.ai account open there is the one it uses.",
+          "address route: the field says optional, the line says the browser's account decides")
     check(NewAccountSetup.addressProblem(" WORK@example.com ") == nil && NewAccountSetup.addressNote(" WORK@example.com ", among: accounts)?.contains("“Work”") == true,
           "address route: another profile's address goes (shared seats), with the note naming that profile")
     check(NewAccountSetup.addressProblem("first@example.com") == nil && NewAccountSetup.addressNote("first@example.com", among: accounts) == nil, "address route: a free address goes, no note")

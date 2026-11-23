@@ -2286,7 +2286,7 @@ do {
     check(NewAccountSetup.addressNote(u4.email!, among: list, signedIn: none) == "This account is also in use in “Main”.\nBoth profiles show the same numbers."
           && NewAccountSetup.addressNote(u5.email!, among: list, signedIn: none) == nil
           && NewAccountSetup.addressProblem(u4.email!) == nil
-          && NewAccountSetup.addressProblem("nope") == "Type the account's email address.", "an account in use: the in-use note, not refused; a free one: nothing")
+          && NewAccountSetup.addressProblem("nope") == "That isn't an email address. Leave it empty to pick the account in the browser.", "an account in use: the in-use note, not refused; a free one: nothing")
     // the note's address form: no address and no "hidden address" in it, whatever Show emails says (the field above shows it)
     for n in [NewAccountSetup.addressNote(u4.email!, among: list, signedIn: none), NewAccountSetup.addressNote("ULTRA-2@example.com", among: list, signedIn: none)] {
         check(n.map { !$0.contains("@") && !$0.contains("hidden address") && $0.first?.isUppercase == true } == true, "the note names no address in any form: \(n ?? "none")")

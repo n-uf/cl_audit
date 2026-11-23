@@ -29,6 +29,8 @@ the notes before updating.
 - Each section header's line is the only line under it.
 - When the cl_audit agent isn't running, the Dock panel says so in full sentences and asks you to open cl_audit.
 - Keys no longer end in "…" (Sign in, Export, Move to Trash, Pick folder). Menu items and links keep theirs.
+- In New profile, Sign in to another account no longer needs an address. Leave it empty and pick the account in the browser.
+- New profile's Claude Code card is now called Account.
 - The note after the standby list is tidied reads "The standby list was tidied. Each account is listed once per plan."
 - A profile's saved status and what its Dock icon shows now come from cl_kit, the code cl_audit shares with cl_quick, so both apps read and draw them the same way. Nothing you see changes, and Dock icons from earlier versions still read the new files.
 - Renew sign-in and sign-out now run Claude Code with only a known list of settings from your Mac's environment. Ones like NODE_OPTIONS, model overrides, telemetry export and cloud credentials are no longer passed on. The CLAUDE_CODE_CERT and CLIENT settings still are.

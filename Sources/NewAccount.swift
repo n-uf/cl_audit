@@ -2,8 +2,8 @@
 // that already exists (the default ~/.claude too); a folder and a desktop window can belong to only one
 // account, which the Checks card verifies live. A banner lists every desktop app window and its Code tab sessions
 // open: the steps that write folders wait until it's quit (Claude Code in Terminal doesn't matter).
-// The Claude Code card leads with the account: one signed in in a folder no profile uses (connecting that folder), or
-// "Sign in to another account…" with the address filled in, in a new folder. Folders stay where they are.
+// The Account card leads with the account: one signed in in a folder no profile uses (connecting that folder), or
+// "Sign in to another account…" in a new folder, with the address filled in if one is typed. Folders stay where they are.
 // Steps: quit the desktop app → create or connect the folder → sign in (Claude Code, then the Claude window) → add the Dock icon.
 
 import AddressPrivacy
@@ -39,7 +39,7 @@ struct NewAccountDraft: Equatable {
     var usageInDock = true              // off: no Dock icon, usage read in the background ("Start reading usage")
     var claudeWindow = true             // off: no Claude window, so no Claude app sign-in step
     /// "Sign in to another account…": the address Claude Code's sign-in is filled in with (only filled in: the
-    /// browser's claude.ai account decides), the address row open, and when Sign in was pressed.
+    /// browser's claude.ai account decides; empty: none, optional), the address row open, and when Sign in was pressed.
     var email = ""
     var asking = false
     var signInAsked: Date?
@@ -183,11 +183,17 @@ enum NewAccountSetup {
         }
     }
 
-    /// Why Sign in (the address route) can't go with this address, or nil: only an address that isn't one. Another
+    /// The address row's field and its grey line: the address only fills in the sign-in, the browser's account decides.
+    static let addressPlaceholder = "name@example.com (optional)"
+    static let addressHelp = "Terminal signs in through your browser. The claude.ai account open there is the one it uses."
+
+    /// Why Sign in (the address route) can't go with this address, or nil: only an address that isn't one. The address is
+    /// optional: empty signs in with none, and the account picked in the browser is the folder's, read afterwards. Another
     /// profile's account is no problem (shared seats): `addressNote` says so.
     static func addressProblem(_ email: String) -> String? {
         let e = email.trimmingCharacters(in: .whitespaces)
-        guard e.contains("@"), !e.hasPrefix("@"), !e.hasSuffix("@"), !e.contains(" ") else { return "Type the account's email address." }
+        if e.isEmpty { return nil }
+        guard e.contains("@"), !e.hasPrefix("@"), !e.hasSuffix("@"), !e.contains(" ") else { return "That isn't an email address. Leave it empty to pick the account in the browser." }
         return nil
     }
 
@@ -197,7 +203,7 @@ enum NewAccountSetup {
     static func addressNote(_ email: String, among accounts: [AccountEntry],
                             signedIn: (String) -> Seat? = Account.signedInSeat) -> String? {
         let e = email.trimmingCharacters(in: .whitespaces)
-        guard addressProblem(e) == nil else { return nil }
+        guard !e.isEmpty, addressProblem(e) == nil else { return nil }      // no address: the folder's account decides afterwards
         let typed = AccountIdentity(account: nil, email: e, organization: nil, source: .guessed)
         return FolderRules.sharedNote(FolderRules.seatSharers(typed, among: accounts, signedIn: signedIn))
     }
@@ -515,7 +521,7 @@ struct NewAccountView: View {
     @State private var windowBusy = false           // turning the window off: its window quitting, its folder going
     @Environment(\.face) private var face
 
-    /// The page's columns for a width: three (who it is and its parts · Claude Code · steps), two (every card · steps) or
+    /// The page's columns for a width: three (who it is and its parts · Account · steps), two (every card · steps) or
     /// one (the cards, then the steps, with the next action pinned at the bottom). A column is never narrower than
     /// `column`, so nothing runs off the window or gets cut; a card narrower than `rowsFit` stacks its rows (the label
     /// on its own line, the control the card's full width under it), so addresses and paths show whole.
@@ -712,8 +718,8 @@ struct NewAccountView: View {
     /// new folder (~/.claude-<id>). Folders are used where they are: Claude Code names a folder's Keychain sign-in
     /// after its path, so moving one would lose it.
     private func folderCard(stacked: Bool) -> some View {
-        SCard(title: "Claude Code", info: "Where this profile's Claude Code sign-in, settings and history live: one folder, signed in to one claude.ai account. Folders are used where they are; Claude Code names a folder's Keychain sign-in after its path, so a moved folder would lose it.") {
-            SRow(label: "Account", info: "The claude.ai account this profile is for.\nAn account that a Claude Code folder on this Mac is signed in to, and that no profile uses, comes with its folder.\nAn account another profile has can be this profile's too. Picking it signs in to it in this profile's own folder, and both profiles then show the same numbers.\nSign in to another account… opens Claude Code's own sign-in in Terminal with the address filled in.\nThe browser's claude.ai account decides which account it is. It is checked afterwards by its account and organisation ids.", first: true, stacked: stacked) {
+        SCard(title: "Account", info: "The claude.ai account this profile is for, and the Claude Code folder its sign-in, settings and history live in: one folder, signed in to one account. Folders are used where they are; Claude Code names a folder's Keychain sign-in after its path, so a moved folder would lose it.") {
+            SRow(label: "Account", info: "The claude.ai account this profile is for.\nAn account that a Claude Code folder on this Mac is signed in to, and that no profile uses, comes with its folder.\nAn account another profile has can be this profile's too. Picking it signs in to it in this profile's own folder, and both profiles then show the same numbers.\nSign in to another account… opens Claude Code's own sign-in in Terminal. Typing the address is optional: it only fills it in.\nThe claude.ai account open in the browser is the one it uses. It is checked afterwards by its account and organisation ids.", first: true, stacked: stacked) {
                 accountValue
             }
             accountLine
@@ -788,7 +794,9 @@ struct NewAccountView: View {
 
     @ViewBuilder private var accountValue: some View {
         if draft.asking {
+            // the address is optional: empty, Sign in runs the same sign-in and the account picked in the browser is taken
             AddressRow(email: $draft.email, canSignIn: true,        // never greyed: without Claude Code the click says why
+                       placeholder: NewAccountSetup.addressPlaceholder,
                        signIn: { startAddressSignIn() }, cancel: { gate.cancel(); draft.asking = false; addressProblem = nil })
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         } else if waiting {
@@ -844,9 +852,10 @@ struct NewAccountView: View {
                 if let dir = NewAccountSetup.freeFolder(for: draft.email, among: model.accounts), !draft.started {
                     return ("\(AddressSettings.words(draft.email)) is signed in in \(dir) already: pick it in the pop-up to use that folder as it is.", nil)
                 }
-                return ("Claude Code signs in through Terminal; the browser's claude.ai account decides.", nil)
+                return (NewAccountSetup.addressHelp, nil)
             }
             if waiting {
+                if draft.email.isEmpty { return ("Finish in the browser with the claude.ai account this profile is for.", nil) }
                 return ("Finish in the browser as \(AddressSettings.words(draft.email)); switch its claude.ai account first if needed.", nil)
             }
             // a free account picked: say what Connect does before it's done (its sign-in is already there)
@@ -965,7 +974,7 @@ struct NewAccountView: View {
     }
 
     /// Sign in (the address route): the new folder is made if it isn't yet, then Terminal runs Claude Code's sign-in
-    /// for it with the address filled in. The result is checked afterwards, by account and organisation ids.
+    /// for it with the address filled in, if one was typed. The result is checked afterwards, by account and organisation ids.
     /// `confirmed`: a look made at the click found nothing in the way (the folder is made only then).
     private func startAddressSignIn(confirmed: Bool = false) {
         guard !gate.busy else { return }
@@ -989,10 +998,11 @@ struct NewAccountView: View {
             do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = PlainWords.why(error); return }
         }
         guard let claude = model.requireClaude() else { addressProblem = model.noClaudeWhy; return }
-        // Claude Code's sign-in in Terminal with the address filled in, followed to its end (SignInWindow): the sign-in
-        // window ending any other way than on an account says so under Account (a refused start included)
+        // Claude Code's sign-in in Terminal with the address filled in, or none (the account picked in the browser), followed
+        // to its end (SignInWindow): the sign-in window ending any other way than on an account says so under Account (a
+        // refused start included). Either way the folder's account is read afterwards and taken (signedInEmail, signInNote).
         addressProblem = nil
-        model.startNewSignIn(claude, email: e)
+        model.startNewSignIn(claude, email: e.isEmpty ? nil : e)
     }
 
     /// "Sign in to another account…": the one-line address row, in place of the pop-up. Before any folder is made it
