@@ -37,6 +37,7 @@
 // archived.json, so an archived session stays archived on the new Mac). A project's connector-downloads/ (what its connectors
 // fetched; Claude Code ages it out like the transcripts) travels too, as the project's own files, each scanned for keys alone.
 
+import ClaudeAuth
 import CryptoKit
 import Foundation
 import ProfileCore
@@ -275,11 +276,18 @@ struct Identities: Equatable {
         add(windowDir: s.dataDir)
     }
 
-    /// Every profile in cl_audit's list, and every Claude Code folder on this Mac with its backups.
-    static func of(accounts: [AccountEntry]) -> Identities {
+    /// Every profile in cl_audit's list, and every record in the home folder with its backups: each ~/.claude* (a folder's
+    /// .claude.json and the backups beside it, or the file itself: ~/.claude.old and ~/.claude_bak too, which New profile
+    /// doesn't offer as folders) and claude-transplant's ~/.claude-switch records, as account discovery reads them
+    /// (AccountSources.homeRecordFiles). Wider than New profile's folders (Detect.configFolders) on purpose: the scrubber
+    /// must take more than any list shows, never less.
+    static func of(accounts: [AccountEntry], home: String = NSHomeDirectory()) -> Identities {
         var k = Identities()
         for e in accounts { k.add(source: SessionsBackup.Source(e)) }
-        for c in Detect.configFolders() { k.add(configDir: c.path) }
+        for p in AccountSources.homeRecordFiles(home: home) {
+            if (p as NSString).lastPathComponent == ".claude.json" { k.add(configDir: (p as NSString).deletingLastPathComponent) }
+            else { k.add(claudeJSON: p) }
+        }
         k.add(configDir: "~/.claude")
         return k
     }
