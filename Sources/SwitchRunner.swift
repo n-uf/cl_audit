@@ -213,8 +213,10 @@ final class SwitchRunner: ObservableObject {
         if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; fail(.notStarted, why); return }
         // Terminal's account (always offered, AccountEntry.codeTarget): nothing starts while the switch lacks a part of
         // what it needs (the page says which, the same words); never a sign-in in its place
-        if s.id == AccountEntry.codeStandbyID, let why = e.codeTargetMissing(AccountView.of(Store.status(for: e))) {
-            goal = g; fail(.notStarted, why); return
+        // (and never a target without its seat: that would fall into a plain sign-in below)
+        if s.id == AccountEntry.codeStandbyID {
+            if let why = e.codeTargetMissing(AccountView.of(Store.status(for: e))) { goal = g; fail(.notStarted, why); return }
+            if s.seat == nil { goal = g; fail(.notStarted, AccountEntry.codeSeatMissingWords); return }
         }
         // a switch that stopped half way is put back first: never a second move on top of it
         if let u = SwitchEngine.unfinished(profile: profile).first {

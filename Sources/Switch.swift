@@ -62,13 +62,15 @@ extension AccountEntry {
     /// its organisation (the sessions' folder to move from), not Terminal's. The Switch page says it under the account,
     /// and the switch refuses with it.
     func codeTargetMissing(_ v: AccountView) -> String? {
-        guard v.codeRow != nil else { return nil }
+        // the split ended (a Switch page left open from before): both are on one account, nothing to switch
+        guard v.codeRow != nil else { return Self.oneAccountWords }
         guard let s = seat, s.organization != nil, AccountID.same(v.codeAccount, s.account) else { return Self.codeSeatMissingWords }
         guard let app = appSeat(v) else { return Self.appSeatMissingWords }
         return app.same(s) ? Self.sameAccountWords : nil
     }
-    static let codeSeatMissingWords = "Terminal's account isn't fully known yet (its organisation), so there is no folder to move the sessions to. Refresh now, then try again."
-    static let appSeatMissingWords = "The Claude app's account isn't known yet (its window's sign-in, with its organisation), so there are no sessions to move. Open the Claude window once, then try again."
+    static let oneAccountWords = "Both are on one account already. There's nothing to switch."
+    static let codeSeatMissingWords = "Terminal's account isn't fully known yet. Refresh now, then try again."
+    static let appSeatMissingWords = "The Claude app's account isn't known yet. Open the Claude window once, then try again."
     static let sameAccountWords = "The Claude app is on Terminal's account already. There's nothing to switch."
 
     /// How the Claude app's sign-in is read for a profile (its window's account and organisation); checks give their own.
