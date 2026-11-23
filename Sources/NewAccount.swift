@@ -158,6 +158,17 @@ enum NewAccountSetup {
         return nil
     }
 
+    /// What the address row's Sign in waits for, on the draft as that sign-in would leave it (forSignIn: often a new folder,
+    /// whatever folder is connected now): the name, or the red line that would hold its folder, said as itself (that folder
+    /// isn't the one on the page, so "fix the red lines" would point at nothing). nil: it can go.
+    static func addressWait(_ d: NewAccountDraft, accounts: [AccountEntry]) -> String? {
+        let next = forSignIn(d, email: d.email.trimmingCharacters(in: .whitespaces))
+        guard let w = signInWait(next, accounts: accounts) else { return nil }
+        if next.name.trimmingCharacters(in: .whitespaces).isEmpty { return w }
+        return checks(next, accounts: accounts, runs: [], checked: true)
+            .first { $0.blocks && $0.section != .running && $0.section != .window }?.text ?? w
+    }
+
     /// Whether Claude Code's sign-in may run in the draft's folder now: before anything is made (it makes a new folder); in
     /// the folder this setup made (signing in there again); in an existing folder connected with no account in it yet (its
     /// first sign-in). Never in a connected folder that is signed in already: it is used as it is.
@@ -436,7 +447,7 @@ enum NewAccountSetup {
 
     /// A connected folder after Cancel: "~/.claude-x stays as it is, signed in" (it is never signed out or deleted).
     static func keptWords(_ d: NewAccountDraft) -> String {
-        "\(d.configDir) stays as it is" + (signedInEmail(d) != nil ? ", signed in" : "")
+        "\(d.configDir) stays as it is" + (signedInEmail(d) != nil && !d.unconfirmed ? ", signed in" : "")   // (a guess isn't "signed in")
     }
 
     /// What Cancel will undo, for the confirmation.
@@ -923,7 +934,7 @@ struct NewAccountView: View {
         if draft.asking {
             // the address is optional: empty, Sign in runs the same sign-in and the account picked in the browser is taken
             // dimmed (its lamp dark) until it can act (signInWait); without Claude Code it isn't greyed: the click says why
-            AddressRow(email: $draft.email, canSignIn: signInWait == nil,
+            AddressRow(email: $draft.email, canSignIn: NewAccountSetup.addressWait(draft, accounts: model.accounts) == nil,
                        placeholder: NewAccountSetup.addressPlaceholder,
                        signIn: { startAddressSignIn() }, cancel: { gate.cancel(); draft.asking = false; addressProblem = nil })
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
@@ -970,15 +981,20 @@ struct NewAccountView: View {
     /// One grey line under Account: what the choice does, or what's happening.
     @ViewBuilder private var accountLine: some View {
         let text: (String, Color?)? = {
-            // the name comes first: until then every Sign in is off, and this one grey line says why
-            if unnamed { return ("Name the profile first.", nil) }
+            // the name comes first: until then every Sign in is off, and this one grey line says why (emptied after a connect,
+            // the red line under Name says it, once)
+            if unnamed { return draft.started ? nil : ("Name the profile first.", nil) }
             // how the last sign-in window ended, when the folder's own account doesn't say it (below): unconfirmed, declined,
             // failed, no sign-in in time, replaced by another sign-in
             if !draft.asking, !waiting, let s = draft.signInSaid, s.kind != .signedIn, s.kind != .wrongAccount {
                 return (s.text, s.danger ? face.danger : face.caution)
             }
             if draft.asking {
-                if let w = signInWait { return (w, nil) }           // what comes first: a hint, grey
+                // what its Sign in waits for, on the folder it would sign in to (NewAccountSetup.addressWait): the name a grey
+                // hint, a red line about that folder in red
+                if let w = NewAccountSetup.addressWait(draft, accounts: model.accounts) {
+                    return (w, w == "Name the profile first." ? nil : face.danger)
+                }
                 if let p = addressProblem { return (p, face.danger) }
                 // another profile's account typed or picked: taken all the same, said once, amber
                 if let note = NewAccountSetup.addressNote(draft.email, among: model.accounts) { return (note, face.caution) }

@@ -732,8 +732,11 @@ final class SettingsModel: ObservableObject {
                 self.selection = self.accounts.first?.id
                 // what it made went; a connected folder stays as it was, signed in or not (NewAccountSetup.keptWords)
                 let name = d.name.isEmpty ? "the new profile" : d.name
-                self.message = d.locked ? "Cancelled \(name); the folders it made and their sign-in were removed"
-                    + (d.connected ? "; " + NewAccountSetup.keptWords(d) : "")
+                // one folder made (the window's, beside a connected one) or both; the sign-in only with the Claude Code folder
+                let both = d.createdConfigDir != nil && d.createdDataDir != nil
+                let removed = (both ? "the folders it made" : "the folder it made")
+                    + (d.createdConfigDir != nil ? " and its sign-in were removed" : " was removed")
+                self.message = d.locked ? "Cancelled \(name); " + removed + (d.connected ? "; " + NewAccountSetup.keptWords(d) : "")
                     : "Cancelled \(name); " + NewAccountSetup.keptWords(d)
             }
         }
