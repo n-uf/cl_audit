@@ -59,9 +59,6 @@ struct NewAccountDraft: Equatable {
     var createdDataDir: String?
     var connected = false
     var started: Bool { createdConfigDir != nil || createdDataDir != nil || connected }
-    /// The Claude window was turned on after the Claude Code folder was in place: its look and its folder are step b's
-    /// own (NewAccountSetup.windowStepDue), not step 1's and Create's. Turning the window off clears it.
-    var windowLate = false
 
     var id: String { Store.newID(from: name, taken: []) }
     var customLabel: String?            // the icon label, if edited (otherwise it comes from the name)
@@ -109,8 +106,8 @@ struct SetupCheck: Identifiable {
     let section: Section
     let state: State
     let text: String
-    /// A red line blocks Create/Connect and Finish; so does the desktop-app check while it hasn't been made yet
-    /// ("Checking…"): which Claude runs is never taken for "none" before it has been read.
+    /// A red line blocks Sign in's folder and Finish; the desktop-app line (`running`) blocks only the Claude window's
+    /// folder, "Checking…" too: which Claude runs is never taken for "none" before it has been read.
     var blocks: Bool { state == .bad || section == .running && state == .wait }
 }
 
@@ -135,13 +132,9 @@ enum NewAccountSetup {
     /// which only a profile with a Claude window gets (makeWindowFolder makes it only then). Follows the switch as it is now.
     static func foldersReady(_ d: NewAccountDraft) -> Bool { codeReady(d) && !windowFolderMissing(d) }
 
-    /// The Claude window turned on after the Claude Code folder was in place, its folder not made yet: step b's own look,
-    /// then its folder (windowStepLook), never Create again.
-    static func windowStepDue(_ d: NewAccountDraft) -> Bool { d.windowLate && codeReady(d) && windowFolderMissing(d) }
-
-    /// "Quit the desktop app" is a step only for a profile with a Claude window (see `checks`), and only while the window
-    /// came with Create: turned on afterwards, step b asks instead.
-    static func quitStep(_ d: NewAccountDraft) -> Bool { d.claudeWindow && !d.windowLate }
+    /// New profile's Claude window step is due: the Claude Code folder is in place (Sign in made or connected it) and the
+    /// window's own data folder isn't yet. Its look at the desktop app, then that folder (windowStepLook).
+    static func windowStepDue(_ d: NewAccountDraft) -> Bool { codeReady(d) && windowFolderMissing(d) }
 
     /// The Claude window's own sign-in is a step whenever the switch is on (its own window or the usual Claude app).
     static func needsDesktop(_ d: NewAccountDraft) -> Bool { d.claudeWindow }
@@ -223,7 +216,7 @@ enum NewAccountSetup {
 
     /// The address row's field and its grey line: the address only fills in the sign-in, the browser's account decides.
     static let addressPlaceholder = "name@example.com (optional)"
-    static let addressHelp = "Terminal signs in through your browser. The claude.ai account open there is the one it uses."
+    static let addressHelp = "Leave it empty to choose the account in your browser."
 
     /// Why Sign in (the address route) can't go with this address, or nil: only an address that isn't one. The address is
     /// optional: empty signs in with none, and the account picked in the browser is the folder's, read afterwards. Another
@@ -295,10 +288,10 @@ enum NewAccountSetup {
     }
 
     /// The red line while which Claude runs couldn't be checked.
-    static let failedWords = RunsMonitor.failedWords + ", so the folder isn't set up yet"
+    static let failedWords = RunsMonitor.failedWords + ", so the Claude window's folder isn't made yet"
 
-    /// What keeps Create/Connect (and the address sign-in's folder) from going on a look made at the click, or nil: the
-    /// desktop-app line when it blocks. `runs` nil: which Claude runs couldn't be checked.
+    /// What keeps the Claude window's data folder from being made on a look made at the click, or nil: the desktop-app line
+    /// when it blocks. `runs` nil: which Claude runs couldn't be checked.
     static func runsBlock(_ d: NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun]?) -> String? {
         checks(d, accounts: accounts, runs: (runs ?? []).filter { $0.kind != .terminal }, checked: runs != nil, failed: runs == nil)
             .first { $0.section == .running && $0.blocks }?.text
@@ -361,12 +354,12 @@ enum NewAccountSetup {
             if let note = signInNote(d, among: accounts) { out.append(.init(section: .signIn, state: .warn, text: note)) }
         }
 
-        // The desktop app open: it writes sign-in and settings, which matters only until the folders exist, and only
-        // for a profile with a Claude window. Without one the only new folder is the Claude Code folder, which the
-        // desktop app never writes (its Code tab uses ~/.claude, sign-in runs in Terminal, shared items are links).
-        // Claude Code in Terminal doesn't get in the way.
+        // The desktop app open: it writes sign-in and settings into a window's data folder, which matters only until the
+        // new window's own folder exists (New profile's Claude window step). The Claude Code folder is never in its way:
+        // the desktop app never writes it (its Code tab uses ~/.claude, sign-in runs in Terminal, shared items are links),
+        // so Sign in makes it without this check. Claude Code in Terminal doesn't get in the way.
         let appRuns = runs.filter { $0.kind != .terminal }
-        if foldersReady(d) || !d.claudeWindow { return out }
+        if !windowFolderMissing(d) { return out }
         if failed { out.append(.init(section: .running, state: .bad, text: failedWords)) }
         else if !checked { out.append(.init(section: .running, state: .wait, text: "Checking whether the desktop app is open…")) }
         else if appRuns.isEmpty { out.append(.init(section: .running, state: .ok, text: "The desktop app is closed")) }
@@ -449,9 +442,17 @@ enum NewAccountSetup {
         Launcher.activity(for: [Account(d.entry)])[expand(d.configDir)]?.desktopOpen ?? false
     }
 
-    /// Creates the new folder (with links from ~/.claude) or connects the existing one, and creates the
-    /// separate window's data folder. Records what it created, so Cancel can remove exactly that.
+    /// Creates the new folder (with links from ~/.claude) or connects the existing one, and creates the separate window's
+    /// data folder: first run and the default profile, which make both at once. Records what it created, so Cancel can
+    /// remove exactly that.
     static func createOrConnect(_ d: inout NewAccountDraft) throws {
+        try createCode(&d)
+        try makeWindowFolder(&d)                                            // no Claude window: no folder for one
+    }
+
+    /// The Claude Code folder alone: the new folder with its links, or the existing one connected. New profile's Sign in
+    /// makes it first, with no look at the desktop app (which never writes it); the window's folder is its own step.
+    static func createCode(_ d: inout NewAccountDraft) throws {
         let fm = FileManager.default
         if d.source == .new {
             let config = URL(fileURLWithPath: expand(d.configDir))
@@ -466,30 +467,27 @@ enum NewAccountSetup {
         } else {
             d.connected = true
         }
-        try makeWindowFolder(&d)                                            // no Claude window: no folder for one
     }
 
     /// The separate window's data folder, made when the switch is on and it isn't there, and recorded so Cancel and the
-    /// switch remove exactly that. Create (createOrConnect) and step b (windowStepLook) both make it here, each only after
-    /// its own look found the desktop app closed.
+    /// switch remove exactly that. createOrConnect (first run, the default profile) and New profile's Claude window step
+    /// (windowStepLook, only after its look found the desktop app closed) both make it here.
     static func makeWindowFolder(_ d: inout NewAccountDraft) throws {
         guard windowFolderMissing(d) else { return }
         try FileManager.default.createDirectory(at: URL(fileURLWithPath: expand(d.dataDir)), withIntermediateDirectories: true)
         d.createdDataDir = d.dataDir
     }
 
-    /// The Claude window turned on: before any folder is made it only flips (Create makes the window's folder after its
-    /// look); once the Claude Code folder is in place, the window's part becomes step b's own (windowStepDue). Makes nothing.
+    /// The Claude window turned on: its step (windowStepDue) makes its folder once the Claude Code folder is in place, after
+    /// its own look at the desktop app, asked again whatever an earlier Continue anyway said. Makes nothing.
     static func windowOn(_ d: inout NewAccountDraft) {
         d.claudeWindow = true
-        guard d.started, codeReady(d) else { return }
-        d.windowLate = true
-        d.continueAnyway = false           // step b asks about the desktop app again, whatever step 1 was told
+        d.continueAnyway = false
     }
 
-    /// Step b: the look made at the click (`runs` nil: which Claude runs couldn't be checked) and, only when it found nothing
-    /// in the way, the window's folder, made by the same code as Create's. The line that held it, or nil when the folder
-    /// is there now.
+    /// The Claude window step: the look made at the click (`runs` nil: which Claude runs couldn't be checked) and, only when
+    /// it found nothing in the way, the window's folder (makeWindowFolder). The line that held it, or nil when the folder is
+    /// there now.
     static func windowStepLook(_ d: inout NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun]?) -> String? {
         guard windowStepDue(d) else { return nil }
         if let why = runsBlock(d, accounts: accounts, runs: runs) { return why }
@@ -535,12 +533,11 @@ enum NewAccountSetup {
     static func turnedOff(_ d: inout NewAccountDraft) {
         d.claudeWindow = false
         d.createdDataDir = nil
-        d.windowLate = false
     }
 }
 
 /// The add-account page. Wide windows: three columns (account and window · Claude Code folder · summary and
-/// steps, with the "desktop app is open" warning attached to step 1). Narrower: one column with a progress
+/// steps: Sign in, the Claude window with its "desktop app is open" look, the Dock icon). Narrower: one column with a progress
 /// strip on top and the warning and action bar pinned at the bottom; very narrow: labels above controls.
 /// Each check sits under the field it's about; one button does the next step.
 struct NewAccountView: View {
@@ -613,16 +610,15 @@ struct NewAccountView: View {
     private var appRuns: [ClaudeRun] { monitor.runs.filter { $0.kind != .terminal } }
     private var checks: [SetupCheck] { NewAccountSetup.checks(draft, accounts: model.accounts, runs: appRuns, checked: monitor.checked, failed: monitor.failed) }
     private func checks(_ s: SetupCheck.Section) -> [SetupCheck] { checks.filter { $0.section == s } }
-    private var blocked: Bool { checks.contains { $0.blocks } }
-    /// The desktop app open while the folders don't exist yet (afterwards it can stay open).
-    private var running: Bool { draft.claudeWindow && monitor.checked && !appRuns.isEmpty && !draft.continueAnyway && !made }
-    /// Create/Connect is done: the folders are ready, or only the window's folder is left, which is step b's (windowDue).
-    private var made: Bool { NewAccountSetup.foldersReady(draft) || windowDue }
-    /// The Claude window turned on after the Claude Code folder was in place: step b's look, then its folder.
+    /// A red line about the profile, its name or its Claude Code folder: it blocks Sign in's folder and Finish. The
+    /// desktop-app line isn't one of them: it holds only the Claude window's folder (windowHeld).
+    private var blocked: Bool { checks.contains { $0.blocks && $0.section != .running } }
+    /// The Claude Code folder is in place: Sign in made it (or connected the existing one).
+    private var made: Bool { NewAccountSetup.codeReady(draft) }
+    /// The Claude window step: the Claude Code folder is in place and the window's own folder isn't yet.
     private var windowDue: Bool { NewAccountSetup.windowStepDue(draft) }
-    /// The desktop app open while step b's folder isn't made yet.
+    /// The desktop app open while the window's folder isn't made yet.
     private var windowHeld: Bool { windowDue && monitor.checked && !appRuns.isEmpty && !draft.continueAnyway }
-    private var quitStep: Bool { NewAccountSetup.quitStep(draft) }
     private var desktop: NewAccountSetup.DesktopSignIn { NewAccountSetup.desktopSignIn(draft) }
     private var needsDesktop: Bool { NewAccountSetup.needsDesktop(draft) }
     private var desktopDone: Bool { !needsDesktop || desktop == .same || desktop == .unknown }
@@ -633,19 +629,17 @@ struct NewAccountView: View {
     private var windowOpen: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.windowOpen(draft) }
     /// The steps and their keys speak in progress colours, never the profile's (a pink profile's current step was pink):
     /// the current step and the key that moves it on are green (FaceTheme.ledOn, a switch that's on), a done step green
-    /// with a check, a blocked one red (amber when it can go on anyway), one still to come grey.
+    /// with a check, a held one amber, a failed one red, one still to come grey.
     private var go: Color { FaceTheme.ledOn }
-    private var createTitle: String { draft.source == .new ? "Create" : "Connect" }
     /// The last step: a Dock icon, or (Usage in the Dock off) only reading its usage, which installs nothing.
     private var finishStep: String { draft.usageInDock ? "Add the Dock icon" : "Start reading usage" }
 
-    /// What's next: 1 quit the desktop app, 2 folder, 3 Claude Code sign-in, 4 desktop app sign-in, 5 Dock icon.
+    /// What's next: 1 Sign in (the Claude Code folder, then its sign-in in Terminal), 2 the Claude window (its folder after
+    /// a look at the desktop app, then its own sign-in; only with a Claude window), 3 the Dock icon (or reading the usage).
     private var current: Int {
-        if quitStep && !made && (running || !monitor.checked) { return 1 }
-        if !folders { return 2 }
-        if signedIn == nil { return 3 }
-        if !desktopDone { return 4 }
-        return 5
+        if !folders || signedIn == nil { return 1 }
+        if windowDue || !desktopDone { return 2 }
+        return 3
     }
 
     // MARK: layouts
@@ -732,7 +726,7 @@ struct NewAccountView: View {
     /// app, any other folder its own window; only a clash with another profile's window needs a line.
     private func windowCard(stacked: Bool) -> some View {
         SCard(title: "Claude window", info: "A Claude window signed in to this profile's account. A folder other than ~/.claude gets its own window, with its own sign-in and Code sidebar; ~/.claude uses the usual Claude app. Off: no window, and no window sign-in step; Claude Code in Terminal still works.") {
-            SRow(label: "Claude window", info: "On: a Claude window for this profile, opened from the dashboard or its Dock icon.\nOff: none.\nTurned on after Create, its folder is made once the desktop app is closed.\nTurned off, the window this setup started is quit and the folder it made is removed.", first: true, stacked: stacked) {
+            SRow(label: "Claude window", info: "On: a Claude window for this profile, opened from the dashboard or its Dock icon.\nOff: none.\nIts folder is made in the Claude window step, after Sign in, once the desktop app is closed.\nTurned off, the window this setup started is quit and the folder it made is removed.", first: true, stacked: stacked) {
                 SSwitch(isOn: Binding(get: { draft.claudeWindow }, set: { setWindow($0) }),
                         on: draft.window == .standard ? "the usual Claude app" : "its own window", off: "none")
                     .disabled(windowBusy || model.discarding)
@@ -816,6 +810,8 @@ struct NewAccountView: View {
 
     private func pickFreeAccount(_ path: String) {
         draft.source = .existing; draft.existingDir = path; draft.email = ""; draft.asking = false
+        // used as it is: connected at once (nothing is written; its sign-in is already there), so Sign in is done
+        if signInWait == nil { try? NewAccountSetup.createCode(&draft); model.tick += 1 }
     }
 
     /// Another profile's account picked: the address route with its address filled in (the note under it says it's shared).
@@ -867,7 +863,7 @@ struct NewAccountView: View {
                 MenuWell(text: shown.text, tint: shown.tint, icon: shown.icon, fill: true, address: NewAccountSetup.wellAddress(shown.text))
             }
             .faceMenuFill()
-            .disabled(draft.started && !canSignInAgain)
+            .disabled(unnamed || draft.started && !canSignInAgain)     // the name comes first (the line under it says so)
             .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         }
     }
@@ -875,6 +871,8 @@ struct NewAccountView: View {
     /// One grey line under Account: what the choice does, or what's happening.
     @ViewBuilder private var accountLine: some View {
         let text: (String, Color?)? = {
+            // the name comes first: until then every Sign in is off, and this one grey line says why
+            if unnamed { return ("Name the profile first.", nil) }
             // how the last sign-in window ended, when the folder's own account doesn't say it (below): unconfirmed, declined,
             // failed, no sign-in in time, replaced by another sign-in
             if !draft.asking, !waiting, let s = draft.signInSaid, s.kind != .signedIn, s.kind != .wrongAccount {
@@ -950,13 +948,13 @@ struct NewAccountView: View {
     /// Who is signed in in a folder, for the Folder pop-up.
     private func folderWho(_ p: String) -> String { NewAccountSetup.folderWho(p) }
 
-    /// The Claude window switch. Before any folder is made it only flips. After: on, step b's look runs at once and makes the
-    /// window's folder only when the desktop app is closed (windowStepLook); off, the window this setup started quits first
+    /// The Claude window switch. Before any folder is made it only flips. After: on, the Claude window step's look runs at
+    /// once and makes the window's folder only when the desktop app is closed (windowStepLook); off, the window this setup started quits first
     /// and the folder it made goes (NewAccountSetup.windowOff), or the switch stays on with the line saying why.
     private func setWindow(_ on: Bool) {
         guard on != draft.claudeWindow, !windowBusy else { return }
         windowNote = nil
-        // a look under way (Create's or step b's) does nothing when it lands, and the line says so
+        // a look under way (the Claude window step's) does nothing when it lands, and the line says so
         let stopped = gate.busy ? Self.lookStopped : nil
         gate.cancel()
         error = nil
@@ -997,23 +995,27 @@ struct NewAccountView: View {
         return n.text
     }
 
-    /// Step b's look, made now (`continueAnyway` set first by its Continue anyway): the window's folder is made only on its
-    /// answer, by the same code as Create's; Cancel, the switch or leaving the page meanwhile drops it.
+    /// The Claude window step's look, made now (`continueAnyway` set first by its Continue anyway): the window's folder is
+    /// made only on its answer (makeWindowFolder); Cancel, the switch or leaving the page meanwhile drops it.
     private func lookForWindow() {
         guard !gate.busy, !windowBusy else { return }       // never while the switch is turning the window off
         gate.look(monitor) { fresh in
             let why = NewAccountSetup.windowStepLook(&draft, accounts: model.accounts, runs: fresh)
-            // the desktop app's line shows in step b itself; only another reason (the folder couldn't be made) goes to the bar
+            // the desktop app's line shows in the window step itself; only another reason (the folder couldn't be made) goes to the bar
             error = why == NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) ? nil : why
             model.tick += 1
         }
     }
 
+    /// No name yet: every Sign in is off (the row key, the pop-up's picks), with one grey line under Account.
+    private var unnamed: Bool { draft.name.trimmingCharacters(in: .whitespaces).isEmpty }
+
     /// What Sign in waits for before it can act, as the grey line under Account says it (a hint, never red: red is for
-    /// errors): a name, then (while the folder isn't made) the desktop app quit and the red lines fixed. nil: it can go.
+    /// errors): a name, then (while the folder isn't made) the red lines fixed. Never the desktop app: it never writes the
+    /// Claude Code folder. nil: it can go.
     private var signInWait: String? {
-        if draft.name.trimmingCharacters(in: .whitespaces).isEmpty { return "Name the profile first." }
-        if !made && running { return "Quit the desktop app first (step 1)." }
+        if unnamed { return "Name the profile first." }
+        if draft.source == .existing && draft.existingDir == nil { return "Pick the folder first." }
         if !made && blocked { return "Fix the red lines first." }
         return nil
     }
@@ -1021,27 +1023,19 @@ struct NewAccountView: View {
     /// Sign in (the address route): the new folder is made if it isn't yet, then Terminal runs Claude Code's sign-in
     /// for it with the address filled in, if one was typed. The result is checked afterwards, by account and organisation ids.
     /// `confirmed`: a look made at the click found nothing in the way (the folder is made only then).
-    private func startAddressSignIn(confirmed: Bool = false) {
+    private func startAddressSignIn() {
         guard !gate.busy else { return }
         if let p = NewAccountSetup.addressProblem(draft.email) { addressProblem = p; return }
         let e = draft.email.trimmingCharacters(in: .whitespaces)
         // a folder connected as it was is never signed in again from here; the folder this setup made can be
         guard !draft.started || canSignInAgain else { addressProblem = "This profile uses \(draft.configDir) as it is. Cancel the setup to sign in to another account."; return }
         draft.email = e; draft.source = .new; draft.existingDir = nil
-        // not yet (no name, the desktop app open, a red line): the key is dimmed and the grey line says what comes first
-        // (signInWait); Return in the field ends here too
+        // not yet (no name, a red line): the key is dimmed and the grey line says what comes first (signInWait); Return in
+        // the field ends here too
         guard signInWait == nil else { addressProblem = nil; return }
-        if !made {                                       // (the window's folder alone left is step b's, not this sign-in's)
-            guard confirmed else {
-                // Cancel, the address row's cancel or leaving the page meanwhile drops the look: no folder is made
-                gate.look(monitor) { fresh in
-                    if let why = NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) { addressProblem = why; return }
-                    startAddressSignIn(confirmed: true)
-                }
-                return
-            }
-            do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = PlainWords.why(error); return }
-        }
+        // the Claude Code folder first, with no look at the desktop app (it never writes this folder); the window's folder
+        // is the Claude window step's
+        if !made { do { try NewAccountSetup.createCode(&draft) } catch { addressProblem = PlainWords.why(error); return } }
         guard let claude = model.requireClaude() else { addressProblem = model.noClaudeWhy; return }
         // Claude Code's sign-in in Terminal with the address filled in, or none (the account picked in the browser), followed
         // to its end (SignInWindow): the sign-in window ending any other way than on an account says so under Account (a
@@ -1059,7 +1053,7 @@ struct NewAccountView: View {
 
     /// A new folder only: which folder to link items from (a pop-up), and which items (keys under the label).
     @ViewBuilder private func shareRows(stacked: Bool) -> some View {
-        let done = NewAccountSetup.foldersReady(draft)
+        let done = NewAccountSetup.codeReady(draft)          // the links are made with the Claude Code folder (Sign in)
         SRow(label: "Share from", info: "The Claude Code folder the items below are linked from, so edits there show up in this profile too. Sign-in, plugins and usage stay separate.", stacked: stacked) {
             Menu {
                 Picker("", selection: $draft.shareFrom) {
@@ -1083,63 +1077,92 @@ struct NewAccountView: View {
         }
     }
 
-    /// The two parts of signing in: a · Claude Code (Terminal), b · the desktop app (its own window).
-    private var signInParts: some View {
-        return VStack(spacing: 1) {
-            part(signedIn == nil ? (current == 3 ? .now : .todo) : .done, current: current == 3,
-                 title: "a · Claude Code") {
-                if waiting {
-                    sub("Waiting for \(AddressSettings.words(draft.email.isEmpty ? "the sign-in" : draft.email)) in the browser")
-                } else if let email = signedIn {
-                    // the address in the drawn form (the stand-in while Show emails is off, never "hidden address" or real
-                    // text under a blur), as the Account field shows it; then the shared note, amber, with no address in it
-                    HStack(spacing: 0) {
-                        AccountValue(text: email, size: 11.5, reserve: false)
-                        if draft.source == .existing && !draft.started { Text(", already in the folder") }
-                    }
-                    .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    if let note = NewAccountSetup.signInNote(draft, among: model.accounts) {
-                        Text(note).font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
-                    }
-                } else {
-                    sub(draft.email.isEmpty ? "Terminal opens; approve in the browser"
-                        : "Terminal opens with \(AddressSettings.words(draft.email)) filled in; approve in the browser, switching its claude.ai account there first if it shows another one")
-                }
+    /// Step 1's lines once its folder is in place (or the sign-in is under way): Claude Code's sign-in in Terminal.
+    @ViewBuilder private var codeSignInLines: some View {
+        if waiting {
+            Text("Waiting for the browser…").font(.system(size: 11.5)).foregroundStyle(face.caution)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if let email = signedIn {
+            // the address in the drawn form (the stand-in while Show emails is off, never "hidden address" or real
+            // text under a blur), as the Account field shows it; then the shared note, amber, with no address in it
+            HStack(spacing: 0) {
+                Text("Signed in as ")
+                AccountValue(text: email, size: 11.5, reserve: false)
+                if draft.source == .existing && !draft.started { Text(", already in the folder") }
             }
-            if !draft.claudeWindow {
-                part(.todo, current: false, title: "b · Claude window", droppedOut: true) { sub("Only when the profile has a Claude window") }
-            } else if windowDue {
-                // turned on after Create: the same desktop-app check as step 1, then its folder; its sign-in follows as usual
-                part(windowHeld || monitor.failed ? .bad : .now, current: current == 4 || signedIn == nil, title: "b · Claude window") { windowStep }
-            } else if needsDesktop {
-                let state: StepState = signedIn == nil || waiting ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
-                part(state, current: current == 4, title: draft.window == .standard ? "b · Claude window (the usual Claude app)" : "b · Claude window") {
-                    // one status line: its own sign-in, checked against Claude Code's by account id
-                    if signedIn == nil || waiting {
-                        sub("After Claude Code")
-                    } else {
-                        switch desktop {
-                        case .same: Text("Signed in to the same account").font(.system(size: 11.5)).foregroundStyle(face.ok)
-                            .fixedSize(horizontal: false, vertical: true)
-                        case .unknown: sub("Signed in")
-                        case .different:
-                            Text("The Claude window is signed in to another account: in that window, Settings ▸ Sign out, then sign in as \(AddressSettings.words(signedIn ?? ""))")
-                                .font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
-                        default:
-                            HStack(spacing: 5) {
-                                if windowOpen { ProgressView().controlSize(.mini) }
-                                sub("Sign in to it as \(AddressSettings.words(signedIn ?? "")): the window has its own sign-in")
-                            }
-                        }
-                    }
-                    // the one grey line: Code session records stay in the data folder they were made in
-                    Text(sidebarWords).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
-                }
+            .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let note = NewAccountSetup.signInNote(draft, among: model.accounts) {
+                Text(note).font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
             }
+        } else if let s = signInFailed {
+            // how the last sign-in window ended without an account: red for a failure, amber otherwise (as under Account)
+            Text(s.text).font(.system(size: 11.5)).foregroundStyle(s.danger ? face.danger : face.caution)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            sub("Sign in from Account: Terminal opens, then approve in the browser")
         }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .faceWindow(radius: 6)
+    }
+
+    /// The last sign-in window's end when it gave no account (unconfirmed, declined, failed, no sign-in in time), or nil.
+    private var signInFailed: SignInSaid? {
+        guard !waiting, signedIn == nil, let s = draft.signInSaid, s.kind != .signedIn, s.kind != .wrongAccount else { return nil }
+        return s
+    }
+
+    /// Step 1's mark: waiting for the browser amber, a sign-in that failed red.
+    private var signInState: StepState {
+        if folders && signedIn != nil { return .done }
+        if waiting { return .held }
+        if let s = signInFailed, s.danger { return .bad }
+        return current == 1 ? .now : .todo
+    }
+
+    /// Step 1's line while its folder isn't made: what Sign in makes first (the step that used to be "Create the folder and
+    /// links"), or the red lines that hold it.
+    private var signInDetail: String {
+        if folders { return draft.configDir }
+        if blocked { return "fix the red lines first" }
+        if draft.source == .existing { return draft.existingDir.map { "\($0) as it is, then Claude Code in Terminal" } ?? "pick the folder first" }
+        let links = draft.share.isEmpty ? "" : ", sharing \(draft.share.count) item\(draft.share.count == 1 ? "" : "s") from \(draft.shareFrom)"
+        return "\(draft.newConfigDir)\(links), then Claude Code in Terminal"
+    }
+
+    /// Step 2's lines: before Sign in, what it waits for; while the window's folder isn't made, the desktop-app look and
+    /// its keys (windowStep); then the window's own sign-in, checked against Claude Code's by account id.
+    @ViewBuilder private var windowLines: some View {
+        if !made || signedIn == nil && !windowDue {
+            sub("After Sign in")
+        } else if windowDue {
+            windowStep
+        } else {
+            switch desktop {
+            case .same: Text("Signed in to the same account").font(.system(size: 11.5)).foregroundStyle(face.ok)
+                .fixedSize(horizontal: false, vertical: true)
+            case .unknown: sub("Signed in")
+            case .different:
+                Text("The Claude window is signed in to another account: in that window, Settings ▸ Sign out, then sign in as \(AddressSettings.words(signedIn ?? ""))")
+                    .font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
+            default:
+                HStack(spacing: 5) {
+                    if windowOpen { ProgressView().controlSize(.mini) }
+                    sub("Sign in to it as \(AddressSettings.words(signedIn ?? "")): the window has its own sign-in")
+                }
+                // its own key, here in its step (the foot has only Create): another profile's account too opens it (shared seats)
+                Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
+                    .buttonStyle(.pill(go, compact: true)).disabled(model.discarding || windowBusy || waiting)   // (never while Cancel or the switch removes its folder)
+                    .padding(.top, 2)
+            }
+            // the one grey line: Code session records stay in the data folder they were made in
+            Text(sidebarWords).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+        }
+    }
+
+    /// Step 2's mark: held by the desktop app amber, a look that failed red, its sign-in on another account amber.
+    private var windowState: StepState {
+        if !made || signedIn == nil && !windowDue { return .todo }
+        if windowDue { return monitor.failed ? .bad : windowHeld ? .held : current == 2 ? .now : .todo }
+        return desktopDone ? .done : desktop == .different ? .warn : current == 2 ? .now : .todo
     }
 
     /// "Its Code sidebar starts empty: …" with the how-to link (the one used after linking a profile to another account).
@@ -1153,18 +1176,23 @@ struct NewAccountView: View {
         return a
     }
 
-    /// Step b while its folder isn't made: the desktop-app line (checking, closed, open, or couldn't check), then its keys.
-    /// Open: Quit the desktop app or Continue anyway; otherwise Set up the window, which looks again and makes the folder.
+    /// Step 2 while the window's folder isn't made: the desktop-app line (checking, closed, open, or couldn't check), then its
+    /// keys. Open (amber: it holds the step, it isn't a failure): Quit the desktop app, Check again or Continue anyway;
+    /// couldn't check (red): Check again; otherwise Set up the Claude window, which looks again and makes the folder.
     @ViewBuilder private var windowStep: some View {
         if let c = checks(.running).first {
             Text(c.text).font(.system(size: 11.5))
-                .foregroundStyle(c.state == .bad ? face.danger : c.state == .warn ? face.caution : Color.secondary)
+                .foregroundStyle(monitor.failed ? face.danger : c.state == .bad || c.state == .warn ? face.caution : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .help(runLines.joined(separator: "\n"))
         }
         if windowHeld { sub("The window's folder is made once the desktop app is closed.") }
         FlowLayout(spacing: 8) {
-            if windowHeld {
-                Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
+            if monitor.failed {
+                checkAgain
+            } else if windowHeld {
+                Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(FaceTheme.ledAmber, compact: true))
+                checkAgain
                 Button("Continue anyway") { draft.continueAnyway = true; lookForWindow() }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(gate.busy || windowBusy)
             } else {
@@ -1179,61 +1207,25 @@ struct NewAccountView: View {
         Text(s).font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
-    private func part<C: View>(_ state: StepState, current: Bool, title: String, droppedOut: Bool = false, @ViewBuilder content: () -> C) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            ZStack {
-                switch state {
-                case .done: Circle().fill(Color(nsColor: Painter.green)); Image(systemName: "checkmark").font(.system(size: 7.5, weight: .heavy)).foregroundStyle(.black.opacity(0.7))
-                case .bad: Circle().fill(Color.red); Text("!").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
-                case .warn: Circle().fill(Color.orange); Text("!").font(.system(size: 9, weight: .heavy)).foregroundStyle(.black.opacity(0.7))
-                case .now: Circle().strokeBorder(go, lineWidth: 2)
-                default: Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.3)
-                }
-            }
-            .frame(width: 14, height: 14).padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(state == .todo ? Color.secondary : Color.primary)
-                    .strikethrough(droppedOut)
-                content()
-            }
-            Spacer(minLength: 0)
-        }
-        .opacity(droppedOut ? 0.45 : 1)
-        .padding(.horizontal, 10).padding(.vertical, 7)
-        .background(Color.primary.opacity(current ? 0.08 : 0.03))
-    }
-
     // MARK: steps
 
     /// The steps, in their own panel: beside the cards (three or two columns, with the action bar at its foot) or under
     /// them (one column, where the action bar is pinned to the window's bottom instead).
     private func stepsPanel(bar: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-
-            let ready = NewAccountSetup.foldersReady(draft)
-            let n = quitStep ? 0 : -1           // without a Claude window there's no "Quit the desktop app" step
-            if quitStep {
-                stepRow(1, state: ready ? .done : monitor.failed ? .bad : monitor.checked ? (appRuns.isEmpty ? .done : draft.continueAnyway ? .warn : .bad) : .todo,
-                        title: "Quit the desktop app",
-                        detail: ready ? "done · it can stay open now" : monitor.failed ? NewAccountSetup.failedWords
-                            : !monitor.checked ? "checking…" : appRuns.isEmpty ? "closed" : nil,
-                        detailBad: !ready && monitor.failed,
-                        connector: running) {
-                    if running { openApps } else if !ready && monitor.failed { checkAgain }
+            // 1 Sign in (its Claude Code folder first), 2 the Claude window (only with one), then the Dock icon
+            let last = draft.claudeWindow ? 3 : 2
+            stepRow(1, state: signInState, title: "Sign in", detail: signInDetail) {
+                if folders || waiting { codeSignInLines }
+            }
+            if draft.claudeWindow {
+                stepRow(2, state: windowState,
+                        title: draft.window == .standard ? "Claude window (the usual Claude app)" : "Claude window",
+                        note: windowHeld ? "still open" : nil, detail: nil) {
+                    windowLines
                 }
             }
-            stepRow(2 + n, state: folders ? .done : current == 2 ? .now : running ? .held : .todo,
-                    title: draft.source == .new ? "Create the folder" + (draft.share.isEmpty ? "" : " and links") : "Connect the folder",
-                    // what it waits for is a hint, grey (step 1's red mark is the block itself)
-                    detail: folders ? draft.configDir : running ? "held until the desktop app is quit" : checks.contains(where: { $0.blocks && $0.section != .running }) ? "fix the red lines first" : nil) { EmptyView() }
-            stepRow(3 + n, state: !folders ? .todo
-                        : (needsDesktop && signedIn != nil && desktop == .different) ? .warn
-                        : current == 3 || current == 4 ? .now : .done,
-                    title: "Sign in",
-                    detail: folders ? nil : needsDesktop ? "Claude Code, then the Claude window" : "Claude Code") {
-                if folders { signInParts.padding(.top, 3) }
-            }
-            stepRow(4 + n, state: current == 5 ? .now : .todo, title: finishStep,
+            stepRow(last, state: current == 3 ? .now : .todo, title: finishStep,
                     detail: draft.usageInDock ? "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)” and puts it in the Dock"
                                               : "cl_audit reads its usage from now on; nothing is installed and the Dock isn't touched") { EmptyView() }
 
@@ -1245,8 +1237,10 @@ struct NewAccountView: View {
 
     private enum StepState { case todo, now, done, bad, warn, held }
 
-    private func stepRow<C: View>(_ n: Int, state: StepState, title: String, detail: String?, detailBad: Bool = false,
-                                  connector: Bool = false, @ViewBuilder extra: () -> C) -> some View {
+    /// A step: its mark (done green with a check; current green; held amber; failed red "!"; to come grey), its title, one
+    /// grey line and what it holds.
+    private func stepRow<C: View>(_ n: Int, state: StepState, title: String, note: String? = nil, detail: String?,
+                                  @ViewBuilder extra: () -> C) -> some View {
         HStack(alignment: .top, spacing: 10) {
             ZStack {
                 switch state {
@@ -1254,7 +1248,7 @@ struct NewAccountView: View {
                 case .bad: Circle().fill(Color.red); Text("!").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
                 case .warn: Circle().fill(Color.orange); Text("!").font(.system(size: 12, weight: .bold)).foregroundStyle(.black.opacity(0.7))
                 case .now: Circle().strokeBorder(go, lineWidth: 2); Text("\(n)").font(.system(size: 11, weight: .bold)).foregroundStyle(go)
-                case .held: Circle().strokeBorder(Color.red.opacity(0.7), lineWidth: 1.5); Text("\(n)").font(.system(size: 11, weight: .bold)).foregroundStyle(.red)
+                case .held: Circle().strokeBorder(face.caution, lineWidth: 1.5); Text("\(n)").font(.system(size: 11, weight: .bold)).foregroundStyle(face.caution)
                 case .todo: Circle().strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.5); Text("\(n)").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                 }
             }
@@ -1262,36 +1256,15 @@ struct NewAccountView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(title).font(.system(size: 13, weight: .semibold))
-                    if state == .bad && n == 1 { Text("· still open").font(.system(size: 12)).foregroundStyle(.red) }
+                    if let note { Text("· " + note).font(.system(size: 12)).foregroundStyle(face.caution) }
                 }
-                if let detail { Text(detail).font(.system(size: 11.5)).foregroundStyle(detailBad ? Color.red : Color.secondary).lineLimit(2) }
+                if let detail { Text(detail).font(.system(size: 11.5)).foregroundStyle(Color.secondary).lineLimit(2) }
                 extra()
             }
             Spacer(minLength: 0)
         }
         .padding(.vertical, 7)
-        .overlay(alignment: .topLeading) {
-            if connector { Rectangle().fill(Color.red.opacity(0.55)).frame(width: 1.5).padding(.leading, 9.25).padding(.top, 29).padding(.bottom, -7) }
-        }
         .overlay(alignment: .top) { if n > 1 { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) } }
-    }
-
-    /// The desktop app still open, under step 1 (only until the folder exists): what is open in one red line, why it
-    /// matters in one grey line, then the keys. No box: the step's red mark already says it.
-    private var openApps: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Open: " + runGroups.flatMap(\.items).joined(separator: ", "))
-                .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
-                .help(runLines.joined(separator: "\n"))
-            SRowLine(text: "While open it writes its sign-in and settings, which could overwrite the new folder; it can stay open once the folder exists.")
-            FlowLayout(spacing: 8) {
-                if appRuns.contains(where: { $0.kind != .terminal }) {
-                    Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
-                }
-                checkAgain
-            }
-        }
-        .padding(.top, 1)
     }
 
     /// Looks again right away (it also looks every 2 s), with a short "checking" state so the click shows.
@@ -1339,46 +1312,29 @@ struct NewAccountView: View {
     }
 
     /// The one next action ("Finish now" stays next to it once the folder exists).
+    /// The one key at the foot: Create (or Start reading usage). Signing in is the Account card's (its Sign in key), the
+    /// window's keys are its step's: no key here repeats one. Create waits only on what the profile needs: its Claude Code
+    /// folder (made by Sign in) and, with its own window, that window's folder (step 2); a sign-in still to do can follow
+    /// from Settings, so the key is plain until the steps are done, green then.
     @ViewBuilder private var actionButtons: some View {
-        if !made {
-            Button(gate.busy ? "Checking…" : createTitle) {
-                guard !gate.busy else { return }
-                // the folder is made or connected only on a look made now (couldn't check, or the desktop app open, holds it);
-                // Cancel or leaving the page meanwhile drops the look, and nothing is made
-                gate.look(monitor) { fresh in
-                    if let why = NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) { self.error = why; return }
-                    do { try NewAccountSetup.createOrConnect(&draft); error = NewAccountSetup.notReadyWhy(draft); model.tick += 1 }
-                    catch { self.error = PlainWords.why(error) }
-                }
-            }
-            .buttonStyle(.primaryKey(compact: true)).disabled(blocked || gate.busy || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
-        } else if current == 5 {
-            Button(draft.usageInDock ? "Finish" : "Start reading usage") { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(blocked || model.discarding || windowBusy)
+        let title = draft.usageInDock ? "Create" : "Start reading usage"
+        let can = NewAccountSetup.foldersReady(draft) && !blocked && !model.discarding && !windowBusy && !waiting
+        if current == 3 {
+            Button(title) { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(!can)
         } else {
-            // the window on waits for its folder (step b); off, nothing of the window is waited for
-            Button(desktop == .different ? "Finish anyway" : "Finish now") { model.finishNew() }
-                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding || windowDue || windowBusy)
-                .help(windowDue ? "Set up the Claude window first, or turn it off." : "Sign-in can be finished later from Settings.")
-            if signedIn == nil {
-                Button("Sign in to Claude Code") {
-                    // the same sign-in as the address route's, followed to its end (the address typed before, if any, filled in)
-                    if let c = model.requireClaude() { model.startNewSignIn(c, email: draft.email.isEmpty ? nil : draft.email) }
-                }
-                    .buttonStyle(.pill(go, compact: true)).disabled(model.discarding || waiting)
-            } else if draft.claudeWindow, !waiting, !windowDue {
-                // (another profile's account too: the window opens all the same, shared seats)
-                Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
-                    .buttonStyle(.pill(go, compact: true)).disabled(model.discarding || windowBusy)   // (never while Cancel or the switch removes its folder)
-            }
+            Button(title) { model.finishNew() }.buttonStyle(.pill(go, compact: true)).disabled(!can)
+                .help(!made ? "Sign in first, in Account." : windowDue ? "Set up the Claude window first, or turn it off." : "Sign-in can be finished later from Settings.")
         }
     }
 
     private var nextHint: String {
         switch current {
-        case 1: return monitor.failed ? "Which Claude runs couldn't be checked. Check again." : monitor.checked ? "Quit the desktop app next." : "Checking the desktop app…"
-        case 2: return draft.name.isEmpty ? "Name the profile next." : draft.source == .existing && draft.existingDir == nil ? "Pick a folder next." : blocked ? "Fix the red lines to go on." : draft.source == .new ? "Create the folder and links next." : "Connect the folder next."
-        case 3: return "Sign in to Claude Code next."
-        case 4: return windowDue ? "Set up the Claude window next." : desktop == .different ? "Its Claude window uses another account." : "Sign in to the Claude window next."
+        case 1:
+            if let w = signInWait { return w.replacingOccurrences(of: " first.", with: " next.") }
+            return waiting ? "Finish signing in in the browser." : "Sign in from Account next."
+        case 2:
+            if windowDue { return monitor.failed ? "Which Claude runs couldn't be checked. Check again." : windowHeld ? "Quit the desktop app, or continue anyway." : "Set up the Claude window next." }
+            return desktop == .different ? "Its Claude window uses another account." : "Sign in to the Claude window next."
         default: return draft.usageInDock ? "Add the Dock icon next." : "Start reading usage next."
         }
     }
