@@ -802,7 +802,7 @@ struct NewAccountView: View {
             SRow(label: "Name", info: "What cl_audit calls this profile. Its Dock icon is “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)”, and a new Claude Code folder is \(draft.name.isEmpty ? "~/.claude-<name>" : draft.newConfigDir).", first: true, stacked: stacked) {
                 SField(placeholder: "e.g. personal", text: $draft.name, width: nil).disabled(draft.locked || waiting)   // (not while a sign-in waits)
             }
-            if draft.locked { SRowLine(text: NewAccountSetup.lockedNote(draft)) }
+            // (the locked note is said once, under Folder, the last locked row: it covers the name too)
             // a red line only (the name taken, or emptied after a connect); no name yet is Account's one grey line
             if let clash = checks(.account).first(where: { $0.state == .bad }) { SRowLine(text: clash.text, color: face.danger) }
             SRow(label: "Colour", info: "The profile's colour in the launcher, on the dashboard and in its panels.", stacked: stacked) {
