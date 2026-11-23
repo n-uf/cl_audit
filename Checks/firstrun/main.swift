@@ -292,6 +292,7 @@ do {
     if let e = m.accounts.first {
         check(e.id == "work" && e.name == "Work" && e.configDir == "~/.claude-work", "profile on that folder: \(e.id) \(e.name) \(e.configDir)")
         check(e.color == .lime && e.seat?.email == "fake.person@example.invalid" && e.seat?.linkedAt != nil, "its colour, and linked to the account")
+        check(!e.menuBar, "first run's profile: no menu bar icon (only New profile's page starts one)")
         check(e.desktop == .separate && fm.fileExists(atPath: expand(e.desktopDataDir)), "own Claude window folder made: \(e.desktopDataDir)")
         check(m.selection == "work" && !m.isFirstRun, "normal Settings for that profile")
     }

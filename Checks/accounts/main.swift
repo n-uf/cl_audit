@@ -3261,16 +3261,34 @@ do {
     NewAccountSetup.discard(fin, claude: nil)
     // On this Mac's menu bar icon: on from New profile's page (startNew), off for first run's and the default profile's
     // drafts; a new profile's look is Two bars, Levels, its label, Countdown, while MenuBarLook's own default keeps no label
-    var mb = NewAccountDraft(); mb.name = "Mbar"
+    let mb: NewAccountDraft = { var d = NewAccountDraft(); d.name = "Mbar"; return d }()
     let mbLook = mb.entry.menuBarLook
     check(!mb.entry.menuBar && mbLook.label && mbLook.style == .bars && mbLook.colours == .levels && mbLook.whenFull == .countdown
           && !MenuBarLook().label,
           "a new profile's menu bar look: Two bars, Levels, its label, Countdown (MenuBarLook's own default unchanged), the icon off unless asked")
-    mb.menuBar = true
+    // startNew's own draft (not a hand-set one): the page starts with the icon on, and the profile it makes gets it
     let mbModel = SettingsModel(); mbModel.accounts = []
     mbModel.startNew()
-    check(mb.entry.menuBar && mbModel.draft?.menuBar == true, "New profile's page starts with the menu bar icon on, and the profile gets it")
+    check(mbModel.draft?.menuBar == true && mbModel.draft?.entry.menuBar == true && mbModel.draft?.entry.menuBarLook.label == true,
+          "New profile's page starts with the menu bar icon on, and the profile gets it with its label")
     mbModel.draft = nil
+    // the default profile's offer makes its profile with no menu bar icon (first run's: Checks/firstrun)
+    if case .success(let made) = DefaultProfileRunner.makeDefaultProfile(from: AccountEntry(id: "olddp", name: "Olddp", label: "OLD", configDir: "~/.claude-olddp"),
+                                                                       among: [], seat: u1) {
+        check(!made.menuBar, "the default profile's offer: no menu bar icon")
+    } else { check(false, "the default profile's offer makes its profile") }
+    // a new folder that was already there (not made by this setup) is never "ready": a red line holds Sign in, and nothing
+    // is made in it
+    try? fm.createDirectory(atPath: expand("~/.claude-preexist"), withIntermediateDirectories: true)
+    var pre = NewAccountDraft(); pre.name = "Preexist"
+    let preNext = NewAccountSetup.forSignIn(pre, email: "")
+    check(!NewAccountSetup.codeReady(pre) && !NewAccountSetup.foldersReady(pre) && !NewAccountSetup.windowStepDue(pre)
+          && NewAccountSetup.signInWait(pre, accounts: []) == "Fix the red lines first."
+          && NewAccountSetup.signInWait(preNext, accounts: []) == "Fix the red lines first." && preNext.createdConfigDir == nil,
+          "a new folder already there: not ready, Sign in waits for its red line, nothing made in it")
+    pre.claudeWindow = false
+    check(!NewAccountSetup.canFinish(pre, accounts: [], discarding: false, windowBusy: false), "…and Create can't take it")
+    try? fm.removeItem(atPath: expand("~/.claude-preexist"))
     // Continue anyway: the look made with it makes the window's folder while the desktop app is open, and keeps the answer
     var dCA = NewAccountDraft(); dCA.name = "Anyway"
     try! NewAccountSetup.createCode(&dCA)
