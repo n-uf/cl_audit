@@ -411,7 +411,7 @@ do {
           "the problem line: a few fixed words for a failed read or a busy service, none of the system's own; none for a sign-in state")
     // (a row with words after its address, " · Terminal": only the address is cut, its words whole, within 40)
     let termRow = DockTileMenu.AddressRow(address: "ann@example.com", suffix: " · Terminal")
-    let longTerm = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example.com", suffix: " · Terminal")
+    let longTerm = DockTileMenu.AddressRow(address: "a.very.long.address@subdomain.example", suffix: " · Terminal")
     check(DockTileMenu.words(termRow, blur: true) == AddressText.hidden + " · Terminal" && DockTileMenu.words(termRow, blur: false) == "ann@example.com · Terminal"
           && DockTileMenu.words(longTerm, blur: false).hasSuffix(" · Terminal") && DockTileMenu.words(longTerm, blur: false).count == DockTileMenu.rowCharacters,
           "a row with words after its address: \"hidden address\" while hidden; only the address is cut, its words whole, within 40 (got \(DockTileMenu.words(longTerm, blur: false)))")

@@ -4031,7 +4031,7 @@ do {
     check(withIt == "Quick chat" && without == "Get cl_quick…", "the item: Quick chat with cl_quick, Get cl_quick… without: \(withIt) / \(without)")
 
     // the quick chat's old project folders: exactly Claude Code's name for each profile's old work folder
-    check(OldQuickChats.projectKey("/Users/x/Library/Application Support/usage-n-uf/quick-chat") == "-Users-x-Library-Application-Support-usage-n-uf-quick-chat",
+    check(OldQuickChats.projectKey("/private/var/x/Library/Application Support/usage-n-uf/quick-chat") == "-private-var-x-Library-Application-Support-usage-n-uf-quick-chat",
           "a project key: every character but a letter or digit becomes \"-\"")
     check(OldQuickChats.projectName("oqc1") == OldQuickChats.projectKey(OldQuickChats.folder.appendingPathComponent("oqc1").path),
           "a profile's old chat folder: the key of usage-n-uf/quick-chat/<its id>")
