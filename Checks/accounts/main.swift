@@ -348,6 +348,31 @@ do {
     check(listed[1] == o8, "the other profile is left as it was")
     check(AccountList.label(Seat(account: u3.account, organization: u3.organization, email: nil), found.logins) == "ultra-3@example.com · Personal"
           && AccountList.label(Seat(account: uuid(77), organization: nil, email: nil), found.logins) == "account 00000000", "labels: address · organisation, or account and 8 characters")
+    // cl_kit's sources (stage 9), with sample records under this suite's home: New profile's folders, the ~/.claude
+    // profile's records, and the export's scrubber reading wider than both
+    let s7 = seat(7, "switch-7@example.com"), s9 = seat(901, "old-only@example.com")
+    func record(_ s: Seat) -> String {
+        #"{"oauthAccount":{"accountUuid":"\#(s.account)","organizationUuid":"\#(s.organization!)","emailAddress":"\#(s.email!)"}}"#
+    }
+    put(expand("~/.claude-switch/accounts/sw1/.claude.json"), record(s7))
+    put(expand("~/.claudeX/.claude.json"), "{}")
+    put(expand("~/.claude.old/.claude.json"), record(s9))
+    try? fm.createDirectory(atPath: expand("~/linked-claude"), withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-linkdir"), withDestinationPath: expand("~/linked-claude"))
+    let offered = Detect.configFolders().map(\.path)
+    check(offered.first == "~/.claude" && !offered.contains("~/.claude-switch") && !offered.contains("~/.claudeX")
+          && !offered.contains("~/.claude.old") && offered.contains("~/.claude-linkdir") && offered.contains("~/.claude-p8"),
+          "New profile's folders: ~/.claude first, ~/.claude-* (a link to a folder too), never ~/.claude-switch, ~/.claudeX or ~/.claude.old: \(offered)")
+    try? fm.moveItem(atPath: expand("~/.claude"), toPath: expand("~/away-claude"))
+    check(Detect.configFolders().first?.path == "~/.claude", "…~/.claude first even while it isn't there")
+    try? fm.moveItem(atPath: expand("~/away-claude"), toPath: expand("~/.claude"))
+    let dflt = profile("dflt", "~/.claude", u1)
+    check(AccountList.find([dflt]).folder["dflt"]?.contains(SeatID(s7)) == true,
+          "the ~/.claude profile finds claude-transplant's switch records (~/.claude-switch/accounts/*/.claude.json)")
+    let scrub = Identities.of(accounts: [])
+    check(scrub.emails.contains(s9.email!) && scrub.ids.contains(s9.account.lowercased()) && scrub.emails.contains(s7.email!),
+          "an export scrubs an address and id held only in ~/.claude.old/.claude.json (wider than New profile's folders), and the switch records'")
+    for p in ["~/.claude-switch", "~/.claudeX", "~/.claude.old", "~/.claude-linkdir", "~/linked-claude"] { try? fm.removeItem(atPath: expand(p)) }
     let tree8 = tree(wd8)
     check(tree(wd8) == tree8 && fm.contents(atPath: "\(wd8)/local-agent-mode-sessions/\(u5.account)/\(u5.organization!)/r.json") != nil, "finding changes nothing")
     // an account found by its id alone is reached by that id
