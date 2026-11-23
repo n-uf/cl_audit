@@ -190,7 +190,8 @@ struct DetailsView: View {
                     if let n = info.activeNote {
                         Text(n).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                    if let plan = info.plan {
+                    // (the split by hand: no plan capsule, the badge beside the name says the state)
+                    if let plan = info.plan, info.splitLink == nil {
                         Text(Account.planWords(plan) + " plan").font(.caption2.weight(.medium))
                             .padding(.horizontal, 6).padding(.vertical, 1)
                             .background(Color.primary.opacity(0.08), in: Capsule())
@@ -205,6 +206,11 @@ struct DetailsView: View {
 
             // the card's layout while a limit is full (AtLimit.swift)
             CardLimits(limits: info.limits, design: info.design, large: true, credits: info.credits)
+            // the split by hand: the card's amber line under the numbers (they are the named Terminal account's), a link
+            // to the profile's Settings ▸ Accounts at the band
+            if let link = info.splitLink {
+                LineLink(text: SplitUsage.windowLine, color: .hex(0xf5b54a)) { actions.openLink(link) }
+            }
 
             if info.mismatch || info.problem != nil || info.renewNote != nil {
                 VStack(alignment: .leading, spacing: 4) {
@@ -218,10 +224,6 @@ struct DetailsView: View {
                 .font(.caption)
             }
 
-            // the split by hand: the card's amber line, a link to the profile's Settings ▸ Accounts at the band
-            if let link = info.splitLink {
-                LineLink(text: SplitUsage.windowLine, color: .hex(0xf5b54a)) { actions.openLink(link) }
-            }
             HStack(spacing: 6) {
                 if info.splitLink != nil {
                     // the window is the part out of line: the amber face key, its lamp lit while the window is open

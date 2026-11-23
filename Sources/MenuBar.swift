@@ -435,17 +435,14 @@ struct MenuBarRow: View {
                     Text(inUse + (splitCode != nil ? " · Terminal" : "")).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            if let link = Self.splitLink(profile) {
-                // (opening Settings brings cl_audit forward, which closes the menu)
-                LineLink(text: SplitUsage.windowLine, color: .hex(0xf5b54a), size: 11.5) {
-                    Installer.openSettings(link)
-                }
-            } else if let n = Self.lineWords(profile) {
+            let link = Self.splitLink(profile)
+            if link == nil, let n = Self.lineWords(profile) {
                 Text(n).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(2)
             }
             if u == nil {
-                // (the split says what gives the numbers: its line is above, never "yet")
-                Text(profile.show.numbersHint ?? "No numbers yet").font(.system(size: 11)).foregroundStyle(.secondary)
+                // (a switch waiting says what gives the numbers; the split by hand's numbers are Terminal's account's)
+                Text(link == nil ? profile.show.numbersHint ?? "No numbers yet" : "No numbers yet")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             ForEach(u == nil ? [] : limits) { l in
                 HStack(spacing: 8) {
@@ -459,6 +456,13 @@ struct MenuBarRow: View {
             }
             if let c = u?.credits, c.inUse(fiveHour: u?.fiveHour, weekly: u?.weekly, now: now) {
                 CreditsLine(credits: c)
+            }
+            // the split by hand: the amber link under the numbers (they are the named Terminal account's)
+            if let link {
+                // (opening Settings brings cl_audit forward, which closes the menu)
+                LineLink(text: SplitUsage.windowLine, color: .hex(0xf5b54a), size: 11.5) {
+                    Installer.openSettings(link)
+                }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 6)

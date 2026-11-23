@@ -397,10 +397,10 @@ MainActor.assumeIsolated {
     check(found.first?.seat.account == "f1" && found.first?.folder == "~/.claude-free" && found.first?.usedInWindow != nil,
           "a free folder's sign-in first, with the window's last use merged in")
     check(found.map(\.seat.account) == ["f1", "old2", "old1", "w1"], "then the window's accounts by last use, other profiles' last")
-    check(found.last?.owner == "Work" && found.last?.folder == nil, "another profile's account: dimmed, with its name")
+    check(found.last?.owner == "Work" && found.last?.folder == nil, "another profile's account: with its name, and pickable (shared seats)")
     check(!found.contains { $0.seat.account == "nomail" }, "no address known: left out")
     check(found[1].second(profile: "Main", now: now) == "Personal · needs a sign-in · used in Main's window this week", "a window account's words (stage D: the pop-up's grey line)")
-    check(found.last?.second(profile: "Main", now: now) == "Work's · one profile per account", "another profile's words (stage D)")
+    check(found.last?.second(profile: "Main", now: now) == "Work's", "another profile's words (stage D; shared seats: whose, nothing refused)")
     var me2 = me; me2.standby = [StandbyAccount(email: "old2@example.com", seat: seat("old2", "old2@example.com"), id: "q")]
     check(!AccountDiscovery.found(for: me2, among: [me2, work], facts: facts, folders: folders, window: windowSeats, signedIn: signed)
             .contains { $0.seat.account == "old2" }, "a standby account isn't offered again")
@@ -445,7 +445,7 @@ MainActor.assumeIsolated {
     let s = AddressPrivacy.shared.blur ? AddressText.hidden : "c-8"
     check(offers.first?.usedWords == "\(s): week 8% used" && offers.first?.leftWords == "\(s) has 92% of its week left",
           "the offer's words")
-    check(SwitchWords.button == "Switch account" && SwitchWords.backButton == "Switch back", "the alerts' buttons name no account and, as keys, carry no ellipsis: Switch account, Switch back")
+    check(SwitchWords.button == "Switch account", "the alert's button names no account and, as a key, carries no ellipsis: Switch account (no Switch back alert any more)")
     // stale numbers never count as room: a sign-in that ran out, a problem, or numbers older than three read intervals
     var expired = st(8); expired.state = "expired"
     var problem = st(8); problem.problem = "Couldn't update"
@@ -537,10 +537,10 @@ MainActor.assumeIsolated {
 }
 #endif
 
-// MARK: 8b. rebuilt for the one-folder model: what of sections 8–10 is still the product's (one profile per account,
+// MARK: 8b. rebuilt for the one-folder model: what of sections 8–10 is still the product's (shared seats: an account in several profiles,
 // what Claude Code recorded, what Add account finds and in what order, the window's accounts, its sidebar counted)
 MainActor.assumeIsolated {
-    // one profile per account, standby ones included; a profile's folder is its own, no standby folder any more
+    // which profiles have an account (shared seats), standby ones included; a profile's folder is its own, no standby folder any more
     var p1 = AccountEntry(id: "a", name: "A", label: "A", configDir: home + "/.claude-acc-a"); p1.seat = seat("s1", "s1@example.com")
     p1.standby = [StandbyAccount(email: "s2@example.com", seat: seat("s2", "s2@example.com"), id: "k2")]
     let p2 = AccountEntry(id: "b", name: "B", label: "B", configDir: home + "/.claude-acc-b")
@@ -601,11 +601,11 @@ MainActor.assumeIsolated {
     check(found.first?.seat.account == "f1" && found.first?.folder == "~/.claude-free" && found.first?.usedInWindow != nil,
           "a free folder's sign-in first, with the window's last use merged in")
     check(found.map(\.seat.account) == ["f1", "old2", "old1", "w1"], "then the window's accounts by last use, other profiles' last")
-    check(found.last?.owner == "Work" && found.last?.folder == nil, "another profile's account: dimmed, with its name")
+    check(found.last?.owner == "Work" && found.last?.folder == nil, "another profile's account: with its name, and pickable (shared seats)")
     check(!found.contains { $0.seat.account == "nomail" }, "no address known: left out")
     check(found[1].second(profile: "Main", now: now) == "Personal · used in Main's window this week", "a window account's grey line")
     check(found.first?.second(profile: "Main", now: now).contains("old folder ~/.claude-free") == true, "a found folder's grey line names it as an old folder")
-    check(found.last?.second(profile: "Main", now: now) == "On Work · one profile per account", "another profile's grey line")
+    check(found.last?.second(profile: "Main", now: now) == "On Work", "another profile's grey line: whose, nothing refused (shared seats)")
     var me2 = me; me2.standby = [StandbyAccount(email: "old2@example.com", seat: seat("old2", "old2@example.com"), id: "q")]
     check(!AccountDiscovery.found(for: me2, among: [me2, work], facts: facts, folders: folders, window: windowSeats, signedIn: signed)
             .contains { $0.seat.account == "old2" }, "a standby account isn't offered again")
@@ -1405,7 +1405,7 @@ do {
     check(SwitchWaiting.canCancel(.codeSignIn) && !SwitchWaiting.canCancel(.windowSignIn) && !SwitchWaiting.canCancel(.sidebar), "Cancel switch only at Claude Code's sign-in")
     let cats = Dictionary(uniqueKeysWithValues: SwitchAlert.categories().map { ($0.identifier, $0.actions.map(\.title)) })
     check(cats[SwitchAlert.waitingCategory] == ["Show switch", "Cancel switch"] && cats[SwitchAlert.waitingLinkedCategory] == ["Show switch"], "waiting alert: Show switch + Cancel switch, or Show switch alone")
-    check(cats[SwitchAlert.category] == ["Switch account", "Later"] && cats[SwitchAlert.backCategory] == ["Switch back", "Stay"], "the other alerts' keys: Switch account, Switch back")
+    check(cats[SwitchAlert.category] == ["Switch account", "Later"], "the other alert's keys: Switch account, Later (no Switch back alert any more)")
     check(SwitchAlert.isQuiet(SwitchAlert.cancelSwitch) && !SwitchAlert.isQuiet(SwitchAlert.action), "Cancel switch needs no window; Show switch does")
 
     // once per step, only while the page isn't in front, withdrawn when the step moves on or the switch ends; every waiting
@@ -2097,7 +2097,7 @@ do {
     let fWork = FoundAccount(seat: sWork, plan: "Team", org: "Acme", folder: nil, usedInWindow: nil, owner: "Work")
     check(f3.second(profile: "Main", now: now) == "Ultra · Personal · signed in, ~/.claude-ultra-3 · limits once added", "found, signed in: plan, org, folder, 'limits once added'")
     check(fOld.second(profile: "Main", now: now) == "Pro · Personal · needs a sign-in · used in Main's window in August", "found in the window: needs a sign-in, used in Main's window in August")
-    check(fWork.second(profile: "Main", now: now) == "Work's · one profile per account", "another profile's account: whose, and why it can't be added")
+    check(fWork.second(profile: "Main", now: now) == "Work's", "another profile's account: whose (shared seats: it can be added)")
     check(FoundAccount(seat: s3, plan: nil, org: nil, folder: "~/.claude-x", usedInWindow: nil, owner: nil).second(profile: "", now: now) == "signed in, ~/.claude-x · limits once added",
           "no plan or organisation known: the rest, without gaps")
 
@@ -2106,7 +2106,7 @@ do {
     check(rows.map(\.kind) == [.caption, .account, .account, .account, .divider, .signInOther], "rows: caption, the accounts, a line, Sign in to another account…")
     check(rows[0].title == "Found on this Mac" && !rows[0].enabled, "rows: the caption")
     check(rows[1].title == AddressSettings.words("ultra-3@example.com") && rows[1].detail == f3.second(profile: "Main", now: now) && rows[1].enabled, "rows: an addable account, address then grey line")
-    check(rows[3].title == AddressSettings.words("you@work.example") && rows[3].detail == "Work's · one profile per account" && !rows[3].enabled, "rows: another profile's account is greyed, not addable")
+    check(rows[3].title == AddressSettings.words("you@work.example") && rows[3].detail == "Work's" && rows[3].enabled, "rows: another profile's account is addable (shared seats), with whose it is")
     check(rows[5].title == "Sign in to another account…" && rows[5].enabled, "rows: Sign in to another account… at the bottom")
     check(!AddAccountPopup.rows(found: [], profile: "Main", canSignIn: false).last!.enabled, "rows: Sign in to another account… off while Claude Code isn't found")
     check(AddAccountPopup.rows(found: nil, profile: "Main", canSignIn: true).map(\.title).contains("Looking…"), "rows: the first look under way says so")
@@ -2168,7 +2168,7 @@ do {
           "wrong account: amber display, Cancel and Sign in again…")
     check(wrongOwn.line == "The browser signed in as \(sh("ultra-1@example.com")), not \(sh(u4)). Switch the browser's account, then sign in again.", "wrong account: which one it signed in as, and what to do (got \(wrongOwn.line ?? "nil"))")
     let wrongOther = look(folder: sWork, clash: .other("Work"))
-    check(wrongOther.line?.contains("which is Work's account (one profile per account)") == true && wrongOther.badge == "Wrong account", "wrong account, another profile's: whose, and one profile per account")
+    check(wrongOther.line?.contains("one profile per account") == false && wrongOther.badge == "Wrong account", "wrong account, another profile's: taken (shared seats), never one profile per account")
     check(look(folder: nil, clash: .own).line?.contains("another account") == true, "wrong account with no address known: 'another account'")
     let addedLook = look(linked: true, folder: own4)
     check(addedLook.badge == "Standby" && addedLook.tone == .normal && addedLook.keys.isEmpty && addedLook.dims
@@ -2285,7 +2285,7 @@ do {
 
     // possessives
     check(AddAccountWords.possessive("Main") == "Main's" && AddAccountWords.possessive("Boss") == "Boss'" && AddAccountWords.possessive("Chris") == "Chris'", "possessive: s gets the apostrophe only")
-    check(FoundAccount(seat: sWork, plan: nil, org: nil, folder: nil, usedInWindow: nil, owner: "Boss").second(profile: "Main", now: now) == "Boss' · one profile per account", "found row: another profile ending in s")
+    check(FoundAccount(seat: sWork, plan: nil, org: nil, folder: nil, usedInWindow: nil, owner: "Boss").second(profile: "Main", now: now) == "Boss'", "found row: another profile ending in s")
     check(fOld.second(profile: "Boss", now: now) == "Pro · Personal · needs a sign-in · used in Boss' window in August", "found row: this profile ending in s")
     check(look(folder: sWork, clash: .other("Boss")).line?.contains("which is Boss' account") == true, "wrong account: another profile ending in s")
     // adding refuses the account the working folder is signed in to, as linkStandbySeats does
@@ -2336,7 +2336,7 @@ do {
     let fWork = FoundAccount(seat: sWork, plan: "Team", org: "Acme", folder: nil, usedInWindow: nil, owner: "Work")
     check(f3.second(profile: "Main", now: now) == "Ultra · Personal · old folder ~/.claude-ultra-3", "found in an old folder: plan, organisation, the folder")
     check(fOld.second(profile: "Main", now: now) == "Pro · Personal · used in Main's window in August", "found in the window: used in Main's window in August")
-    check(fWork.second(profile: "Main", now: now) == "On Work · one profile per account", "another profile's account: whose, and why it can't be added")
+    check(fWork.second(profile: "Main", now: now) == "On Work", "another profile's account: whose (shared seats: it can be added)")
     check(FoundAccount(seat: s3, plan: nil, org: nil, folder: "~/.claude-x", usedInWindow: nil, owner: nil).second(profile: "", now: now) == "old folder ~/.claude-x",
           "no plan or organisation known: the rest, without gaps")
     check(FoundAccount(seat: sOld, plan: nil, org: nil, folder: nil, usedInWindow: aug, owner: nil).second(profile: "", now: now) == "used in this profile's window in August",
@@ -2347,7 +2347,7 @@ do {
     check(rows.map(\.kind) == [.caption, .account, .account, .account, .divider, .other], "rows: caption, the accounts, a line, Another address…")
     check(rows[0].title == "Found on this Mac" && !rows[0].enabled, "rows: the caption")
     check(rows[1].title == AddressSettings.words("ultra-3@example.com") && rows[1].detail == f3.second(profile: "Main", now: now) && rows[1].enabled, "rows: an addable account, address then grey line")
-    check(rows[3].title == AddressSettings.words("you@work.example") && rows[3].detail == "On Work · one profile per account" && !rows[3].enabled, "rows: another profile's account is greyed, not addable")
+    check(rows[3].title == AddressSettings.words("you@work.example") && rows[3].detail == "On Work" && rows[3].enabled, "rows: another profile's account is addable (shared seats), with whose it is")
     check(rows[5].title == "Another address…" && rows[5].enabled, "rows: Another address… at the bottom, always there")
     check(AddAccountPopup.rows(found: nil, profile: "Main").map(\.title).contains("Looking…"), "rows: the first look under way says so")
     check(AddAccountPopup.rows(found: [], profile: "Main").map(\.title).contains("Nothing else found"), "rows: nothing found says so")
@@ -2398,7 +2398,7 @@ do {
     // the words
     check(AddAccountWords.possessive("Main") == "Main's" && AddAccountWords.possessive("Boss") == "Boss'" && AddAccountWords.possessive("Chris") == "Chris'"
           && AddAccountWords.possessive("BOSS") == "BOSS'", "possessive: a name ending in s gets the apostrophe only")
-    check(FoundAccount(seat: sWork, plan: nil, org: nil, folder: nil, usedInWindow: nil, owner: "Boss").second(profile: "Main", now: now) == "On Boss · one profile per account", "found row: another profile ending in s")
+    check(FoundAccount(seat: sWork, plan: nil, org: nil, folder: nil, usedInWindow: nil, owner: "Boss").second(profile: "Main", now: now) == "On Boss", "found row: another profile ending in s")
     check(fOld.second(profile: "Boss", now: now) == "Pro · Personal · used in Boss' window in August", "found row: this profile ending in s")
     check(AddAccountWords.rememberLine(profile: "Main") == "Remembered on Main, signed out: it signs in when you switch to it.", "the address field's line: nothing signs in now")
     check(AddAccountWords.rememberLine(profile: "") == "Remembered on the profile, signed out: it signs in when you switch to it.", "…with no profile name")
@@ -3032,7 +3032,8 @@ do {
               "stage G: Settings: nothing of the sign-in is written into the Claude Code folder")
         term.killAll()
 
-        // another profile's account signed in: refused in words, and the other account's address was never filled in
+        // another profile's account signed in: taken like any other (shared seats), amber, with the note that says which
+        // profile has it too; the other account's address was never filled in
         let g = folder("set-clash"), eg = g.entry(ann)
         var owner = folder("set-owner").entry(bob); owner.name = "Other"
         setList([eg, owner])
@@ -3040,22 +3041,24 @@ do {
         SignInWindow.wordSeam = { _ in server(bob) }
         m.startSignIn(fakeClaude, entry: eg, email: ann.email)
         settle(eg.id)
-        check(shown(eg.id)?.kind == .wrongAccount && shown(eg.id)?.danger == true && shown(eg.id)?.owner == "the account of “Other”"
-              && shown(eg.id)?.text.contains("one profile per account") == true,
-              "stage G: Settings: the browser signed in as another profile's account: refused, one profile per account: \(String(describing: shown(eg.id)?.text))")
+        let otherNote = "This account is also in use in “Other”.\nBoth profiles show the same numbers."
+        check(shown(eg.id)?.kind == .wrongAccount && shown(eg.id)?.danger == false && shown(eg.id)?.shared == otherNote
+              && shown(eg.id)?.text.hasSuffix("\n" + otherNote) == true && shown(eg.id)?.text.contains("one profile per account") == false,
+              "stage G: Settings: the browser signed in as another profile's account: taken, amber, with the shared note: \(String(describing: shown(eg.id)?.text))")
         check(args(c2).contains("ann@example.com") && !args(c2).contains("bob@example.com"), "stage G: Settings: the other account's address was never filled in")
         term.killAll()
 
-        // a plain sign-in (no address: nobody wanted) that lands on another profile's account: the same red line, never "Signed in."
+        // a plain sign-in (no address: nobody wanted) that lands on another profile's account: taken, "Signed in." with the
+        // shared note after it (amber), never a refusal
         let g2 = folder("set-clash2"), eg2 = g2.entry(ann)
         setList([eg2, owner])
         _ = conf(login(as: bob))
         SignInWindow.wordSeam = { _ in server(bob) }
         m.startSignIn(fakeClaude, entry: eg2, email: nil)
         settle(eg2.id)
-        check(shown(eg2.id)?.kind == .wrongAccount && shown(eg2.id)?.danger == true && shown(eg2.id)?.owner == "the account of “Other”"
-              && shown(eg2.id)?.text == "\(AddressSettings.words(bob.email!)) is the account of “Other”: one profile per account." && shown(eg2.id)?.text != "Signed in.",
-              "stage G: Settings: no address wanted and Other's account signed in: the red line, never Signed in.: \(String(describing: shown(eg2.id)?.text))")
+        check(shown(eg2.id)?.kind == .signedIn && shown(eg2.id)?.danger == false && shown(eg2.id)?.shared == otherNote
+              && shown(eg2.id)?.text == "Signed in.\n" + otherNote,
+              "stage G: Settings: no address wanted and Other's account signed in: Signed in., with the shared note: \(String(describing: shown(eg2.id)?.text))")
         term.killAll()
         let g3 = folder("set-clash3"), eg3 = g3.entry(ann)
         setList([eg3, owner])
@@ -3063,8 +3066,8 @@ do {
         SignInWindow.wordSeam = { _ in nil }
         m.startSignIn(fakeClaude, entry: eg3, email: nil)
         settle(eg3.id)
-        check(shown(eg3.id)?.kind == .wrongAccount && shown(eg3.id)?.danger == true && shown(eg3.id)?.owner == "the account of “Other”",
-              "stage G: Settings: …and unconfirmed, the record naming Other's account: the red line too: \(String(describing: shown(eg3.id)?.text))")
+        check(shown(eg3.id)?.kind == .unverified && shown(eg3.id)?.danger == false && shown(eg3.id)?.shared == otherNote,
+              "stage G: Settings: …and unconfirmed, the record naming Other's account: taken, with the shared note too: \(String(describing: shown(eg3.id)?.text))")
         term.killAll()
 
         // an account nobody has: the browser's choice, said, not refused
@@ -3074,7 +3077,7 @@ do {
         _ = conf(login(as: bob))
         m.startSignIn(fakeClaude, entry: eh, email: ann.email)
         settle(eh.id)
-        check(shown(eh.id)?.kind == .wrongAccount && shown(eh.id)?.danger == false && shown(eh.id)?.owner == nil
+        check(shown(eh.id)?.kind == .wrongAccount && shown(eh.id)?.danger == false && shown(eh.id)?.shared == nil
               && shown(eh.id)?.text(emailsShown: true) == "Claude Code here is now signed in to bob, so this profile uses it. ann is on standby: Switch to go back.",
               "stage G: Settings: an account nobody has signed in: amber, the profile follows it and the account before is on standby: \(String(describing: shown(eh.id)?.text(emailsShown: true)))")
         term.killAll()

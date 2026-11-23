@@ -1614,13 +1614,14 @@ struct AccountSettings: View {
     /// from the card's top edge, the header inside it) and FOLDER (the Claude Code folder, with Share from and Shared).
     /// Each section header's hairline is its one line: no separator right under it.
     private func codeCard(stacked: Bool) -> some View {
-        SCard(title: "Accounts", info: loginInfo,
-              // the split by hand: the amber band from the card's top edge, the ACCOUNTS header inside it
-              top: splitBand ? view.codeRow.map { AnyView(splitBandRows($0)) } : nil) {
+        VStack(spacing: SettingsColumns.spacing) {
+          SCard(title: "Accounts", info: loginInfo,
+                // the split by hand: the amber band from the card's top edge, the ACCOUNTS header inside it
+                top: splitBand ? view.codeRow.map { AnyView(splitBandRows($0)) } : nil) {
             accountRows
-            // FOLDER: its header's hairline is the section's one line, so its first row has no separator of its own
-            SectionHeader(title: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder; folders are used where they are (Claude Code names a folder's Keychain sign-in after its path). Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.")
-                .padding(.top, 10)
+          }
+          // FOLDER, a card of its own: its header's hairline is the one line, so its first row has no separator of its own
+          SCard(title: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder; folders are used where they are (Claude Code names a folder's Keychain sign-in after its path). Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.") {
             SRow(label: "Folder", first: true, stacked: stacked) {
                 // the folder key beside the pop-up while the whole path fits; in a narrow column the pop-up alone (its
                 // menu has "Choose another folder…" too)
@@ -1635,6 +1636,7 @@ struct AccountSettings: View {
                 }
             }
             shareRows(stacked: stacked)
+          }
         }
     }
 
@@ -2036,8 +2038,9 @@ struct AccountSettings: View {
         let target = Self.switchTarget(goal: goal, newest: newestSwitch, standby: entry.standby, code: code, codeAccount: view.codeAccount)
         // Claude Code's own record: in the split the profile's headline record has no numbers (SplitUsage), its row has them
         let own = codeStatus
-        // a switch to it waiting for the Claude app: lit SWITCHING TO (a click opens the Switch page, which says what's
-        // left); a split by hand: a standby account signed in to Claude Code in Terminal, so it shows its numbers
+        // a switch to it waiting for the Claude app: lit SWITCHING TO, whose key opens the Switch page (which says what's
+        // left); the row itself takes no click. A split by hand: a standby account signed in to Claude Code in Terminal,
+        // so it shows its numbers
         let switching = target.map { $0.lowercased() == code.lowercased() } ?? false
         // its standby entry, else (none: a switch made elsewhere put the folder on it) Claude Code's own account as the target
         let pick = entry.standby.first { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() } ?? entry.codeTarget(view)

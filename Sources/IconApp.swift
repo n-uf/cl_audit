@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     /// Why the numbers aren't fresh, in words: the agent not running comes first.
     var problem: String? {
-        Agent.isAlive(Agent.readMark()) ? status?.problem : "Not updating: the cl_audit agent isn't running (open cl_audit)"
+        Agent.isAlive(Agent.readMark()) ? status?.problem : "Not updating. The cl_audit agent isn't running. Open cl_audit to start it."
     }
 
     func loadStatus() {

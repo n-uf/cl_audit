@@ -991,14 +991,15 @@ struct AccountCard: View {
                     } else {
                         name
                     }
-                    // the split by hand: the line names Terminal's account (the one read), "· Terminal", its lamp amber
+                    // the split by hand: the line names Terminal's account (the one read), "· Terminal"; its lamp stays
+                    // the usual one (that account's numbers read fine)
                     let splitCode = notice?.link != nil ? row.show.splitWords?.code : nil
                     if let label = splitCode ?? row.show.view.label ?? row.status?.expectedEmail {
                         // the account in use, one line on every card (no "· in use": the lamp says it); signed out or
                         // expired: lamp and address red, and the why in the limits' place (UsageNotice)
                         let out = notice?.signedOut == true
                         HStack(spacing: 5) {
-                            Circle().fill(out ? face.danger : splitCode != nil ? FaceTheme.ledAmber : row.lit ? FaceTheme.ledOn : face.muted.opacity(0.4))
+                            Circle().fill(out ? face.danger : row.lit ? FaceTheme.ledOn : face.muted.opacity(0.4))
                                 .frame(width: 6, height: 6)
                             AccountValue(text: label, size: 12).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
                                 .foregroundStyle(out ? face.danger : face.muted)
@@ -1029,7 +1030,13 @@ struct AccountCard: View {
             // only the account in use is read, so only it has numbers; standby accounts never show on the card. In every
             // state without numbers the notice takes the limits' place, exactly as tall as the limits (the hidden limits
             // hold the space), so the keys row stays level with every card's
-            if let notice {
+            if let notice, notice.link != nil {
+                // the split by hand: the numbers stay (they are the named Terminal account's), the amber link under them
+                VStack(alignment: .leading, spacing: 8) {
+                    CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
+                    UsageNoticeView(notice: notice, open: actions.settingsLink)
+                }
+            } else if let notice {
                 ZStack(alignment: .topLeading) {
                     CardLimits(limits: row.limits, design: prefs.cardStyle).hidden()
                     UsageNoticeView(notice: notice, open: actions.settingsLink)
