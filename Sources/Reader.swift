@@ -779,6 +779,11 @@ final class UsageReader {
     func keepForChecks(key: String) {
         keptSignIn = (key, account.configDir, Account.codeRecord(configDir: account.configDir).generation)
     }
+    /// For the checks: a kept sign-in with its token (its key the token's short hash), as readSignIn keeps it.
+    func keepForChecks(token: String) {
+        cachedLogin = .token(token, expiresAt: nil, plan: nil)
+        keepForChecks(key: Account.sha8(token))
+    }
 #endif
 
     /// The organisation's name in Anthropic's profile reply (organization.name), when it gives one.
@@ -875,12 +880,17 @@ final class UsageReader {
                     return
                 }
                 self.processWord = (word, gen, dir, Date())
-                // (another account, or a seat its organisation's name can't tell from the reading's: the Keychain may have
-                // moved on. A word naming no organisation says nothing about the seat)
-                if let r = self.readingAccount, r.match(word) == .different || (r.match(word) == .seatNotKnown && word.organizationName != nil) {
+                // Another account: the Keychain has moved on, so the sign-in is read again. The same account, its seat not told
+                // (a running claude names its organisation by name only, "<address>'s Organization" on a personal seat, and
+                // this reading has its id alone): the reply's organisation name is fetched once for this sign-in, then the
+                // names decide (A5). A word naming no organisation says nothing about the seat.
+                let m = self.readingAccount?.match(word)
+                if m == .different {
                     agentLog.log("reader \(self.id, privacy: .public): Claude Code is on another account than the sign-in read; reading the sign-in again")
                     self.forceFresh = true
                     self.send(.refreshRequested)
+                } else if m == .seatNotKnown, word.organizationName != nil, self.readingAccount?.organizationName == nil {
+                    self.fetchOrganizationName()
                 } else {
                     agentLog.log("reader \(self.id, privacy: .public): Claude Code confirmed its account")
                 }
@@ -888,6 +898,41 @@ final class UsageReader {
             }
         }
     }
+
+    /// The sign-in the organisation name was fetched for: once per sign-in (never again for the same key).
+    private var nameFetchedFor: String?
+
+    /// The reply's organisation name for the kept sign-in, fetched once (Anthropic's profile reply), so the short ask's word
+    /// (a name) can be compared with the reading (an id). When none comes (no name, a failed reply), the word's own
+    /// organisation is set aside: it can't tell the seat, and the reading stands (never stale for good, never asked again).
+    private func fetchOrganizationName() {
+        guard let key = machine.numbersKey, nameFetchedFor != key,
+              case let .token(token, _, _)? = cachedLogin, Account.sha8(token) == key else { return }
+        nameFetchedFor = key
+        let dir = account.configDir
+        Self.nameSeam(token) { [weak self] data in
+            let name = data.flatMap(Self.organizationName)
+            DispatchQueue.main.async {
+                guard let self, !self.machine.stopped, self.account.configDir == dir, self.machine.numbersKey == key else { return }
+                if let name { self.readingOrganizationName = (key, name) }
+                else if var p = self.processWord { p.word.organizationName = nil; self.processWord = p }
+                agentLog.log("reader \(self.id, privacy: .public): the sign-in's organisation \(name == nil ? "isn't named" : "is named", privacy: .public); its seat is told by it")
+                self.save()
+            }
+        }
+    }
+
+    /// How the reply's organisation name is fetched (the profile endpoint with the kept sign-in; its data, or nil on a
+    /// failure): a check build never goes to the network, and a check gives its own.
+#if CL_AUDIT_CHECKS
+    nonisolated(unsafe) static var nameSeam: (_ token: String, _ done: @escaping (Data?) -> Void) -> Void = { _, done in done(nil) }
+#else
+    nonisolated(unsafe) static var nameSeam: (_ token: String, _ done: @escaping (Data?) -> Void) -> Void = { token, done in
+        URLSession.shared.dataTask(with: UsageReader.request("profile", token: token)) { data, resp, _ in
+            done((resp as? HTTPURLResponse)?.statusCode == 200 ? data : nil)
+        }.resume()
+    }
+#endif
 
     /// How long the folder's record must have been left alone before the short ask (a check sets 0).
     nonisolated(unsafe) static var recordQuietFor: TimeInterval = 5

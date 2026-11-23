@@ -1979,6 +1979,38 @@ do {
           && UsageReader.organizationName(Data(#"{"organization":{"name":" "}}"#.utf8)) == nil
           && UsageReader.organizationName(Data(#"{"account":{"uuid":"x"}}"#.utf8)) == nil,
           "the profile reply's organisation name: trimmed; blank or missing is none")
+    // the real shape of a running claude's word (claude 2.1.318 on a personal seat): its organisation by NAME only, the
+    // "<address>'s Organization" pattern, no id. Against a reading with the organisation's id and name: the names decide (A5)
+    let moOrgName = "\(mo.email!)'s Organization"
+    let nameWord = SignedInAccount(email: mo.email, organizationName: moOrgName.uppercased(), origin: .process)
+    let byName = AccountResolver.resolve(same, among: [same], app: .unknown, code: mo, loginEmail: mo.email, loginAccount: mo.account,
+                                         loginOrganization: mo.organization, loginOrganizationName: moOrgName, process: nameWord, names: [:], now: now)
+    check(byName.readStale == nil && byName.codeName == mo.email,
+          "a name-only word (any case) against a reading with the organisation's id and name: the same seat, the numbers stand")
+    // …against a reading with the id only: stale once; the reply's name is fetched once for that sign-in, then the names
+    // decide: the same seat. Never fetched or asked again
+    for (reply2, settles) in [(Data(#"{"organization":{"uuid":"\#(mo.organization!)","name":"\#(moOrgName)"}}"#.utf8), "named"),
+                              (Data(#"{"organization":{"uuid":"\#(mo.organization!)"}}"#.utf8), "unnamed")] {
+        var sn = profile("skn-\(settles)", "~/.claude-skn-\(settles)", mo); sn.claudeWindow = false
+        signIn(sn.configDir, pat)              // the record on pat, Anthropic's word for the kept sign-in mo: they disagree, so it asks
+        var nameAsks = 0, fetches = 0
+        UsageReader.askSeam = { _ in nameAsks += 1; return nameWord }
+        UsageReader.nameSeam = { _, done in fetches += 1; done(reply2) }
+        let rn = UsageReader(sn, defaults: UserDefaults(suiteName: "cl-audit-surfaces-askn-\(settles)-\(getpid())")!)
+        let fake = "fake-sign-in-\(settles)"
+        rn.keepForChecks(token: fake)
+        rn.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: rn.generation, key: Account.sha8(fake))
+        rn.profileFound(mo.email!, key: Account.sha8(fake), account: mo.account, organization: mo.organization); rn.save()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        let settled = Store.status(sn.id)?.resolved
+        check(nameAsks == 1 && fetches == 1 && settled?.readStale == nil && settled?.codeName == mo.email,
+              "a name-only word against an id-only reading (\(settles) reply): one name fetch, then the same seat, the numbers stand: \(nameAsks) ask(s), \(fetches) fetch(es)")
+        rn.save(); RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        check(nameAsks == 1 && fetches == 1 && Store.status(sn.id)?.resolved?.readStale == nil,
+              "…and settled: no further fetch or ask (\(settles) reply)")
+        rn.stop()
+    }
+    UsageReader.nameSeam = { _, done in done(nil) }
     UsageReader.askSeam = { _ in nil }
     UsageReader.recordQuietFor = 5
 
