@@ -78,6 +78,10 @@ enum AgentFiles {
         let id: String; let name: String; let accent: String?; let showFable: Bool?; let pollMinutes: Int?
     }
 
+    /// The widget's thresholds: the app's formula (StatusAges) over the read interval, 1 to 60 as AccountEntry reads it. The
+    /// widget names no account, so in the split it shows none of Terminal's numbers (splitShowsNumbersOwner stays off).
+    static func ages(pollMinutes: Int?) -> Headline.Ages { StatusAges.of(pollMinutes: min(max(pollMinutes ?? 5, 1), 60)) }
+
     /// `dir`: cl_audit's folder (a check passes its own throwaway one).
     static func load(from dir: URL = folder, now: Date = Date()) -> [WidgetProfile] {
         let dec = JSONDecoder()
@@ -96,7 +100,7 @@ enum AgentFiles {
             // says so (the resolver's stale reading), never the profile's seat address read here.
             if let d = try? Data(contentsOf: dir.appendingPathComponent("status/\(e.id).json")),
                let raw = StatusCodec.decode(d)?.current(now: now) {
-                let ages = StatusAges.of(pollMinutes: min(max(e.pollMinutes ?? 5, 1), 60))   // 1 to 60, as AccountEntry reads it
+                let ages = Self.ages(pollMinutes: e.pollMinutes)
                 let s = raw.shown(raw.headline(now: now, ages: ages), now: now)
                 p.updated = s.updatedAt
                 p.noFive = s.noFiveHour ?? false

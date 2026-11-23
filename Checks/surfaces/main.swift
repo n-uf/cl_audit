@@ -347,9 +347,10 @@ do {
         check((named.map { n in barLines.contains { $0.hasPrefix("✓ " + n) } } ?? !barLines.contains { $0.hasPrefix("✓ ") })
               && !dockLines.contains { $0.hasPrefix("✓ ") }
               && mainShow.view.inUseLine == named.map(AccountNames.short), "\(name): the menu bar menu and its row agree, the Dock menu has no account (\(barLines))")
-        // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
-        check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
-              "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
+        // (in the split the surfaces name Terminal's account, "· Terminal", so its numbers show there too: Store.ages opts in to
+        // cl_kit's splitShowsNumbersOwner; each case here reads the folder's own account, so none is stale)
+        check(Store.status(for: main)?.weekly == 40,
+              "\(name): the record's own numbers show, in the split too (Terminal's, under its name): \(splitHere)")
         if name == "different" { check(want.label == u2.email && want.numbersOwner == u1.email, "different: u2 in use, the numbers u1's") }
         if app == appBack {
             check(want.label == u1.email && want.lit && want.line == nil && !(panel.activeNote ?? "").contains("unreadable"),
@@ -1532,7 +1533,7 @@ do {
     rc.reset()
 }
 
-// ============ 6f. the split (B8): the Claude app on P, Claude Code on M: M's numbers are never the profile's ============
+// ============ 6f. the split (B8): the Claude app on P, Terminal on M: M's numbers show under M's name ("· Terminal"), never P's ============
 do {
     let pat = Seat(account: uuid(31), organization: uuid(71), email: "pat@example.com")
     let mo = Seat(account: uuid(32), organization: uuid(72), email: "mo@example.com")
@@ -1561,10 +1562,12 @@ do {
     let head = Store.status(for: e), own = Store.status(for: e, headline: false)
     let split = ProfileShow.load(e, now: now).splitWords
     check(split?.app == pat.email && split?.code == mo.email, "the split: the app on pat, Claude Code on mo")
-    // the headline record: no numbers, no plan, the line instead; nothing full, red or counting down
-    check(head?.weekly == nil && head?.fiveHour == nil && head?.plan == nil && AccountView.of(head).label == pat.email
+    // the headline record: Terminal's numbers and plan (mo's: the surfaces name it, "· Terminal", Store.ages' opt-in), the
+    // label still the app's account in use, and the split's line
+    check(head?.weekly == 100 && head?.fiveHour == nil && head?.plan == "Ultra" && AccountView.of(head).label == pat.email
+          && AccountView.of(head).numbersOwner == mo.email
           && AccountView.of(head).line == "The Claude app and Terminal are signed in to different accounts.",
-          "the profile's record has no numbers for pat, and its line says so: \(AccountView.of(head).line ?? "-")")
+          "the profile's record keeps Terminal's numbers (mo's), pat in use, and its line says the split: \(AccountView.of(head).line ?? "-")")
     // the record holds the fact, not the sentence (the sentence names both accounts): the line is built when it is drawn, so the
     // same record read again with Show emails off says "hidden address" and a record never holds an address-bearing line
     let splitSentence = AccountView.of(head).line ?? ""
@@ -1576,13 +1579,13 @@ do {
           && !splitHidden.contains("example.com") && !splitHidden.contains("@"),
           "the split's sentence is not stored in the record (a flag), and it is said by the setting when drawn: \(splitHidden)")
     let row = cardRow(e, now: now)
-    check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
-          && AtLimit.tileCountdown(fiveHour: row.fiveHour, fiveHourResets: head?.fiveHourResets, weekly: row.weekly, weeklyResets: head?.weeklyResets) == nil,
-          "the card and its tile: no limits, no full panel, no countdown, no red Sign in")
-    check(Usage.of(head) == nil,
-          "the menu bar strip and the Dock icon: no numbers for pat (neutral)")
-    check(previewShowsNone(e, head) && panelShowsNone(e, head),
-          "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
+    check(row.full != nil && row.weekly == 100 && !row.needsLogin
+          && AtLimit.tileCountdown(fiveHour: row.fiveHour, fiveHourResets: head?.fiveHourResets, weekly: row.weekly, weeklyResets: head?.weeklyResets) != nil,
+          "the card and its tile: Terminal's full week, its full panel and countdown, no red Sign in")
+    check(Usage.of(head)?.weekly == 100,
+          "the menu bar strip and the Dock icon: Terminal's numbers (mo's)")
+    check(!previewShowsNone(e, head) && !panelShowsNone(e, head),
+          "the split: the Dock icon's preview and Settings' panel preview draw Terminal's numbers")
     check(row.show.splitWords?.key == "Sign Terminal in" && split?.loginEmail == pat.email,
           "the key: Sign Terminal in, with pat's address filled in")
     // no address in a sentence; the short form is the line itself (no "Can't read … / Terminal: …" any more)
@@ -1596,10 +1599,11 @@ do {
     check(panelInfo.activeNote == nil && panelInfo.splitLink == SettingsLink.split("spl") && panelInfo.splitKey == "Sign in"
           && panelInfo.activeLit && !panelInfo.needsLogin,
           "the Dock panel: the amber line's link to spl's band, the compact Sign in, no old lines: \(panelInfo.splitKey ?? "-")")
-    check(splitShow.display.none == .split && splitShow.display.lamp && splitShow.display.full == nil && splitShow.display.grey
+    check(splitShow.display.none == nil && splitShow.display.usage?.weekly == 100 && splitShow.display.lamp
+          && splitShow.display.full != nil && !splitShow.display.grey && splitShow.display.split != nil
           && splitShow.display.key == .logInCode(to: pat.email!)
           && splitShow.loginAddress == pat.email && splitShow.numbersHint == split?.numbersHint,
-          "the value in the split: no numbers (the split), nothing full, grey, lit, the key to pat, pat's address for Sign in")
+          "the value in the split: Terminal's numbers, full, not grey, lit, the key to pat, pat's address for Sign in")
     // the menu bar row's line: the short form in the split, the record's line otherwise (MenuBarRow.lineWords)
     let barProfile = MenuBarItems.Profile(show: splitShow)
     var notSplit = record(app: appPat, code: mo, reading: mo.email, weekly: 40)
@@ -1700,6 +1704,7 @@ do {
         let s = splitWith(app: appPat, newest: r)
         check(s?.switched == true && s?.line == switchedLine && s?.key == nil && s?.loginEmail == nil
               && Store.status(for: e)?.weekly == nil && AccountView.of(Store.status(for: e)).line == switchedLine
+              && ProfileShow.load(e, now: now).display.usage == nil && dockPanelOf(e, ProfileShow.load(e, now: now)).weekly == nil
               && Store.status(for: e, headline: false)?.weekly == 100,
               "a switch to mo waiting for the app (\(what)): the switched line, no key, no numbers for pat, mo's in its own record: \(s?.line ?? "-")")
     }
@@ -1746,9 +1751,29 @@ do {
     let saved = Store.status("spl")
     check(saved?.weekly == 100 && saved?.resolved?.numbersFor == nil && saved?.numbersOwner == nil,
           "the reader: numbers with no account from their reading say none (never .claude.json's mo): \(saved?.resolved?.numbersFor ?? "nil")")
-    check(posts.isEmpty && ProfileShow.of(e, raw: saved).display.split != nil && Store.status(for: e)?.weekly == nil,
-          "the split: no full or back alert, no switch offer, and no numbers for the profile: \(posts)")
+    // (the edge case: the split, its numbers naming no account: none under the app's label, no alert, no offer, though the
+    // surfaces opt in to Terminal's numbers, which need to be known as Terminal's first)
+    let unnamedShow = ProfileShow.of(e, raw: saved)
+    check(posts.isEmpty && unnamedShow.display.split != nil && unnamedShow.display.usage == nil && unnamedShow.display.full == nil
+          && Store.status(for: e)?.weekly == nil && e.fullOffer(view: unnamedShow.view) == nil,
+          "the split with numbers of no named account: no full or back alert, no switch offer, no numbers for the profile: \(posts)")
     sr.stop()
+    // the split with its reading's owner known (mo, Terminal's account): its numbers act under its name, so the full alert
+    // goes out, exactly once (no second one from the same read); pat, the app's account, is in use, so nothing is offered
+    posts.removeAll()
+    let so = UsageReader(e, defaults: UserDefaults(suiteName: "cl-audit-surfaces-split-owned-\(getpid())")!)
+    so.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: so.generation, key: "s1")
+    so.profileFound(mo.email!, key: "s1"); so.save()
+    let soUntil = Date().addingTimeInterval(5)
+    while !posts.contains(where: { $0.contains("full") }) && Date() < soUntil { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))                // time for a second, unwanted one to show
+    let splitFulls = posts.filter { $0.contains("full") }
+    check(splitFulls == ["Claude Spl: weekly limit full"] && Store.status("spl")?.resolved?.numbersFor == mo.email
+          && ProfileShow.load(e, now: Date()).display.split != nil,
+          "the split, Terminal's week full under its name: the full alert, exactly once: \(splitFulls)")
+    so.stop()
+    SharedReads.alerted = [:]; SharedReads.last = [:]                         // (mo's alert must not quiet the twins below)
+    try! Store.save([e])
     // the same read with the app on mo (no split): the full alert goes out (the check above isn't empty by accident). Shared
     // seats: a second profile whose folder is signed in to mo too shows the same numbers, but the full limit alerts exactly
     // once, from the first profile that alerts (SharedReads' ledger: the twin, same level and window, doesn't)
@@ -1987,7 +2012,18 @@ MainActor.assumeIsolated {
     func signIn(_ m: NSMenu) -> Bool { items(m).contains { ($0.representedObject as? String)?.hasPrefix("signIn:") == true } }
 
     // the one formula for the thresholds: the app's and the widget's
-    check(Store.ages(e) == StatusAges.of(pollMinutes: 5) && StatusAges.freshFor(pollMinutes: 5) == 6 * 60
+    // (the app's surfaces name Terminal's account in the split, so they opt in to its numbers; the widget names none and
+    // stays out; a record that doesn't say whose the numbers are, or a switch waiting for the app, keeps the app's out too)
+    let unnamed = ResolvedAccount(account: nil, email: nil, fromApp: false, numbersFor: nil, differs: true, line: nil, lit: true,
+                                  clash: nil, at: now)
+    var waits = unnamed; waits.numbersFor = "mo@example.com"; waits.switchWaits = true
+    var namedOwner = unnamed; namedOwner.numbersFor = "mo@example.com"
+    check(Store.ages(e, resolved: namedOwner).splitShowsNumbersOwner
+          && Store.ages(e) == StatusAges.of(pollMinutes: 5, splitShowsNumbersOwner: true) && Store.ages(e).splitShowsNumbersOwner
+          && AgentFiles.ages(pollMinutes: 5) == StatusAges.of(pollMinutes: 5) && !AgentFiles.ages(pollMinutes: 5).splitShowsNumbersOwner
+          && !Store.ages(e, resolved: unnamed).splitShowsNumbersOwner && !Store.ages(e, resolved: waits).splitShowsNumbersOwner,
+          "the split's opt-in: the app's ages on, the widget's off; off for numbers of no named account and while a switch waits")
+    check(StatusAges.freshFor(pollMinutes: 5) == 6 * 60
           && StatusAges.greyAfter(pollMinutes: 5) == 30 * 60 && StatusAges.freshFor(pollMinutes: 20) == 21 * 60
           && StatusAges.greyAfter(pollMinutes: 20) == 60 * 60 && StatusAges.freshFor(pollMinutes: 1) == 6 * 60,
           "the thresholds: fresh for the read interval (5 min at least) plus a minute, grey after three reads (30 min at least)")

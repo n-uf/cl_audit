@@ -379,15 +379,16 @@ final class UsageReader {
 
     /// The machine took a good reading (`u`, its credits carried on): the alerts it calls for.
     private func alertGate(_ u: Usage, before: Credits?, now: Date) {
-        // Alerts only for numbers that may act, as ProfileCore's Headline says it for every screen: the profile's own (not
-        // Claude Code's in the split, SplitUsage, nor a reading the sign-in has moved on from), confirmed, and fresh by the
+        // Alerts only for numbers that may act, as ProfileCore's Headline says it for every screen: the profile's own (in the
+        // split Terminal's, under its name as the card shows them, Store.ages, but none while a switch waits or when the
+        // reading names no account; never a reading the sign-in has moved on from), confirmed, and fresh by the
         // reading's own time (a reading held until its account was confirmed, and confirmed more than the read interval
         // later, is only last known: its alerts wait for the next read). And none for another account than the profile's
         // (onOtherAccount, until it follows it). A seat several profiles share alerts once per level and window: each alert
         // asks the ledger (SharedReads.claim) after this profile's own switch and level decided it.
         let resolved = answer()
         let a = Headline.of(resolved.owner(reading: nil, unconfirmed: unconfirmed), signedIn: true, readAt: u.fetchedAt,
-                            now: now, ages: Store.ages(entry))
+                            now: now, ages: Store.ages(entry, resolved: resolved))
         if !machine.onOtherAccount, a.acts, a.numbers() {
             noteBack(u)
             // the account in use as the resolver says it now (the record is saved after this)

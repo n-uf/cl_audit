@@ -721,9 +721,9 @@ enum Store {
     /// numbers from the status line (usage.json) carry none, so those are kept.
     ///
     /// Then (B8), what the profile's headline surfaces may show: the card, the Dock icon and its panel, the menu bar, the
-    /// tile. In the split (the Claude app on one account, Claude Code on another: SplitUsage) Claude Code's
-    /// numbers are not the profile's: none show here, and the record's one line says so (the raw record, Store.status(id),
-    /// keeps them for the card's labelled secondary line and Settings' Claude Code row). And numbers older than the
+    /// tile. In the split (the Claude app on one account, Terminal on another: SplitUsage) these surfaces name Terminal's
+    /// account ("· Terminal"), so its numbers show under that name (Store.ages), and the record's one line says the split;
+    /// none show while a switch waits for the Claude app, or when the record doesn't say whose they are. And numbers older than the
     /// profile's read interval (5 minutes by default) plus a minute are only last known: a limit they read as full is left
     /// out, so they never show "full", a countdown or a switch offer.
     /// `headline` false: Claude Code's own numbers in the split, for the card's labelled line and Settings' Claude Code row
@@ -735,9 +735,10 @@ enum Store {
     /// `status(for:)` over a record already read (`status(_:)`): what the profile's headline surfaces may show of it.
     static func shown(_ s: IconStatus, for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> IconStatus {
         // ProfileCore's Headline decides: a reading that is the folder's account no more, or whose label isn't the account
-        // it was read for, shows nowhere (nor when, nor the plan); the split's numbers and plan are Claude Code's account's;
-        // numbers whose account couldn't be confirmed, or older than the profile's read interval, are never full
-        let a = s.headline(now: now, ages: ages(e))
+        // it was read for, shows nowhere (nor when, nor the plan); the split's numbers and plan are Terminal's account's,
+        // shown under its name (ages); numbers whose account couldn't be confirmed, or older than the profile's read
+        // interval, are never full
+        let a = s.headline(now: now, ages: ages(e, resolved: s.resolved))
         var out = s.shown(a, split: headline, now: now)
         // (the fact only: the sentence names accounts, so it is built when a surface draws it, ResolvedAccount.lineText)
         if headline, SplitUsage.words(s, a.split) != nil { out.resolved?.line = nil; out.resolved?.splitLine = true }
@@ -753,9 +754,16 @@ enum Store {
     /// cl_audit's thresholds for the headline and the display (StatusAges, Core/README.md): fresh for the read interval
     /// plus a minute (6 minutes by default), grey after three missed reads (30 minutes at least), never hidden by age; a
     /// last-known full limit is left out.
-    /// The card, the menu bar, the Dock panel and the agent's alerts name Terminal's account in the split ("· Terminal"), so
-    /// its numbers show there (cl_kit 26.11.8's opt-in).
-    static func ages(_ e: AccountEntry) -> Headline.Ages { StatusAges.of(pollMinutes: e.pollMinutes, splitShowsNumbersOwner: true) }
+    /// The card, the menu bar, the Dock panel, the agent's alert gate and its full-limit offer name Terminal's account in the
+    /// split ("· Terminal"), so its numbers show and act there (cl_kit 26.11.8's opt-in; the widget names no account and
+    /// leaves it off). `resolved`: the record's account answer. The opt-in holds only while it names whose the numbers are
+    /// (numbersFor) and no switch waits for the Claude app (the line then names the app's account, with no numbers under it).
+    static func ages(_ e: AccountEntry, resolved r: ResolvedAccount? = nil) -> Headline.Ages {
+        StatusAges.of(pollMinutes: e.pollMinutes, splitShowsNumbersOwner: r.map(namesNumbersOwner) ?? true)
+    }
+
+    /// The account answer says whose the numbers are and no switch waits: in the split, they show under Terminal's name.
+    static func namesNumbersOwner(_ r: ResolvedAccount) -> Bool { r.numbersFor != nil && r.switchWaits != true }
 
     /// Writes a profile's record. The agent's alone (Reader.save): the cl_audit window never writes it, it holds its own
     /// answer in memory (`hold`) and asks the agent to read.

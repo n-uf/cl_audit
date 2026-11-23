@@ -20,8 +20,8 @@ struct ProfileShow {
 
     /// The value for `raw`, the record as read (Store.status(_:)), at `now`.
     static func of(_ e: AccountEntry, raw read: IconStatus?, now: Date = Date()) -> ProfileShow {
-        let ages = Store.ages(e)
-        let raw = read?.current(now: now)               // (Store.status(_:) has done it already; once more changes nothing)
+        let raw = read?.current(now: now)
+        let ages = Store.ages(e, resolved: raw?.resolved)       // (in the split, Terminal's numbers only when the record names them)               // (Store.status(_:) has done it already; once more changes nothing)
         let shown = raw.map { Store.shown($0, for: e, now: now) }
         guard let raw else {
             let d = ProfileDisplay.make(Headline.of(Headline.Owner(), signedIn: true, readAt: nil, now: now, ages: ages), read: nil,
