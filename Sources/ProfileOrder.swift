@@ -117,31 +117,54 @@ extension StatsModel {
     }
 }
 
-/// The agent's menu bar icons. macOS places an icon by its autosave name: it puts it back where it was (⌘-dragged
-/// or not), whatever order the icons are created in. On macOS 26 and later the system's MenuBarAgent keeps that
-/// itself, out of the app's reach (nothing in its defaults; seen on 27.2); earlier versions kept it in the app's
-/// defaults. So after a new order the icons are put up again under new names, which carry the order (they also sort in
-/// it) and which macOS has no place for: they line up in the new order, and ⌘-drag still moves them until the next
-/// new order. Until the first new order the names stay "cl_audit <id>", so icons already placed keep their places.
+/// The agent's menu bar icons stand in the profile order, left to right (the Settings tile bar's), and that order wins
+/// over a ⌘-drag in the menu bar. macOS places an icon by its autosave name: it puts it back where it was, whatever
+/// order the icons are created in, and an icon it has no place for goes leftmost. On macOS 26 and later the system's
+/// MenuBarAgent keeps those places itself, out of the app's reach (nothing in the app's defaults, so writing the
+/// "NSStatusItem Preferred Position <name>" defaults places nothing there; seen on 27.2). So the icons are put up again,
+/// under a new round's names (which macOS has no place for), from the last profile to the first, whenever they would
+/// stand out of order: a new icon (it would land leftmost), a new order, or an icon seen elsewhere on a later look (a
+/// ⌘-drag, or a place macOS remembered from before). An icon going away leaves the others in order.
 enum MenuBarOrder {
     private static let key = "menuBarProfileOrder"
     private static let roundKey = "menuBarProfileOrderRound"
 
-    /// Whether the profiles are in a new order since the icons were last put up; remembers this order either way, and
-    /// counts a new one (the names' round). The first time (no order kept yet) is not a new one.
-    static func reordered(_ ids: [String], defaults: UserDefaults = .standard) -> Bool {
+    /// Whether the icons need putting up again for `ids` (the profiles with a menu bar icon, in profile order), given the
+    /// ones put up `before`: one added, or a new order. One only gone, or the first time (nothing kept), is not.
+    static func needsRound(before: [String]?, now ids: [String]) -> Bool {
+        guard let before else { return false }
+        return before.filter(ids.contains) != ids
+    }
+
+    /// Remembers `ids` and says whether they need a new round (needsRound), counting it when they do.
+    static func changed(_ ids: [String], defaults: UserDefaults = .standard) -> Bool {
         let before = defaults.stringArray(forKey: key)
         if before != ids { defaults.set(ids, forKey: key) }
-        guard let before, ProfileOrder.reordered(from: before, to: ids) else { return false }
-        defaults.set(defaults.integer(forKey: roundKey) + 1, forKey: roundKey)
+        guard needsRound(before: before, now: ids) else { return false }
+        nextRound(defaults)
         return true
     }
 
-    /// The icon's autosave name: "cl_audit <id>" until the first new order, then "cl_audit <round>.<place> <id>"
-    /// (place: the profile's index in the order, two digits).
-    static func autosaveName(_ id: String, place: Int, defaults: UserDefaults = .standard) -> String {
-        let round = defaults.integer(forKey: roundKey)
-        return round == 0 ? "cl_audit \(id)" : "cl_audit \(round).\(String(format: "%02d", place)) \(id)"
+    /// The names' round: 0 until the icons are first put up again, then one more each time.
+    static func round(_ defaults: UserDefaults = .standard) -> Int { defaults.integer(forKey: roundKey) }
+    static func nextRound(_ defaults: UserDefaults = .standard) { defaults.set(round(defaults) + 1, forKey: roundKey) }
+
+    /// The icons to put up, in the order they are made, each with its autosave name: the last profile first, since each
+    /// new icon goes leftmost, so they read in profile order. Names: "cl_audit <id>" in round 0, then
+    /// "cl_audit <round>.<place> <id>" (place: its index among the icons, two digits, so the names sort in the order too).
+    static func plan(_ ids: [String], round: Int) -> [(id: String, name: String)] {
+        ids.enumerated().reversed().map { ($0.element, name($0.element, place: $0.offset, round: round)) }
+    }
+
+    static func name(_ id: String, place: Int, round: Int) -> String {
+        round == 0 ? "cl_audit \(id)" : "cl_audit \(round).\(String(format: "%02d", place)) \(id)"
+    }
+
+    /// Whether the icons stand out of the profile order, by their left edges on screen (`minX`; one with no place yet is
+    /// left out).
+    static func outOfOrder(_ ids: [String], minX: [String: CGFloat]) -> Bool {
+        let placed = ids.filter { minX[$0] != nil }
+        return placed.sorted { (minX[$0] ?? 0) < (minX[$1] ?? 0) } != placed
     }
 }
 

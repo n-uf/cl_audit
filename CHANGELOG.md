@@ -22,6 +22,7 @@ the notes before updating.
 - A standby account whose organisation is found later no longer carries its old week onto that seat (the week was read before the seat was known).
 - **New profile's Account pop-up** lists the other profiles' standby accounts too, as "Plan · Name's standby", after the accounts in use.
 - **A usage-only profile's tile** shows its folder again, with "usage only" after it.
+- **Menu bar icons** follow the profile order: a new profile's icon lands after the others, and a ⌘-drag goes back into that order.
 
 ## 26.11.88 — 2026-11-23
 

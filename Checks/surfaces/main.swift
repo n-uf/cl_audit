@@ -4396,5 +4396,22 @@ do {
     check(face(full).countdown != nil, "the week full: the face shows the countdown")
 }
 
+// ============ the menu bar icons follow the profile order (MenuBarOrder): made from the last, named in the order ============
+do {
+    let plan = MenuBarOrder.plan(["main", "work", "new"], round: 4)
+    check(plan.map(\.id) == ["new", "work", "main"] && plan.map(\.name) == ["cl_audit 4.02 new", "cl_audit 4.01 work", "cl_audit 4.00 main"],
+          "menu bar: made from the last profile (each goes leftmost), names carry the order: \(plan.map(\.name))")
+    check(MenuBarOrder.plan(["main"], round: 0).map(\.name) == ["cl_audit main"], "menu bar: round 0 keeps the plain name")
+    check(MenuBarOrder.needsRound(before: ["main", "work"], now: ["main", "work", "new"])
+          && MenuBarOrder.needsRound(before: ["main", "work"], now: ["work", "main"])
+          && !MenuBarOrder.needsRound(before: ["main", "work", "new"], now: ["main", "new"])
+          && !MenuBarOrder.needsRound(before: nil, now: ["main"]),
+          "menu bar: a new icon or a new order puts them up again; one gone, or the first time, doesn't")
+    check(MenuBarOrder.outOfOrder(["main", "work", "new"], minX: ["main": 900, "work": 940, "new": 700])
+          && !MenuBarOrder.outOfOrder(["main", "work", "new"], minX: ["main": 700, "work": 740, "new": 790])
+          && !MenuBarOrder.outOfOrder(["main", "work", "new"], minX: ["main": 700, "new": 790]),
+          "menu bar: an icon left of where the order puts it is out of order; one not placed yet is left out")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

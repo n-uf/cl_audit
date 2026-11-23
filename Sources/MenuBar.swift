@@ -1,6 +1,7 @@
 // Menu bar: each profile can have its own icon in the menu bar, exactly like its Dock icon: switched on and styled in
 // that profile's settings (Menu bar card), drawn by the agent (it runs whatever is open, quit or hidden, so the icons
-// work with no Dock icons at all), each with its own menu. ⌘-drag arranges them; macOS remembers where.
+// work with no Dock icons at all), each with its own menu. They stand in the profile order, left to right, and that
+// order wins over a ⌘-drag (ProfileOrder.swift: MenuBarOrder).
 //
 // An icon is one of six styles (two bars, a ring, a number, with or without the number), in the level colours, the
 // system's own (drawn the way macOS draws its icons: white or black, dimmed on an inactive screen), the Mac's accent
@@ -278,18 +279,41 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         self.refresh = refresh
     }
 
+    /// When the icons were last put up, and how many times since the list last changed they were put up again for
+    /// standing out of order (at most 3 in a row, so a place macOS keeps insisting on doesn't make new names forever).
+    private var placedAt = Date.distantPast
+    private var straightened = 0
+
+    /// Where the icons stand now: each one's left edge on screen, for those macOS has placed and shows.
+    private var positions: [String: CGFloat] {
+        items.compactMapValues { it in it.button?.window.flatMap { $0.isVisible ? $0.frame.minX : nil } }
+    }
+
     /// Adds, removes and redraws the icons as the profiles say (the agent calls this every 30 s and after a change).
     func update(now: Date = Date()) {
-        let all = profiles()
-        // the profiles in a new order (cl_audit's tile bar): the icons come down and go up again below under new
-        // names, which macOS has no place for, so they line up in the new order (ProfileOrder.swift)
-        if MenuBarOrder.reordered(all.map(\.entry.id)) {
+        let list = profiles().filter { $0.entry.menuBar }
+        let order = list.map(\.entry.id)
+        // the icons follow the profile order (cl_audit's tile bar), which wins over a ⌘-drag: a new icon or a new
+        // order puts them all up again under new names, which macOS has no place for, so they line up in the order;
+        // so does an icon seen out of order on a later look (ProfileOrder.swift: MenuBarOrder)
+        var again = MenuBarOrder.changed(order)
+        if again {
+            straightened = 0
+        } else if !items.isEmpty, order.allSatisfy({ items[$0] != nil }), now.timeIntervalSince(placedAt) > 20 {
+            if !MenuBarOrder.outOfOrder(order, minX: positions) {
+                straightened = 0
+            } else if straightened < 3 {
+                straightened += 1
+                MenuBarOrder.nextRound()
+                again = true
+                agentLog.log("menu bar: icons out of the profile order, put up again")
+            }
+        }
+        if again {
             items.values.forEach { NSStatusBar.system.removeStatusItem($0) }
             items = [:]
         }
-        let place = ProfileOrder.ranks(all.map(\.entry.id))
-        let list = all.filter { $0.entry.menuBar }
-        let ids = Set(list.map(\.entry.id))
+        let ids = Set(order)
         for (id, it) in items where !ids.contains(id) {
             NSStatusBar.system.removeStatusItem(it)
             items[id] = nil
@@ -302,17 +326,17 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         }
         if !accessory { NSApp.setActivationPolicy(.accessory); accessory = true }   // still no Dock icon
         // a new icon goes left of the ones already there: added from the last profile, they read in profile order
-        let adding = list.contains { items[$0.entry.id] == nil }
-        for p in list.reversed() where items[p.entry.id] == nil {
+        let adding = order.contains { items[$0] == nil }
+        for p in MenuBarOrder.plan(order, round: MenuBarOrder.round()) where items[p.id] == nil {
             let it = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            // where the user ⌘-dragged it is kept by this name (until the next new order)
-            it.autosaveName = MenuBarOrder.autosaveName(p.entry.id, place: place[p.entry.id] ?? 0)
-            let menu = NSMenu(title: p.entry.id)
+            it.autosaveName = p.name
+            let menu = NSMenu(title: p.id)
             menu.delegate = self
             menu.autoenablesItems = false
             it.menu = menu
-            items[p.entry.id] = it
+            items[p.id] = it
         }
+        if adding { placedAt = Date() }
         for p in list { draw(p, now: now) }
         // where macOS put them, once it has (for checking a new order: log show … 'menu bar: left to right')
         if adding {
@@ -529,7 +553,7 @@ struct MenuBarCard: View {
 
     var body: some View {
         let _ = accentTick
-        SCard(title: "Menu bar", info: "An icon for this profile in the menu bar, like its Dock icon: drawn by the cl_audit agent, so it works with or without the Dock icon. Its menu has the limits, Open Claude window, Refresh now and Profile settings. ⌘-drag it to move it; macOS remembers where.") {
+        SCard(title: "Menu bar", info: "An icon for this profile in the menu bar, like its Dock icon: drawn by the cl_audit agent, so it works with or without the Dock icon. Its menu has the limits, Open Claude window, Refresh now and Profile settings. The icons stand in the order of the profiles in Settings, left to right, and that order wins over a ⌘-drag in the menu bar.") {
             SRow(label: "In the menu bar", info: "On: an icon for this profile in the menu bar. Off: none; the usage is read either way.", first: true) {
                 SSwitch(isOn: $entry.menuBar, on: "shows the usage", off: "no icon",
                         progress: { on, since in MenuBarItems.progress(entry.id, on, since: since) })
