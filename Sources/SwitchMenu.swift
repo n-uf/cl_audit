@@ -11,7 +11,7 @@ enum SwitchMenu {
     struct Line: Equatable {
         let key: String             // "<profile>~<standby account>": the Switch page's
         let short: String
-        /// The account's address (or its "account 1a2b3c4d" label), for a row drawn by AddressMenuRow; never in a title.
+        /// The account's address (or its "account 1a2b3c4d" label), for a row drawn by the kit's account row (MenuRows); never in a title.
         var address = ""
         let words: String           // "3 days ago", or "" when it was never in use here
         /// Not known to be full: it may be offered while a limit is full.

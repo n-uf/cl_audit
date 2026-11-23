@@ -1,6 +1,6 @@
 // SwitchAccountMenu: the dashboard card's "Switch account" menu as an NSMenu (it was a SwiftUI Menu), so that its rows for
-// accounts can be AddressMenuRows: while addresses are hidden each draws AddressPrivacy's one blurred stand-in (the same for
-// every account) and the real address only while the menu highlights it, with "hidden address" as its title and accessibility
+// accounts can be the kit's account rows (MenuRows): while addresses are hidden each draws AddressPrivacy's one blurred
+// stand-in (the same for every account) and the real address only while the pointer is on it, with "hidden address" as its title and accessibility
 // label. A SwiftUI Menu's items are plain titles, which would have to say "hidden address" for every account and so couldn't
 // tell the accounts apart on screen.
 //
@@ -12,6 +12,7 @@
 
 import AddressPrivacy
 import AppKit
+import MenuRows
 import SwiftUI
 
 final class SwitchAccountMenu: NSObject {
@@ -55,14 +56,14 @@ final class SwitchAccountMenu: NSObject {
         return m
     }
 
-    /// A standby account: an AddressMenuRow while its address is an address (hidden: the stand-in, the address only while the menu
-    /// highlights the row; shown: the address), else a native item (a phrase). Its title is the words (nothing of the address
+    /// A standby account: the kit's account row (MenuRows) while its address is an address (hidden: the stand-in, the address
+    /// only while the pointer is on the row; shown: the address), else a native item (a phrase). Its title is the words (nothing of the address
     /// while hidden) and a pick sends the Switch page's key to `pick`.
     private func accountItem(_ s: Row) -> NSMenuItem {
         let i: NSMenuItem
         if AddressSettings.hides(s.address) {
             let key = s.key, pick = pick
-            i = AddressMenuRow.item(address: s.address) { pick(key) }
+            i = MenuAccountRowView.item(MenuAccountRow(address: s.address, inUse: false)) { pick(key) }
         } else {
             i = NSMenuItem(title: s.address, action: #selector(picked(_:)), keyEquivalent: "")
             i.target = self

@@ -116,7 +116,7 @@ enum AccountNames {
     /// An account's short name: its address before the @ ("ultra-2") while addresses are shown, and "hidden address" while they
     /// are hidden, the same for every account (AddressPrivacy.short: nothing of the address, not its first letter). A text that
     /// is no address or id ("its account", "another account") is as it is. A menu row that must tell hidden accounts apart is
-    /// drawn with AddressMenuRow instead of from this text.
+    /// drawn with the kit's account row (MenuRows) instead of from this text.
     static func short(_ email: String) -> String { AddressSettings.hides(email) ? AddressPrivacy.short(address: email) : email }
 
     /// The same for a given "Show emails" setting (what a check hands in: never the real preference).

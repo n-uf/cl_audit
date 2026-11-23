@@ -13,7 +13,7 @@
 // The menu bar icon's menu (MenuBar.menuNeedsUpdate) draws its own views, so under its row it also lists the accounts: the
 // account in use ticked, in the split Terminal's account and the sign-in, each standby account, Sign in to another account….
 // Addresses there are whole, never a name made from one, through AddressPrivacy (Settings ▸ General ▸ Emails): a hidden one
-// is AddressMenuRow (the blurred stand-in, the address while the row has the pointer on it). Every row is at most 40
+// is the kit's account row (MenuRows: the blurred stand-in, the address only while the pointer is on the row). Every row is at most 40
 // characters (a longer one is cut in the middle). Every item has its own tag, the submenu's too: the Dock hands a click on a
 // Dock tile's menu back by the item's tag (_sendDockMenuCommand:withTag:).
 //
@@ -23,6 +23,7 @@
 
 import AddressPrivacy
 import AppKit
+import MenuRows
 import ProfileCore
 
 enum DockTileMenu {
@@ -170,7 +171,7 @@ enum DockTileMenu {
     }
 
     /// A row's words as plain text (a native item's title, the checks' lines): the address as it is, or "hidden address"
-    /// while hidden (the menu bar draws a hidden one as AddressMenuRow, whose title this is). Only the address is cut to keep
+    /// while hidden (the menu bar draws a hidden one as the kit's account row, whose title this is). Only the address is cut to keep
     /// the row within 40 characters, never the words around it ("Sign Terminal in to …", " · Terminal").
     static func words(_ r: AddressRow, blur: Bool? = nil) -> String {
         let shown = AddressSettings.words(r.address, blur: blur)
@@ -197,7 +198,7 @@ enum DockTileMenu {
 
     // MARK: the menu
 
-    /// The rows as an NSMenu. `views`: a menu this process draws (the menu bar's), where a hidden address is AddressMenuRow;
+    /// The rows as an NSMenu. `views`: a menu this process draws (the menu bar's), where a hidden address is the kit's row;
     /// false for a Dock menu (plain titles). Each action sends `action` to `target` from an item whose representedObject is
     /// "<action>:<target>" (DockTileMenu.object). `light`: the profile's own colour, nil for none (the light unlit).
     static func menu(_ rows: [Row], light: NSColor?, views: Bool, target: AnyObject, action: Selector) -> NSMenu {
@@ -253,15 +254,15 @@ enum DockTileMenu {
         }
     }
 
-    /// An address row's item: AddressMenuRow while its address is hidden in a menu this process draws, else a native item
-    /// titled with its words. The account in use is ticked and enabled (so it doesn't read as broken); choosing it does
-    /// nothing unless it has an act.
+    /// An address row's item: the kit's account row (MenuRows' MenuAccountRowView) while its address is hidden in a menu this
+    /// process draws, else a native item titled with its words. The account in use is ticked and enabled (so it doesn't read
+    /// as broken); choosing it does nothing unless it has an act.
     static func item(_ r: AddressRow, views: Bool, target: AnyObject, action: Selector) -> NSMenuItem {
         let what = r.act.map { object($0, r.target) }
         let i: NSMenuItem
         if views, hidden(r) {
-            i = AddressMenuRow.item(prefix: r.prefix, address: r.address, suffix: r.suffix,
-                                    enabled: r.enabled, ticked: r.ticked) { [weak target] in
+            let row = MenuAccountRow(prefix: r.prefix, address: r.address, inUse: r.ticked, tag: r.suffix, enabled: r.enabled)
+            i = MenuAccountRowView.item(row) { [weak target] in
                 guard let what, let target else { return }
                 let sender = NSMenuItem(); sender.representedObject = what      // what the action reads
                 NSApp.sendAction(action, to: target, from: sender)

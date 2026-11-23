@@ -31,7 +31,11 @@ build_modules "$out" keychain -O
 # it, and so does the Dock tile plug-in, which is the same objects (the plug-in itself draws no address); the widget doesn't
 echo "compiling AddressPrivacy…"
 build_privacy "$out" -O
-privacy=(); while IFS= read -r f; do privacy+=("$f"); done < <(privacy_link "$out")
+# and MenuRows (cl_kit's MenuRows/: the menu bar menu's account rows, over ProfileCore and AddressPrivacy); its flags go
+# before theirs (a static library comes before the ones it needs)
+echo "compiling MenuRows…"
+build_menurows "$out" -O
+privacy=(); while IFS= read -r f; do privacy+=("$f"); done < <(menurows_link "$out"; privacy_link "$out")
 echo "compiling…"
 # One compile for the app and its Dock tile plug-in (DockTile/): the same objects linked twice, so the plug-in draws a
 # tile with the app's own code. The plug-in's load-time function (docktile_load.c) goes into the plug-in only, and the

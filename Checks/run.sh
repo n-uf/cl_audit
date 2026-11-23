@@ -81,9 +81,10 @@ MODS="$WORK/kit-modules"
 core_lib=(-I "$MODS" -L "$MODS" -lProfileCore)
 runs_lib=(-I "$MODS" -L "$MODS" -lRuns)
 auth_lib=(-I "$MODS" -L "$MODS" -lClaudeAuth "${runs_lib[@]}")
-addr_lib=(); while IFS= read -r f; do addr_lib+=("$f"); done < <(privacy_link "$MODS")      # (with its frameworks)
+# (MenuRows first: it needs AddressPrivacy and ProfileCore)
+addr_lib=(); while IFS= read -r f; do addr_lib+=("$f"); done < <(menurows_link "$MODS"; privacy_link "$MODS")   # (with its frameworks)
 build_kit() {
-  [[ $build -eq 1 ]] || { [[ -f "$MODS/libClaudeAuth.a" && -f "$MODS/libAddressPrivacy.a" ]] || { echo "no modules at $MODS (run without --no-build)" >&2; return 1; }; return 0; }
+  [[ $build -eq 1 ]] || { [[ -f "$MODS/libClaudeAuth.a" && -f "$MODS/libAddressPrivacy.a" && -f "$MODS/libMenuRows.a" ]] || { echo "no modules at $MODS (run without --no-build)" >&2; return 1; }; return 0; }
   rm -rf "$MODS"
   /usr/bin/lockf -k "$LOCK" bash -c '. "$1/scripts/modules.sh"; kit_build "$2" keychain -Onone -enable-testing' _ "$modules_kit" "$MODS" 2>&1 \
     | grep -E "error" || true
@@ -91,6 +92,9 @@ build_kit() {
   /usr/bin/lockf -k "$LOCK" bash -c 'repo="$1"; . "$1/scripts/modules.sh"; build_privacy "$2" -Onone -enable-testing' _ "$APP" "$MODS" 2>&1 \
     | grep -E "error" || true
   [[ -f "$MODS/libAddressPrivacy.a" ]] || { echo "compile failed: AddressPrivacy" >&2; return 1; }
+  /usr/bin/lockf -k "$LOCK" bash -c 'repo="$1"; . "$1/scripts/modules.sh"; build_menurows "$2" -Onone -enable-testing' _ "$APP" "$MODS" 2>&1 \
+    | grep -E "error" || true
+  [[ -f "$MODS/libMenuRows.a" ]] || { echo "compile failed: MenuRows" >&2; return 1; }
 }
 build_kit || exit 1
 

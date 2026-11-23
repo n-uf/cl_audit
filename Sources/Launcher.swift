@@ -1129,7 +1129,7 @@ struct AccountCard: View {
         .help(!hasStandby ? "Sign in to another account for \(row.entry.name)" : "Switch \(row.entry.name) to another account")
     }
 
-    /// The Switch account menu, an NSMenu (SwitchAccountMenu.swift: its account rows are AddressMenuRows). (Not private: the
+    /// The Switch account menu, an NSMenu (SwitchAccountMenu.swift: its account rows are the kit's MenuAccountRowViews). (Not private: the
     /// surfaces checks and the render.)
     var switchAccountMenu: SwitchAccountMenu {
         let standby = row.entry.listed(by: row.view).cardTrays().map(\.offer.standby)
