@@ -36,6 +36,8 @@ struct AccountBox<Header: View, Content: View>: View {
     /// A click anywhere on the box (a standby row selects or deselects); the address pop-up and the lit key keep their own.
     var tap: (() -> Void)? = nil
     var tapHelp: String? = nil
+    /// The click's name for VoiceOver ("Clear selection" on the in-use box), nil: none of its own.
+    var tapName: String? = nil
     @ViewBuilder var header: () -> Header
     @ViewBuilder var content: () -> Content
     @Environment(\.face) private var outer
@@ -97,24 +99,40 @@ struct AccountBox<Header: View, Content: View>: View {
             }
         }
         .mintRow(selected || alert, red: alert && !selected)
-        .modifier(BoxTap(tap: tap, help: tapHelp))
+        .modifier(BoxTap(tap: tap, help: tapHelp, name: tapName))
     }
 }
 
-/// A click anywhere on a box, only for a box that has one (a standby row); the others keep their children's own help.
+/// A click anywhere on a box, only for a box that has one (a standby row; the in-use box while a standby is selected);
+/// the others keep their children's own help. `name`: the click as a VoiceOver action of its own.
 private struct BoxTap: ViewModifier {
     let tap: (() -> Void)?
     let help: String?
+    var name: String? = nil
 
     func body(content: Content) -> some View {
         if let tap {
-            content.contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            let tapped = content.contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .onTapGesture { tap() }
                 .help(help ?? "")
+            if let name { tapped.accessibilityAction(named: Text(name)) { tap() } } else { tapped }
         } else {
             content
         }
     }
+}
+
+/// The standby selection in Settings ▸ Accounts: what a click does to it. A standby row's click selects it, or deselects
+/// it when it is the one selected; a click on the in-use box clears it, and does nothing while nothing is selected.
+enum StandbyPick {
+    static let clearName = "Clear selection"
+    static let clearHelp = "Click to clear the selection"
+
+    /// The selection after a click on the standby row `row`.
+    static func afterRowClick(_ picked: String?, row: String) -> String? { picked == row ? nil : row }
+
+    /// Whether the in-use box takes a click: only while a standby is selected (the click then clears it).
+    static func inUseTakesClick(_ picked: String?) -> Bool { picked != nil }
 }
 
 /// The badge on the split's two rows in Settings ▸ Accounts: TERMINAL then APP, always in that order. The row's own half

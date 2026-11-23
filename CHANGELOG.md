@@ -25,6 +25,7 @@ the notes before updating.
 - **A usage-only profile's tile** shows its folder again, with "usage only" after it.
 - **Menu bar icons** follow the profile order: a new profile's icon lands after the others, and a ⌘-drag goes back into that order.
   - If macOS keeps moving them, cl_audit stops after three tries, and a ⌘-drag stays until the profiles change.
+- **Settings ▸ Accounts:** with a standby account selected, a click on the account in use clears the selection.
 
 ## 26.11.88 — 2026-11-23
 

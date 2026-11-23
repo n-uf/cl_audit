@@ -1802,7 +1802,11 @@ struct AccountSettings: View {
         let switching = show.display.split?.switchWaits == true
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: red ? .warn : ok ? .ok : .warn,
                           detail: [plan].compactMap { $0 }.joined(separator: " · "), inUse: true,
-                          rest: picked != nil && !red, alert: red) {
+                          rest: picked != nil && !red, alert: red,
+                          // while a standby is selected, a click anywhere on it (not its address pop-up or keys) clears
+                          // the selection, as a second click on the selected row does; with nothing selected, nothing
+                          tap: StandbyPick.inUseTakesClick(picked) ? { clearPick() } : nil,
+                          tapHelp: StandbyPick.clearHelp, tapName: StandbyPick.clearName) {
             loginPopUp(shown, tint: tint, icon: icon)
         } content: {
             if red, let notice {
@@ -2035,9 +2039,14 @@ struct AccountSettings: View {
 
     /// Selects a standby account, or deselects it on a second click (the order is held still while one is selected).
     private func toggle(_ s: StandbyAccount) {
-        if picked == s.id { picked = nil; heldOrder = [] }
-        else { if picked == nil { heldOrder = AccountBook.offerOrder(entry.standby).map(\.id) }; picked = s.id }
+        let next = StandbyPick.afterRowClick(picked, row: s.id)
+        if next == nil { clearPick(); return }
+        if picked == nil { heldOrder = AccountBook.offerOrder(entry.standby).map(\.id) }
+        picked = next
     }
+
+    /// Back to nothing selected (the in-use box's click, or a second click on the selected row).
+    private func clearPick() { picked = nil; heldOrder = [] }
 
     /// Claude Code's account while the Claude app is still on another one (AccountView.codeRow): its address, its plan, the
     /// numbers (they are its, read through Claude Code's sign-in) and what's left to do. Unlit: the active account is the

@@ -4428,6 +4428,15 @@ do {
           "menu bar: older rounds' and gone profiles' keys are stale; the current plan's and other names' stay")
 }
 
+// ============ Settings ▸ Accounts: the standby selection (StandbyPick) ============
+do {
+    check(StandbyPick.afterRowClick(nil, row: "s2") == "s2" && StandbyPick.afterRowClick("s2", row: "s3") == "s3"
+          && StandbyPick.afterRowClick("s2", row: "s2") == nil, "standby rows: a click selects, another row moves it, a second click deselects")
+    check(StandbyPick.inUseTakesClick("s2") && !StandbyPick.inUseTakesClick(nil),
+          "the in-use box: its click clears a selection, and does nothing with none")
+    check(StandbyPick.clearName == "Clear selection", "the in-use box's VoiceOver action while a standby is selected")
+}
+
 // ============ the profile tile's second line (AccountTile.subtitle): the folder, the account in use, the mode ============
 do {
     var e = AccountEntry(id: "tile", name: "Tile", label: "TILE", configDir: "~/.claude-tile")
