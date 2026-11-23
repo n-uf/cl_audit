@@ -18,12 +18,13 @@
 // Dock tile's menu back by the item's tag (_sendDockMenuCommand:withTag:).
 //
 // The plug-in starts nothing itself: Quick chat (cl_quick, opened by the agent: ClQuick) and Refresh now post their notices;
-// the rest ask the agent (DockTile.menuNote), which does them. Its menu (dockRows) needs only the profiles file's entry: it
-// reads no sign-in and no record.
+// the rest ask the agent (DockTile.menuNote), which does them. Its menu (dockRows) needs only the profiles file's entry
+// (PluginProfile): it reads no sign-in and no record.
+//
+// This file is the part the plug-in compiles too (build.sh: the plug-in's sources): the rows, the Dock menus, the tags and
+// the notices. The menu bar's accounts and their address rows (AddressPrivacy, MenuRows) are the app's: DockMenuAccounts.swift.
 
-import AddressPrivacy
 import AppKit
-import MenuRows
 import ProfileCore
 
 enum DockTileMenu {
@@ -63,27 +64,19 @@ enum DockTileMenu {
     /// "Claude Main"; a name that starts with Claude as it is (cl_quick's rule).
     static func title(_ name: String) -> String { name.lowercased().hasPrefix("claude") ? name : "Claude " + name }
 
-    /// The menu's rows for a profile and its value now. `header` true: a Dock menu, the profile row then the actions (no
-    /// accounts, numbers or states: the Dock icon's panel has them); false: the menu bar's, under its row (which says the
-    /// profile and its numbers), the accounts then the actions. `windowOpen`: its Claude window runs; `appRunning`: the Dock
-    /// icon app's own menu (Quit and keep is its own). Without the agent (`agentRuns` false: the Dock tile's) the actions, the
-    /// agent's to do, are left out and the menu says so.
-    static func rows(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, agentRuns: Bool = true, appRunning: Bool = false,
-                     header: Bool = true, now: Date = Date()) -> [Row] {
-        header ? dockRows(e, windowOpen: windowOpen, agentRuns: agentRuns, appRunning: appRunning)
-               : actions(e, after: accounts(e, show, actions: agentRuns, now: now), windowOpen: windowOpen, agentRuns: agentRuns,
-                         appRunning: appRunning)
-    }
+    // (the menu bar's rows, `rows(_:_:…)` with its accounts: DockMenuAccounts.swift)
 
     /// A Dock menu's rows: the profile, then the Claude window and the actions. Nothing of the profile's record (no account,
-    /// number or state), so the menu needs none read.
-    static func dockRows(_ e: AccountEntry, windowOpen: Bool, agentRuns: Bool = true, appRunning: Bool = false) -> [Row] {
-        actions(e, after: [.profile(title(e.name.isEmpty ? Account.label(e) : e.name))], windowOpen: windowOpen,
+    /// number or state), so the menu needs none read. `windowOpen`: its Claude window runs; `appRunning`: the Dock icon app's
+    /// own menu (Quit and keep is its own). Without the agent (`agentRuns` false: the Dock tile's) the actions, the agent's to
+    /// do, are left out and the menu says so.
+    static func dockRows(_ e: PluginProfile, windowOpen: Bool, agentRuns: Bool = true, appRunning: Bool = false) -> [Row] {
+        actions(e, after: [.profile(title(e.name.isEmpty ? e.shortLabel : e.name))], windowOpen: windowOpen,
                 agentRuns: agentRuns, appRunning: appRunning)
     }
 
     /// `rows` then the Claude window and the actions; without the agent, the line that says so instead.
-    private static func actions(_ e: AccountEntry, after head: [Row], windowOpen: Bool, agentRuns: Bool, appRunning: Bool) -> [Row] {
+    static func actions(_ e: PluginProfile, after head: [Row], windowOpen: Bool, agentRuns: Bool, appRunning: Bool) -> [Row] {
         var rows = head
         guard agentRuns else {
             rows.append(.separator)
@@ -94,7 +87,7 @@ enum DockTileMenu {
         if e.claudeWindow {
             let inside: [Row] = windowOpen
                 ? [.action("Show", .openWindow, e.id), .action("Quit", .quitWindow, e.id)]
-                    + (appRunning && e.runs.windowFollowsDock ? [.action("Quit and keep", .quitKeep, e.id)] : [])
+                    + (appRunning && e.windowFollowsDock ? [.action("Quit and keep", .quitKeep, e.id)] : [])
                 : [.action("Open", .openWindow, e.id)]
             rows.append(.submenu("Claude window", inside))
         }
@@ -106,55 +99,7 @@ enum DockTileMenu {
         return rows
     }
 
-    /// The menu bar menu's accounts: the one in use ticked (with why its numbers aren't fresh, problemLine), in the split
-    /// Terminal's account and the sign-in to the app's, each standby account, Sign in to another account…. `actions` false
-    /// (no agent to do them): the account in use only.
-    static func accounts(_ e: AccountEntry, _ show: ProfileShow, actions: Bool = true, now: Date = Date()) -> [Row] {
-        let d = show.display
-        let listed = e.listed(by: show.view)                    // never the account in use on standby too
-        // (in the split, and while a switch waits, Terminal's own account is listed but never offered: its numbers are the full ones)
-        let lines = SwitchMenu.lines(listed, notOffered: { show.view.isCodeRow(id: $0.seat?.account, email: $0.seat?.email ?? $0.email) }, now: now)
-        var out: [Row] = []
-        // the account in use (none while signed out)
-        if d.sign != .signedOut, let inUse = show.view.label {
-            out.append(.address(AddressRow(address: inUse, ticked: true)))
-        }
-        if let why = problemLine(state: show.record?.state) { out.append(.status(why)) }
-        guard actions else { return out }
-        // the split by hand: Terminal's account is its own row (a click switches to it, as the card's row does)
-        var terminal: String?
-        if d.split != nil, show.splitWords?.switched != true,
-           let code = listed.standby.first(where: { show.view.isCodeRow(id: $0.seat?.account, email: $0.seat?.email ?? $0.email) }) {
-            let key = SwitchOffer(profile: e.id, standby: code).key
-            if let l = lines.first(where: { $0.key == key }) {
-                terminal = key
-                out.append(.address(AddressRow(address: l.address, suffix: " · Terminal", act: .switchTo, target: key, enabled: l.canSwitch)))
-            }
-        }
-        // the one key: Claude Code's own sign-in in Terminal, the address it fills in named (the split's: the app's own)
-        if d.key != nil {
-            if let a = show.loginAddress, !a.isEmpty {
-                out.append(.address(AddressRow(prefix: "Sign Terminal in to ", address: a, suffix: "…", act: .signIn, target: e.id, account: false)))
-            } else {
-                out.append(.action("Sign in…", .signIn, e.id))
-            }
-        }
-        for l in lines where l.key != terminal {
-            out.append(.address(AddressRow(address: l.address, act: .switchTo, target: l.key, enabled: l.canSwitch)))
-        }
-        out.append(.action("Sign in to another account…", .addAccount, e.id))
-        return out
-    }
-
-    /// Why the numbers aren't fresh, in a few fixed words (never a system's own), under the menu bar menu's account in use: a
-    /// read that failed, the usage service busy. A sign-in that expired, is signed out, refused or unreadable is the menu bar
-    /// row's to say.
-    static func problemLine(state: String?) -> String? {
-        guard let state else { return nil }
-        if state.hasPrefix("failed") { return "Couldn't update · retrying" }
-        if state == "rateLimited" { return "Usage service busy · retrying later" }
-        return nil
-    }
+    // (the menu bar menu's accounts and problemLine: DockMenuAccounts.swift)
 
     // MARK: words
 
@@ -165,45 +110,18 @@ enum DockTileMenu {
         return String(s.prefix(head)) + "…" + String(s.suffix(tail))
     }
 
-    /// Whether the row's address is hidden now (`blur`: a test override of the setting).
-    static func hidden(_ r: AddressRow, blur: Bool? = nil) -> Bool {
-        AddressSettings.hides(r.address) && (blur ?? AddressPrivacy.shared.blur)
-    }
-
-    /// A row's words as plain text (a native item's title, the checks' lines): the address as it is, or "hidden address"
-    /// while hidden (the menu bar draws a hidden one as the kit's account row, whose title this is). Only the address is cut to keep
-    /// the row within 40 characters, never the words around it ("Sign Terminal in to …", " · Terminal").
-    static func words(_ r: AddressRow, blur: Bool? = nil) -> String {
-        let shown = AddressSettings.words(r.address, blur: blur)
-        let room = rowCharacters - r.prefix.count - r.suffix.count
-        return r.prefix + (shown.count > room ? fit(shown, max: max(room, 9)) : shown) + r.suffix
-    }
-
-    /// The rows as plain lines, top to bottom (the checks read the menu this way): "✓ " before the ticked row, "▸" after a
-    /// submenu's title and its rows indented.
-    static func lines(_ rows: [Row], blur: Bool? = nil) -> [String] {
-        var out: [String] = []
-        for row in rows {
-            switch row {
-            case .profile(let s), .info(let s): out.append(fit(s))
-            case .status(let s): out.append(fit(s))
-            case .separator: out.append("—")
-            case .action(let s, _, _): out.append(fit(s))
-            case .address(let r): out.append((r.ticked ? "✓ " : "") + words(r, blur: blur))
-            case .submenu(let s, let inside): out.append(fit(s) + " ▸"); out += lines(inside, blur: blur).map { "  " + $0 }
-            }
-        }
-        return out
-    }
+    // (an address row's words and the rows as plain lines: DockMenuAccounts.swift)
 
     // MARK: the menu
 
-    /// The rows as an NSMenu. `views`: a menu this process draws (the menu bar's), where a hidden address is the kit's row;
-    /// false for a Dock menu (plain titles). Each action sends `action` to `target` from an item whose representedObject is
+    /// The rows as an NSMenu. Each action sends `action` to `target` from an item whose representedObject is
     /// "<action>:<target>" (DockTileMenu.object). `light`: the profile's own colour, nil for none (the light unlit).
-    static func menu(_ rows: [Row], light: NSColor?, views: Bool, target: AnyObject, action: Selector) -> NSMenu {
+    /// `address`: an address row's item (the app's, DockMenuAccounts.swift); nil, address rows are left out (the Dock
+    /// tile's menu has none).
+    static func menu(_ rows: [Row], light: NSColor?, target: AnyObject, action: Selector,
+                     address: ((AddressRow) -> NSMenuItem)? = nil) -> NSMenu {
         let m = NSMenu(); m.autoenablesItems = false
-        add(rows, to: m, light: light, views: views, target: target, action: action)
+        add(rows, to: m, light: light, target: target, action: action, address: address)
         tag(m)
         return m
     }
@@ -221,8 +139,9 @@ enum DockTileMenu {
         walk(m)
     }
 
-    /// The rows' items added to `m` (the menu bar's menu adds them under its own row).
-    static func add(_ rows: [Row], to m: NSMenu, light: NSColor?, views: Bool, target: AnyObject, action: Selector) {
+    /// The rows' items added to `m` (the menu bar's menu adds them under its own row). `address` as in `menu`.
+    static func add(_ rows: [Row], to m: NSMenu, light: NSColor?, target: AnyObject, action: Selector,
+                    address: ((AddressRow) -> NSMenuItem)? = nil) {
         for row in rows {
             switch row {
             case .separator: m.addItem(.separator())
@@ -243,38 +162,15 @@ enum DockTileMenu {
                 i.target = target; i.representedObject = object(act, what)
                 m.addItem(i)
             case .address(let r):
-                m.addItem(item(r, views: views, target: target, action: action))
+                if let address { m.addItem(address(r)) }
             case .submenu(let s, let inside):
                 let i = NSMenuItem(title: fit(s), action: nil, keyEquivalent: "")
                 let sub = NSMenu(title: s); sub.autoenablesItems = false
-                add(inside, to: sub, light: light, views: views, target: target, action: action)
+                add(inside, to: sub, light: light, target: target, action: action, address: address)
                 i.submenu = sub
                 m.addItem(i)
             }
         }
-    }
-
-    /// An address row's item: the kit's account row (MenuRows' MenuAccountRowView) while its address is hidden in a menu this
-    /// process draws, else a native item titled with its words. The account in use is ticked and enabled (so it doesn't read
-    /// as broken); choosing it does nothing unless it has an act.
-    static func item(_ r: AddressRow, views: Bool, target: AnyObject, action: Selector) -> NSMenuItem {
-        let what = r.act.map { object($0, r.target) }
-        let i: NSMenuItem
-        if views, hidden(r) {
-            let row = MenuAccountRow(prefix: r.prefix, address: r.address, inUse: r.ticked, tag: r.suffix, enabled: r.enabled)
-            i = MenuAccountRowView.item(row) { [weak target] in
-                guard let what, let target else { return }
-                let sender = NSMenuItem(); sender.representedObject = what      // what the action reads
-                NSApp.sendAction(action, to: target, from: sender)
-            }
-        } else {
-            i = NSMenuItem(title: words(r), action: what == nil || !r.enabled ? nil : action, keyEquivalent: "")
-            i.target = target
-            i.isEnabled = r.enabled
-            if r.ticked { i.state = .on }
-        }
-        i.representedObject = what
-        return i
     }
 
     /// The profile's light for its row: its own colour, lit; for a profile with none an unlit ring.
@@ -309,7 +205,17 @@ enum DockTileMenu {
 
     /// The profile an action is for: its target, or for a switch the Switch page's key's profile.
     static func profile(_ a: Act, _ target: String) -> String {
-        a == .switchTo ? (SwitchOffer.parse(target)?.profile ?? "") : target
+        a == .switchTo ? (SwitchKey.parse(target)?.profile ?? "") : target
+    }
+}
+
+/// The Switch page's key, "<profile>~<standby id>": the menus, the alerts and the card name a switch by it (SwitchOffer.key,
+/// AccountEntry.switchKey). Here, so the Dock tile plug-in reads a menu action's profile the same way.
+enum SwitchKey {
+    static func make(_ profile: String, _ standby: String) -> String { "\(profile)~\(standby)" }
+    static func parse(_ key: String) -> (profile: String, standby: String)? {
+        let parts = key.split(separator: "~", maxSplits: 1).map(String.init)
+        return parts.count == 2 && !parts[0].isEmpty && !parts[1].isEmpty ? (parts[0], parts[1]) : nil
     }
 }
 

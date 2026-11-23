@@ -11,79 +11,7 @@ import AppKit
 import ProfileCore
 import SwiftUI
 
-enum MenuBarStyle: String, CaseIterable, Identifiable, Codable {
-    case bars, barsNumber, ring, ringNumber, number, twoNumbers
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .bars: return "Two bars"
-        case .barsNumber: return "Bars + number"
-        case .ring: return "Ring"
-        case .ringNumber: return "Ring + number"
-        case .number: return "Number"
-        case .twoNumbers: return "Two numbers"
-        }
-    }
-    var blurb: String {
-        switch self {
-        case .bars: return "the 5-hour limit over the week, as thin bars"
-        case .barsNumber: return "the bars, then the fuller limit as a number"
-        case .ring: return "the week outside, the 5-hour limit inside"
-        case .ringNumber: return "the ring, then the fuller limit as a number"
-        case .number: return "the fuller of the two limits as a number"
-        case .twoNumbers: return "the 5-hour and the weekly limit as numbers"
-        }
-    }
-    static let families: [(title: String, styles: [MenuBarStyle])] =
-        [("Bars", [.bars, .barsNumber]), ("Rings", [.ring, .ringNumber]), ("Numbers", [.number, .twoNumbers])]
-}
-
-enum MenuBarColours: String, CaseIterable, Identifiable, Codable {
-    case levels, system, accent, profile
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .levels: return "Levels"
-        case .system: return "System"
-        case .accent: return "Accent"
-        case .profile: return "Profile colour"
-        }
-    }
-    var blurb: String {
-        switch self {
-        case .levels: return "green, amber, red, crimson as the limits fill up"
-        case .system: return "the menu bar's own colour, like Apple's icons: white or black, dimmed on an inactive screen. A full limit shows by its countdown, as macOS doesn't colour these icons"
-        case .accent: return "your Mac's accent colour (System Settings ▸ Appearance), following it when it changes"
-        case .profile: return "this profile's colour (orange for a profile with none of its own)"
-        }
-    }
-}
-
-enum MenuBarWhenFull: String, CaseIterable, Identifiable, Codable {
-    case countdown, red
-    var id: String { rawValue }
-    var title: String { self == .countdown ? "Countdown" : "Crimson only" }
-}
-
-/// How a profile's menu bar icon looks; kept in the profile.
-struct MenuBarLook: Codable, Hashable {
-    var style: MenuBarStyle = .bars
-    var colours: MenuBarColours = .levels
-    var label = false                   // the profile's label before its icon ("MAIN")
-    var whenFull: MenuBarWhenFull = .countdown
-
-    init() {}
-
-    private enum Keys: String, CodingKey { case style, colours, label, whenFull }
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: Keys.self)
-        style = (try? c.decodeIfPresent(MenuBarStyle.self, forKey: .style)) ?? .bars
-        let raw = (try? c.decodeIfPresent(String.self, forKey: .colours)) ?? "levels"
-        colours = MenuBarColours(rawValue: raw == "plain" ? "system" : raw) ?? .levels
-        label = (try? c.decodeIfPresent(Bool.self, forKey: .label)) ?? false
-        whenFull = (try? c.decodeIfPresent(MenuBarWhenFull.self, forKey: .whenFull)) ?? .countdown
-    }
-}
+// (the look a profile keeps, MenuBarLook with its style, colours and when-full choices, is Looks.swift's)
 
 /// The menu bar item used to be a single one, set in Settings ▸ General. When it was on, the profiles it showed get their
 /// own icon in the look it had. Runs once: the old settings are removed after.
@@ -429,7 +357,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         case .switchTo: Installer.openSwitch(target)
         case .signIn: ClaudeCLI.logIn(profile: e)
         case .addAccount: ClaudeCLI.logIn(Account(e), email: nil)  // Settings ▸ Accounts' Sign in with another account…
-        case .quickChat: ClQuick.open(e)                               // cl_quick, or its site (ClQuick)
+        case .quickChat: ClQuick.open(configDir: e.configDir)          // cl_quick, or its site (ClQuick)
         case .openWindow: Launcher.openClaude(Account(e))
         case .quitWindow: _ = ClaudeWindow.quit(Account(e))
         case .quitKeep: break                                       // (the Dock icon app's own)

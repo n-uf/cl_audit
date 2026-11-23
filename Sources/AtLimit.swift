@@ -9,59 +9,13 @@ import ProfileCore
 import SwiftUI
 
 // (TimeWords, FullLimit and AtLimit's rules are ProfileCore's: Core/TimeWords.swift, Core/Limits.swift. cl_audit's words for
-// them and the Dock icon's countdown face are here.)
-
-extension FullLimit {
-    /// "5-hour full", or "Week full · 5-hour too".
-    var title: String { "\(name) full" + (other.map { " · \($0) too" } ?? "") }
-    /// The Dock icon's line under the time: "5H FULL", "WK FULL".
-    var tileFooter: String { id == "5h" ? "5H FULL" : "WK FULL" }
-    /// The alert's and Dock menu's name for it: "5-hour limit", "weekly limit".
-    var limitName: String { id == "5h" ? "5-hour limit" : "weekly limit" }
-}
-
-extension TimeWords {
-    /// The countdown on the Dock icon, where one short value fits: ("19", "m"), ("1", "h42"), ("19", "h"), ("Thu", ""),
-    /// ("16", "d"), ("Jan", "") — the first part large, the second small after it.
-    static func tile(_ d: Date, now: Date = Date(), calendar: Calendar = .current) -> (String, String) {
-        let m = minutesLeft(d, now: now)
-        let cal = calendar
-        let f = TimeWords.formatter(timeZone: cal.timeZone)
-        if m < 60 { return ("\(m)", "m") }
-        if m < 10 * 60 { return ("\(m / 60)", String(format: "h%02d", m % 60)) }
-        if m < 24 * 60 { return ("\(m / 60)", "h") }
-        let days = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: d)).day ?? 0
-        if days <= 6 { f.dateFormat = "EEE"; return (f.string(from: d), "") }
-        if cal.component(.year, from: d) == cal.component(.year, from: now) { return ("\(m / 1440)", "d") }
-        f.dateFormat = "MMM"; return (f.string(from: d), "")
-    }
-}
-
-/// What the Dock icon shows while a limit is full: the time large ("1" + "h42"), which limit under it.
-struct TileCountdown: Equatable {
-    var big: String
-    var small: String
-    var footer: String
-}
+// them and the Dock icon's countdown face are TileCountdown.swift's, which the Dock tile plug-in compiles too.)
 
 extension AtLimit {
     /// The full limit among the panels' rows.
     static func blocker(_ limits: [Limit], now: Date = Date()) -> FullLimit? {
         let five = limits.first { $0.id == "5h" }, week = limits.first { $0.id == "wk" }
         return blocker(fiveHour: five?.p, fiveHourResets: five?.resets, weekly: week?.p, weeklyResets: week?.resets, now: now)
-    }
-
-    /// The Dock icon's countdown face for a full limit (D1), or nil when nothing is full.
-    static func tileCountdown(fiveHour: Double?, fiveHourResets: Date?, weekly: Double?, weeklyResets: Date?,
-                              now: Date = Date()) -> TileCountdown? {
-        tileCountdown(blocker(fiveHour: fiveHour, fiveHourResets: fiveHourResets, weekly: weekly, weeklyResets: weeklyResets, now: now), now: now)
-    }
-
-    /// The countdown face for the full limit that holds the profile back (ProfileDisplay.full), or nil.
-    static func tileCountdown(_ full: FullLimit?, now: Date = Date()) -> TileCountdown? {
-        guard let b = full else { return nil }
-        let (big, small) = b.resets.map { TimeWords.tile($0, now: now) } ?? ("—", "")
-        return TileCountdown(big: big, small: small, footer: b.tileFooter)
     }
 }
 

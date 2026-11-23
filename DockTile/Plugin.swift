@@ -55,12 +55,12 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         // grey, the countdown runs), as the Dock icon app does
         let center = DistributedNotificationCenter.default()
         // (a burst of notices is one redraw, half a second after its first: a storm never reaches the Dock's process)
-        observers.append(center.addObserver(forName: Store.statusChanged, object: nil, queue: .main) { [weak self] note in
+        observers.append(center.addObserver(forName: AppPlaces.statusChanged, object: nil, queue: .main) { [weak self] note in
             guard let self, note.object == nil || note.object as? String == self.id else { return }
             self.soon("record")
         })
-        observers.append(center.addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in self?.soon("profiles") })
-        observers.append(center.addObserver(forName: Installer.appsChangedNote, object: nil, queue: .main) { [weak self] _ in self?.soon("apps") })
+        observers.append(center.addObserver(forName: AppPlaces.configChanged, object: nil, queue: .main) { [weak self] _ in self?.soon("profiles") })
+        observers.append(center.addObserver(forName: AppPlaces.appsChanged, object: nil, queue: .main) { [weak self] _ in self?.soon("apps") })
         observers.append(center.addObserver(forName: DockTile.windowNote, object: nil, queue: .main) { [weak self] note in
             guard let self, note.object as? String == self.id else { return }
             self.soon("window")
@@ -72,14 +72,11 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
     /// the actions, each a notice (the plug-in starts nothing itself). No record is read: the menu shows no account, number
     /// or state. No menu without a profile.
     func dockMenu() -> NSMenu? {
-        guard let id,
-              let list = SafeRead.whole(Store.configURL.path, max: 4 << 20).flatMap({ try? JSONDecoder().decode(ConfigFile.self, from: $0) }),
-              let e = list.accounts.first(where: { $0.id == id }) else { return nil }
-        let rows = DockTileMenu.dockRows(e, windowOpen: DockTile.windowOpen(id), agentRuns: DockTile.agentRuns())
-        // plain titles: the Dock draws the menu and leaves out an item's view. Each item its own tag (DockTileMenu.tag): the
-        // Dock hands a click back as the item's tag (_sendDockMenuCommand:withTag:)
-        let m = DockTileMenu.menu(rows, light: ProfileLED.lamp(e.ownColor).color, views: false,
-                                  target: self, action: #selector(picked(_:)))
+        guard let id, let p = PluginProfile.load(id) else { return nil }
+        let rows = DockTileMenu.dockRows(p, windowOpen: DockTile.windowOpen(id), agentRuns: DockTile.agentRuns())
+        // plain titles: the Dock draws the menu and leaves out an item's view (and its rows hold no address). Each item its
+        // own tag (DockTileMenu.tag): the Dock hands a click back as the item's tag (_sendDockMenuCommand:withTag:)
+        let m = DockTileMenu.menu(rows, light: TileColor.lamp(p.ownColor).color, target: self, action: #selector(picked(_:)))
         log("menu asked")
         shownMenu = m           // kept until the next ask (shownMenu)
         return m
@@ -92,8 +89,8 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
               DockTileMenu.profile(act, target) == id else { return }
         let center = DistributedNotificationCenter.default()
         switch act {
-        case .quickChat: center.postNotificationName(ClQuick.openNote, object: id, userInfo: nil, deliverImmediately: true)
-        case .refresh: center.postNotificationName(Installer.refreshAllNote, object: id, userInfo: nil, deliverImmediately: true)
+        case .quickChat: center.postNotificationName(AppPlaces.quickChatOpen, object: id, userInfo: nil, deliverImmediately: true)
+        case .refresh: center.postNotificationName(AppPlaces.refreshAll, object: id, userInfo: nil, deliverImmediately: true)
         default: center.postNotificationName(DockTile.menuNote, object: DockTileMenu.object(act, target), userInfo: nil, deliverImmediately: true)
         }
         log("menu: \(act.rawValue)")
@@ -156,13 +153,10 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
     /// The profile's face now, or nil when its entry can't be read (the last face stays). Capped reads of regular files only
     /// (SafeRead: a FIFO, a device or a huge file is no answer), never a wait.
     private func face() -> TileModel? {
-        guard let id,
-              let list = SafeRead.whole(Store.configURL.path, max: 4 << 20).flatMap({ try? JSONDecoder().decode(ConfigFile.self, from: $0) }),
-              let e = list.accounts.first(where: { $0.id == id }) else { return nil }
-        let record = SafeRead.whole(Store.statusFolder.appendingPathComponent("\(id).json").path, max: SafeRead.recordMax)
-            .flatMap(StatusCodec.decode)
-        // (the open dot from the agent's word on the window: DockTile.windowOpen)
-        return TileModel.face(e, ProfileShow.of(e, raw: record?.current()), windowOpen: DockTile.windowOpen(id))
+        guard let id, let p = PluginProfile.load(id) else { return nil }
+        // the record through ProfileCore's display (PluginProfile.swift); the open dot from the agent's word on the window
+        // (DockTile.windowOpen)
+        return TileModel.face(p, record: PluginProfile.record(id), windowOpen: DockTile.windowOpen(id))
     }
 
     private static let unknown = TileModel(label: "?", fiveHour: nil, weekly: nil, stale: true, style: .bars)

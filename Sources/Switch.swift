@@ -28,15 +28,12 @@ struct SwitchOffer {
         return parts.isEmpty ? "on standby" : parts.joined(separator: " · ")
     }
 
-    static func parse(_ key: String) -> (profile: String, standby: String)? {
-        let parts = key.split(separator: "~", maxSplits: 1).map(String.init)
-        return parts.count == 2 && !parts[0].isEmpty && !parts[1].isEmpty ? (parts[0], parts[1]) : nil
-    }
+    static func parse(_ key: String) -> (profile: String, standby: String)? { SwitchKey.parse(key) }   // (DockMenu.swift)
 }
 
 extension AccountEntry {
     /// "<profile>~<standby id>": the Switch page for that account, as the menus, the alerts and the card name it.
-    static func switchKey(_ profile: String, _ standby: String) -> String { "\(profile)~\(standby)" }
+    static func switchKey(_ profile: String, _ standby: String) -> String { SwitchKey.make(profile, standby) }
 
     /// The Switch page key's standby id for Claude Code's own account while the Claude app is on another one and no standby
     /// entry is it (codeTarget): a switch made elsewhere (cl_quick) put the folder on it, and only the Claude app is left.

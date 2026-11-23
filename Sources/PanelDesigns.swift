@@ -5,19 +5,7 @@ import AppKit
 import ProfileCore
 import SwiftUI
 
-enum PanelDesign: String, Codable, CaseIterable, Identifiable {
-    case glow, rings, numbers, segments, pace
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .glow: return "Glow bars"
-        case .rings: return "Twin rings"
-        case .numbers: return "Big numbers"
-        case .segments: return "Segmented"
-        case .pace: return "Pace bars"
-        }
-    }
-}
+// (PanelDesign itself, kept in the profile, is Looks.swift's)
 
 /// How much of a limit's window has already passed, in %, from its reset time.
 func windowElapsed(_ resets: Date?, _ window: TimeInterval) -> Double? {

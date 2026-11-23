@@ -9,7 +9,7 @@ enum ClQuick {
 
     /// The Dock icon's app and its plug-in start nothing themselves: they ask the agent with this note (object: the profile
     /// id), and the agent opens cl_quick.
-    static let openNote = Notification.Name("local.usage-n-uf.quick-chat-open")
+    static let openNote = AppPlaces.quickChatOpen
 
     /// Whether an app answers cl_quick's URL scheme; checks give their own answer.
     nonisolated(unsafe) static var installedProbe: () -> Bool = { NSWorkspace.shared.urlForApplication(toOpen: URL(string: "cl-quick://")!) != nil }
@@ -34,10 +34,11 @@ enum ClQuick {
         return c.url
     }
 
-    /// The item's action: cl_quick's chat on the profile's folder, or its site when it isn't installed.
-    static func open(_ e: AccountEntry?) {
+    /// The item's action: cl_quick's chat on the profile's Claude Code folder (nil: none known), or its site when it isn't
+    /// installed. (A folder, not a profile: this file is the Dock tile plug-in's too, PluginProfile.swift.)
+    static func open(configDir: String?) {
         guard installed else { NSWorkspace.shared.open(site); return }
-        if let e, let u = chatURL(configDir: e.configDir) { NSWorkspace.shared.open(u) }
+        if let configDir, let u = chatURL(configDir: configDir) { NSWorkspace.shared.open(u) }
         else { NSWorkspace.shared.open(URL(string: "cl-quick://chat")!) }
     }
 }

@@ -37,8 +37,8 @@ enum Agent {
     /// removed profile's leftovers.
     static let bundleID = "local.usage-n-uf-agent"
     static let appName = "cl_audit Agent.app"
-    static let beatSeconds: TimeInterval = 30
-    static var markURL: URL { Store.folder.appendingPathComponent("agent.json") }
+    static let beatSeconds = AppPlaces.agentBeatSeconds
+    static var markURL: URL { AppPlaces.agentMarkURL }
 
     /// This process is the agent.
     static var isAgent: Bool { Bundle.main.bundleIdentifier == bundleID }
@@ -252,7 +252,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         observers.append(DistributedNotificationCenter.default().addObserver(forName: ClQuick.openNote, object: nil, queue: .main) { [weak self] note in
             // only for a profile the agent reads (a note from anywhere else opens nothing)
             guard let id = note.object as? String, let e = self?.readers[id]?.entry else { return }
-            ClQuick.open(e)
+            ClQuick.open(configDir: e.configDir)
         })
         // the Mac's accent colour changed: the icons in Accent are drawn again
         observers.append(NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil,

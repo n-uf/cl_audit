@@ -1,9 +1,5 @@
 import AppKit
-import CryptoKit
 import ProfileCore
-import Security
-import ServiceManagement
-import UserNotifications
 
 // MARK: - Drawing
 
@@ -121,6 +117,12 @@ enum TileColor: String, CaseIterable, Codable, Identifiable {
         case .graphite: return Self.hex(0x3f3f46)
         case .usage: return Painter.color(fiveHour, stale: stale)
         }
+    }
+
+    /// The light a profile colour gives (ProfileLED, the menus' profile row): its colour and lit, or unlit for none.
+    static func lamp(_ c: TileColor?) -> (color: NSColor?, lit: Bool) {
+        guard let c, ![.usage, .graphite].contains(c) else { return (nil, false) }     // no colour of its own (as ownColor)
+        return (c.color(fiveHour: nil, stale: false), true)
     }
 }
 

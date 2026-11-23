@@ -512,7 +512,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 15.5) { [weak self] in self?.redraw() }
     }
     /// cl_quick's chat on this profile's folder, or its site when it isn't installed (ClQuick).
-    @objc func quickChat() { ClQuick.open(entry) }
+    @objc func quickChat() { ClQuick.open(configDir: entry.configDir) }
     @objc func showSettings() { Installer.openSettings(account: accountID) }
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {

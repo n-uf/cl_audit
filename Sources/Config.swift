@@ -504,12 +504,13 @@ enum ClaudeCLI {
 }
 
 enum Store {
-    static let folder = URL(fileURLWithPath: expand("~/Library/Application Support/usage-n-uf"))
-    static var configURL: URL { folder.appendingPathComponent("accounts.json") }
-    static var statusFolder: URL { folder.appendingPathComponent("status") }
-    static let changed = Notification.Name("local.usage-n-uf.config-changed")
+    // (the places and notices are AppPlaces', which the Dock tile plug-in compiles too: one spelling of each)
+    static var folder: URL { AppPlaces.folder }
+    static var configURL: URL { AppPlaces.configURL }
+    static var statusFolder: URL { AppPlaces.statusFolder }
+    static let changed = AppPlaces.configChanged
     /// Posted by the agent after it saved a profile's status (object: the profile id).
-    static let statusChanged = Notification.Name("local.usage-n-uf.status-changed")
+    static let statusChanged = AppPlaces.statusChanged
 
     static var exists: Bool { FileManager.default.fileExists(atPath: configURL.path) }
 
@@ -769,7 +770,7 @@ enum Store {
     }
 
     /// The account answer says whose the numbers are and no switch waits: in the split, they show under Terminal's name.
-    static func namesNumbersOwner(_ r: ResolvedAccount) -> Bool { r.numbersFor != nil && r.switchWaits != true }
+    static func namesNumbersOwner(_ r: ResolvedAccount) -> Bool { r.namesNumbersOwner }     // (PluginProfile.swift: the plug-in's too)
 
     /// Writes a profile's record. The agent's alone (Reader.save): the cl_audit window never writes it, it holds its own
     /// answer in memory (`hold`) and asks the agent to read.
@@ -1161,7 +1162,7 @@ enum Installer {
     /// Open Settings where a link points (SettingsLink): the profile's page, at its section.
     static func openSettings(_ link: SettingsLink) { openSettings(account: link.profile, section: link.section) }
     /// Posted after cl_audit installed, renamed or removed Dock icon apps.
-    static let appsChangedNote = Notification.Name("local.usage-n-uf.apps-changed")
+    static let appsChangedNote = AppPlaces.appsChanged
     /// Posted by a Dock icon app quitting normally (object: its profile id), so a window that follows it can quit too.
     static let iconQuitNote = Notification.Name("local.usage-n-uf.icon-quit")
     /// Sent to a Dock icon app (object: its profile id) before cl_audit or the agent quits it (a reinstall, Usage in
@@ -1169,7 +1170,7 @@ enum Installer {
     static let quietQuitNote = Notification.Name("local.usage-n-uf.quiet-quit")
     static let openDashboardNote = Notification.Name("local.usage-n-uf.open-dashboard")
     /// Asks every icon app to fetch its numbers now.
-    static let refreshAllNote = Notification.Name("local.usage-n-uf.refresh-all")
+    static let refreshAllNote = AppPlaces.refreshAll
 
     /// Open the dashboard of the "cl_audit" app (it opens on the dashboard when it starts).
     static func openDashboard() {
