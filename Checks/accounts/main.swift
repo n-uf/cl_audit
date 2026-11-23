@@ -3299,7 +3299,28 @@ do {
     check(NewAccountSetup.discardSummary(noName) == "~/.claude-noname stays as it is, signed in." && NewAccountSetup.discard(noName, claude: nil)
           && fm.fileExists(atPath: expand("~/.claude-noname")),
           "Cancel with a connected folder: said to stay as it is, signed in, and it does: \(NewAccountSetup.discardSummary(noName))")
+    // a connected folder whose only account is an unconfirmed sign-in's guess: its retry stays there, and Cancel doesn't
+    // call it signed in
+    noName.name = "Noname"
+    noName.signInSaid = SignInSaid(.unverified(SignedInAccount(email: u4.email!, origin: .record)), configDir: noName.configDir, follows: false)
+    check(noName.unconfirmed && NewAccountSetup.emptyConnected(noName) && NewAccountSetup.forSignIn(noName, email: "").source == .existing
+          && NewAccountSetup.keptWords(noName) == "~/.claude-noname stays as it is",
+          "an unconfirmed first sign-in in a connected folder: the retry runs there, and it isn't called signed in")
     try? fm.removeItem(atPath: expand("~/.claude-noname"))
+    // the address row's Sign in on a connected, signed-in folder goes to a new folder: when that folder is in the way (it
+    // exists already), the row says so itself, never a silent press
+    try? fm.createDirectory(atPath: expand("~/.claude-rowsigned"), withIntermediateDirectories: true)
+    sign("~/.claude-rowsigned", u1)
+    var row = NewAccountDraft(); row.name = "Rowclash"; row.source = .existing; row.existingDir = "~/.claude-rowsigned"
+    try! NewAccountSetup.createCode(&row)
+    check(NewAccountSetup.addressWait(row, accounts: []) == nil, "the address row on a connected folder: its new folder is free, Sign in can go")
+    try? fm.createDirectory(atPath: expand(row.newConfigDir), withIntermediateDirectories: true)
+    let rowWhy = NewAccountSetup.addressWait(row, accounts: [])
+    check(rowWhy?.hasPrefix(row.newConfigDir + " already exists") == true && NewAccountSetup.signInWait(row, accounts: []) == nil,
+          "…its new folder already there: the row says that folder is in the way (the connected one itself holds nothing): \(rowWhy ?? "nil")")
+    var rowUnnamed = row; rowUnnamed.name = ""
+    check(NewAccountSetup.addressWait(rowUnnamed, accounts: []) == "Name the profile first.", "…no name: the row waits for the name, nothing is made")
+    try? fm.removeItem(atPath: expand(row.newConfigDir)); try? fm.removeItem(atPath: expand("~/.claude-rowsigned"))
     check(NewAccountSetup.discardSummary(dS).contains("~/.claude-signfirst") && !NewAccountSetup.discardSummary(dS).contains("desktop data folder"),
           "…Cancel's summary names the Claude Code folder and no window folder: \(NewAccountSetup.discardSummary(dS))")
     check(NewAccountSetup.discard(dS, claude: nil) && !fm.fileExists(atPath: expand(dS.configDir)) && !fm.fileExists(atPath: expand(dS.dataDir)),
