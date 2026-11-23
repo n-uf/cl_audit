@@ -5,8 +5,6 @@
 import AppKit
 
 enum ClQuick {
-    static let site = URL(string: "https://cl-quick.n-uf.com")!
-
     /// The Dock icon's app and its plug-in start nothing themselves: they ask the agent with this note (object: the profile
     /// id), and the agent opens cl_quick.
     static let openNote = AppPlaces.quickChatOpen
@@ -20,25 +18,6 @@ enum ClQuick {
     /// The menu item's words.
     static var itemTitle: String { installed ? "Quick chat" : "Get cl_quick…" }
 
-    private static let plain = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~/")
-
-    /// cl_quick's chat on this Claude Code folder (`~` expanded, the whole path percent-encoded as one query value).
-    static func chatURL(configDir: String) -> URL? {
-        var c = URLComponents()
-        c.scheme = "cl-quick"; c.host = "chat"
-        let folder = (configDir as NSString).expandingTildeInPath
-        // (a query value: only ASCII letters, digits and "-._~/" stay as they are; everything else, a space included, is
-        // percent-encoded, so the folder comes back whole)
-        guard let v = folder.addingPercentEncoding(withAllowedCharacters: Self.plain) else { return nil }
-        c.percentEncodedQuery = "folder=" + v
-        return c.url
-    }
-
-    /// The item's action: cl_quick's chat on the profile's Claude Code folder (nil: none known), or its site when it isn't
-    /// installed. (A folder, not a profile: this file is the Dock tile plug-in's too, PluginProfile.swift.)
-    static func open(configDir: String?) {
-        guard installed else { NSWorkspace.shared.open(site); return }
-        if let configDir, let u = chatURL(configDir: configDir) { NSWorkspace.shared.open(u) }
-        else { NSWorkspace.shared.open(URL(string: "cl-quick://chat")!) }
-    }
+    // (opening cl_quick, its chat URL and its site, is the app's alone, ClQuickOpen.swift: the Dock tile plug-in compiles
+    // this file and must carry no code that opens a URL)
 }
