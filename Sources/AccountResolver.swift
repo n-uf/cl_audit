@@ -154,6 +154,10 @@ enum AccountResolver {
         // (a guarded reading is the record's account by its address: Claude Code's account stands for it)
         if let n = stale || guarded ? codeAccount : (reading ?? codeAccount), let same = sameAccount(account: r.account, email: r.email, n) {
             r.differs = !same
+        } else if r.fromApp, let c = codeAccount, let same = sameAccount(account: r.account, email: r.email, c) {
+            // (the reading can't be compared with the Claude app's account, known by its id alone while the reading names
+            // only an address: Claude Code's account, whose the numbers are, is compared instead, by its id)
+            r.differs = !same
         }
         if r.differs, codeLabel != nil {
             // (the sentence is built when a surface shows it, ResolvedAccount.lineText: the record holds no address text and

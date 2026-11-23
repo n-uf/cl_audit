@@ -2703,7 +2703,11 @@ do {
     _ = Store.writeStatus(e.id, appRec(appU1, code: u3))
     check(Store.status(e.id)?.resolved?.fromApp == true && Store.status(e.id)?.resolved?.clash == nil,
           "an app-decided account with the folder on Other's: the record says the app decided, and names no clash (shared seats)")
-    _ = Store.writeStatus(e.id, rec())
+    // (the reading with its account and organisation ids, as the reader keeps it: the same seat as the folder's)
+    var orgRec = rec()
+    orgRec.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: u1, loginEmail: u1.email, loginAccount: u1.account,
+                                              loginOrganization: u1.organization, names: [:], now: now)
+    _ = Store.writeStatus(e.id, orgRec)
     check(Store.status(e.id)?.resolved?.codeOrganization == u1.organization?.lowercased(),
           "the record keeps the folder account's organisation beside its id")
     // the organisation in three states: an id, none ("": the folder's record names the seat with no organisation) and not
@@ -2727,7 +2731,9 @@ do {
         let path = expand("~/.claude-orgs/\(name).json")
         put(path, #"{"oauthAccount":{"accountUuid":"\#(u1.account)",\#(org)"emailAddress":"\#(u1.email!)"}}"#)
         let seat = ClaudeFiles.record(at: path)?.seat
-        return AccountResolver.resolve(e, among: [e, other], app: .unknown, code: seat, loginEmail: u1.email, names: [:], now: now).codeOrganization
+        // (the record alone, no verified word: a reading naming no organisation would leave the seat not known)
+        return AccountResolver.resolve(e, among: [e, other], app: .unknown, code: seat, loginEmail: u1.email, readingVerified: false,
+                                       names: [:], now: now).codeOrganization
     }
     let fromAbsent = orgFromFile("absent", ""), fromNull = orgFromFile("null", #""organizationUuid":null,"#)
     let fromEmpty = orgFromFile("empty", #""organizationUuid":"","#)
