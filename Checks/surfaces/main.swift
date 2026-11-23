@@ -4432,7 +4432,10 @@ do {
 do {
     check(DashboardSettings.backupsWords(1) == "1 backup" && DashboardSettings.backupsWords(3) == "3 backups"
           && DashboardSettings.daysWords(1) == "1 day" && DashboardSettings.daysWords(30) == "30 days", "Backups steppers: units, one and many")
-    check(ValueStepper.widest(DashboardSettings.keepValues) == "50 backups", "Backups steppers: both sized by the widest of either row")
+    // (by length: "10 backups" … "50 backups" are all as long; widest keeps the first of them)
+    check(ValueStepper.widest(DashboardSettings.keepValues).count == "50 backups".count
+          && DashboardSettings.keepValues.allSatisfy { $0.count <= "50 backups".count },
+          "Backups steppers: both sized by the widest of either row: \(ValueStepper.widest(DashboardSettings.keepValues))")
     check(ValueStepper.widest(stride(from: 50, through: 100, by: 5).map { "\($0)%" }) == "100%"
           && PeekDuration.all.first == PeekDuration.range.lowerBound && PeekDuration.all.last == PeekDuration.range.upperBound,
           "Notify at and Usage shows for: their sets run end to end")
