@@ -283,11 +283,26 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
     /// standing out of order (at most 3 in a row, so a place macOS keeps insisting on doesn't make new names forever).
     private var placedAt = Date.distantPast
     private var straightened = 0
+    /// The next look is the first since a round put the icons up (how they stand then says which side new icons go).
+    private var lookAfterRound = false
+    /// An icon's menu is open: nothing is put up again under it.
+    private var menuOpen = false
 
-    /// Where the icons stand now: each one's left edge on screen, for those macOS has placed and shows.
-    private var positions: [String: CGFloat] {
-        items.compactMapValues { it in it.button?.window.flatMap { $0.isVisible ? $0.frame.minX : nil } }
+    func menuWillOpen(_ menu: NSMenu) { menuOpen = true }
+    func menuDidClose(_ menu: NSMenu) { menuOpen = false }
+
+    /// Where the icons stand now: each one's screen and left edge, for those macOS shows on a screen.
+    private var places: [String: MenuBarOrder.Place] {
+        let screens = NSScreen.screens
+        return items.compactMapValues { it in
+            guard let w = it.button?.window, w.isVisible, let s = w.screen, let i = screens.firstIndex(of: s),
+                  s.frame.intersects(w.frame) else { return nil }
+            return MenuBarOrder.Place(screen: i, minX: w.frame.minX)
+        }
     }
+
+    /// The user is at the menu bar: a mouse button or ⌘ down (a ⌘-drag), or an icon's menu open.
+    private var busy: Bool { NSEvent.pressedMouseButtons != 0 || NSEvent.modifierFlags.contains(.command) || menuOpen }
 
     /// Adds, removes and redraws the icons as the profiles say (the agent calls this every 30 s and after a change).
     func update(now: Date = Date()) {
@@ -295,18 +310,28 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         let order = list.map(\.entry.id)
         // the icons follow the profile order (cl_audit's tile bar), which wins over a ⌘-drag: a new icon or a new
         // order puts them all up again under new names, which macOS has no place for, so they line up in the order;
-        // so does an icon seen out of order on a later look (ProfileOrder.swift: MenuBarOrder)
-        var again = MenuBarOrder.changed(order)
-        if again {
-            straightened = 0
-        } else if !items.isEmpty, order.allSatisfy({ items[$0] != nil }), now.timeIntervalSince(placedAt) > 20 {
-            if !MenuBarOrder.outOfOrder(order, minX: positions) {
+        // so does an icon seen out of order on a later look (ProfileOrder.swift: MenuBarOrder). Never while the user
+        // is at the menu bar: the next look does it.
+        var again = false
+        if !busy {
+            again = MenuBarOrder.changed(order)
+            if again {
                 straightened = 0
-            } else if straightened < 3 {
-                straightened += 1
-                MenuBarOrder.nextRound()
-                again = true
-                agentLog.log("menu bar: icons out of the profile order, put up again")
+            } else if !items.isEmpty, order.allSatisfy({ items[$0] != nil }), now.timeIntervalSince(placedAt) > 20 {
+                let at = places
+                if !MenuBarOrder.outOfOrder(order, places: at) {
+                    straightened = 0
+                } else if straightened < 3 {
+                    if lookAfterRound, MenuBarOrder.reversed(order, places: at) {
+                        MenuBarOrder.flipDirection()
+                        agentLog.log("menu bar: a round came out the wrong way round, new icons are made the other way now")
+                    }
+                    straightened += 1
+                    MenuBarOrder.nextRound()
+                    again = true
+                    agentLog.log("menu bar: icons out of the profile order, put up again")
+                }
+                lookAfterRound = false
             }
         }
         if again {
@@ -326,8 +351,10 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         }
         if !accessory { NSApp.setActivationPolicy(.accessory); accessory = true }   // still no Dock icon
         // a new icon goes left of the ones already there: added from the last profile, they read in profile order
+        // (the other way round on a Mac seen to put new icons rightmost)
         let adding = order.contains { items[$0] == nil }
-        for p in MenuBarOrder.plan(order, round: MenuBarOrder.round()) where items[p.id] == nil {
+        let plan = MenuBarOrder.plan(order, round: MenuBarOrder.round(), rightmost: MenuBarOrder.newIconsRightmost())
+        for p in plan where items[p.id] == nil {
             let it = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             it.autosaveName = p.name
             let menu = NSMenu(title: p.id)
@@ -336,7 +363,9 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
             it.menu = menu
             items[p.id] = it
         }
-        if adding { placedAt = Date() }
+        if adding { placedAt = Date(); lookAfterRound = again }
+        // the older rounds' and gone profiles' places macOS kept in cl_audit's defaults (before macOS 26) go
+        if again { MenuBarOrder.cleanStale(keep: plan.map(\.name)) }
         for p in list { draw(p, now: now) }
         // where macOS put them, once it has (for checking a new order: log show … 'menu bar: left to right')
         if adding {

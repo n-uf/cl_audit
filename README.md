@@ -579,8 +579,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   window too" → the window switch.
 - **Menu bar:** the profile's own icon in the menu bar, exactly like its Dock icon. **In the menu bar** (off by
   default) switches it on; the agent draws it, so it works with or without the Dock icon. The icons stand in
-  the order of the profiles in Settings, left to right, and that order wins over a ⌘-drag in the menu bar. Its look, each choice a tile drawn the way your menu bar is now, and the preview strip
-  from "no numbers" to "full":
+  the order of the profiles in Settings, left to right, and that order wins over a ⌘-drag in the menu bar.
+  Its look, each choice a tile drawn the way your menu bar is now, and the preview strip from "no numbers" to
+  "full":
   - **Style:** Two bars (5-hour over week), Bars + number, Ring (week outside, 5-hour inside), Ring + number,
     Number (the fuller limit), Two numbers.
   - **Colours:** the level colours; **System**, the menu bar's own colour, drawn the way macOS draws its icons

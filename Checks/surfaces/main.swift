@@ -4405,12 +4405,44 @@ do {
     check(MenuBarOrder.needsRound(before: ["main", "work"], now: ["main", "work", "new"])
           && MenuBarOrder.needsRound(before: ["main", "work"], now: ["work", "main"])
           && !MenuBarOrder.needsRound(before: ["main", "work", "new"], now: ["main", "new"])
-          && !MenuBarOrder.needsRound(before: nil, now: ["main"]),
-          "menu bar: a new icon or a new order puts them up again; one gone, or the first time, doesn't")
-    check(MenuBarOrder.outOfOrder(["main", "work", "new"], minX: ["main": 900, "work": 940, "new": 700])
-          && !MenuBarOrder.outOfOrder(["main", "work", "new"], minX: ["main": 700, "work": 740, "new": 790])
-          && !MenuBarOrder.outOfOrder(["main", "work", "new"], minX: ["main": 700, "new": 790]),
+          && !MenuBarOrder.needsRound(before: nil, now: ["main"])
+          && !MenuBarOrder.needsRound(before: [], now: ["main", "work"]),
+          "menu bar: a new icon or a new order puts them up again; one gone, the first time, or an empty list kept, doesn't")
+    check(MenuBarOrder.plan(["main", "work", "new"], round: 4, rightmost: true).map(\.id) == ["main", "work", "new"],
+          "menu bar: on a Mac that puts new icons rightmost, made from the first profile")
+    typealias At = MenuBarOrder.Place
+    let ids3 = ["main", "work", "new"]
+    check(MenuBarOrder.outOfOrder(ids3, places: ["main": At(screen: 0, minX: 900), "work": At(screen: 0, minX: 940), "new": At(screen: 0, minX: 700)])
+          && !MenuBarOrder.outOfOrder(ids3, places: ["main": At(screen: 0, minX: 700), "work": At(screen: 0, minX: 740), "new": At(screen: 0, minX: 790)])
+          && !MenuBarOrder.outOfOrder(ids3, places: ["main": At(screen: 0, minX: 700), "new": At(screen: 0, minX: 790)]),
           "menu bar: an icon left of where the order puts it is out of order; one not placed yet is left out")
+    check(!MenuBarOrder.outOfOrder(ids3, places: ["main": At(screen: 1, minX: 2400), "work": At(screen: 0, minX: 740), "new": At(screen: 0, minX: 790)]),
+          "menu bar: icons on different screens aren't compared")
+    check(MenuBarOrder.reversed(ids3, places: ["main": At(screen: 0, minX: 900), "work": At(screen: 0, minX: 800), "new": At(screen: 0, minX: 700)])
+          && !MenuBarOrder.reversed(ids3, places: ["main": At(screen: 0, minX: 900), "work": At(screen: 0, minX: 700), "new": At(screen: 0, minX: 800)])
+          && !MenuBarOrder.reversed(ids3, places: ["main": At(screen: 0, minX: 900)]),
+          "menu bar: exactly the wrong way round is told from merely out of order; one icon is neither")
+    let keys = ["NSStatusItem Preferred Position cl_audit 3.00 main", "NSStatusItem Visible cl_audit 3.01 gone",
+                "NSStatusItem Preferred Position cl_audit 4.00 main", "NSStatusItem Preferred Position Other App", "menuBarProfileOrder"]
+    check(MenuBarOrder.staleKeys(keys, keep: ["cl_audit 4.00 main"]) == ["NSStatusItem Preferred Position cl_audit 3.00 main", "NSStatusItem Visible cl_audit 3.01 gone"],
+          "menu bar: older rounds' and gone profiles' keys are stale; the current plan's and other names' stay")
+}
+
+// ============ the profile tile's second line (AccountTile.subtitle): the folder, the account in use, the mode ============
+do {
+    var e = AccountEntry(id: "tile", name: "Tile", label: "TILE", configDir: "~/.claude-tile")
+    e.seat = Seat(account: uuid(41), organization: uuid(141), email: "ultra-41@example.com")
+    check(AccountTile.subtitle(e, shown: true) == "~/.claude-tile", "tile: one account: the folder")
+    var standby = e; standby.standby = [StandbyAccount(email: "ultra-42@example.com", id: "t42")]
+    check(AccountTile.subtitle(standby, shown: true) == "~/.claude-tile · ultra-41", "tile: with a standby account: the folder and the account in use")
+    var usage = e; usage.iconHidden = true; usage.claudeWindow = false      // usage only: no Dock icon, no Claude window
+    check(AccountTile.subtitle(usage, shown: true) == "~/.claude-tile · usage only", "tile: usage only: the folder, then the mode")
+    var both = standby; both.iconHidden = true; both.claudeWindow = false
+    check(AccountTile.subtitle(both, shown: true) == "~/.claude-tile · ultra-41 · usage only", "tile: usage only with a standby account: folder, account, mode")
+    var own = e; own.desktop = .separate; own.claudeWindow = true
+    check(AccountTile.subtitle(own, shown: true) == "~/.claude-tile · own window", "tile: its own Claude window says so last")
+    let hidden = AccountTile.subtitle(standby, shown: false)
+    check(hidden.hasPrefix("~/.claude-tile · ") && !hidden.contains("ultra-41") && !hidden.contains("@"), "tile: addresses hidden: no part of the address: \(hidden)")
 }
 
 print("checks: \(passed) passed, \(failed) failed")

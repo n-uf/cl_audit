@@ -124,20 +124,31 @@ extension StatsModel {
 /// "NSStatusItem Preferred Position <name>" defaults places nothing there; seen on 27.2). So the icons are put up again,
 /// under a new round's names (which macOS has no place for), from the last profile to the first, whenever they would
 /// stand out of order: a new icon (it would land leftmost), a new order, or an icon seen elsewhere on a later look (a
-/// ⌘-drag, or a place macOS remembered from before). An icon going away leaves the others in order.
+/// ⌘-drag, or a place macOS remembered from before). An icon going away leaves the others in order. Never while a
+/// mouse button or ⌘ is down or an icon's menu is open (MenuBarItems), and at most 3 rounds in a row for icons seen out
+/// of order: after that a ⌘-drag stays until the list changes.
 enum MenuBarOrder {
     private static let key = "menuBarProfileOrder"
     private static let roundKey = "menuBarProfileOrderRound"
+    private static let rightmostKey = "menuBarNewIconsRightmost"
+
+    /// Where an icon stands: its screen (an index into NSScreen.screens) and its left edge.
+    struct Place: Equatable {
+        var screen: Int
+        var minX: CGFloat
+    }
 
     /// Whether the icons need putting up again for `ids` (the profiles with a menu bar icon, in profile order), given the
     /// ones put up `before`: one added, or a new order. One only gone, or the first time (nothing kept), is not.
     static func needsRound(before: [String]?, now ids: [String]) -> Bool {
-        guard let before else { return false }
+        guard let before, !before.isEmpty else { return false }
         return before.filter(ids.contains) != ids
     }
 
-    /// Remembers `ids` and says whether they need a new round (needsRound), counting it when they do.
+    /// Remembers `ids` and says whether they need a new round (needsRound), counting it when they do. An empty list (no
+    /// icon on, or the profiles not read yet) is never kept, so the list read afterwards isn't taken for new icons.
     static func changed(_ ids: [String], defaults: UserDefaults = .standard) -> Bool {
+        guard !ids.isEmpty else { return false }
         let before = defaults.stringArray(forKey: key)
         if before != ids { defaults.set(ids, forKey: key) }
         guard needsRound(before: before, now: ids) else { return false }
@@ -149,22 +160,61 @@ enum MenuBarOrder {
     static func round(_ defaults: UserDefaults = .standard) -> Int { defaults.integer(forKey: roundKey) }
     static func nextRound(_ defaults: UserDefaults = .standard) { defaults.set(round(defaults) + 1, forKey: roundKey) }
 
+    /// Whether this Mac puts a new icon rightmost rather than leftmost (learnt by `flipDirection`; false until then).
+    static func newIconsRightmost(_ defaults: UserDefaults = .standard) -> Bool { defaults.bool(forKey: rightmostKey) }
+    static func flipDirection(_ defaults: UserDefaults = .standard) { defaults.set(!newIconsRightmost(defaults), forKey: rightmostKey) }
+
     /// The icons to put up, in the order they are made, each with its autosave name: the last profile first, since each
-    /// new icon goes leftmost, so they read in profile order. Names: "cl_audit <id>" in round 0, then
-    /// "cl_audit <round>.<place> <id>" (place: its index among the icons, two digits, so the names sort in the order too).
-    static func plan(_ ids: [String], round: Int) -> [(id: String, name: String)] {
-        ids.enumerated().reversed().map { ($0.element, name($0.element, place: $0.offset, round: round)) }
+    /// new icon goes leftmost, so they read in profile order (the first first when new icons go rightmost). Names:
+    /// "cl_audit <id>" in round 0, then "cl_audit <round>.<place> <id>" (place: its index among the icons, two digits, so
+    /// the names sort in the order too).
+    static func plan(_ ids: [String], round: Int, rightmost: Bool = false) -> [(id: String, name: String)] {
+        let made = Array(ids.enumerated())
+        return (rightmost ? made : made.reversed()).map { ($0.element, name($0.element, place: $0.offset, round: round)) }
     }
 
     static func name(_ id: String, place: Int, round: Int) -> String {
         round == 0 ? "cl_audit \(id)" : "cl_audit \(round).\(String(format: "%02d", place)) \(id)"
     }
 
-    /// Whether the icons stand out of the profile order, by their left edges on screen (`minX`; one with no place yet is
-    /// left out).
-    static func outOfOrder(_ ids: [String], minX: [String: CGFloat]) -> Bool {
-        let placed = ids.filter { minX[$0] != nil }
-        return placed.sorted { (minX[$0] ?? 0) < (minX[$1] ?? 0) } != placed
+    /// The icons on each screen, left to right, each screen's in the profile order's terms (only icons with a place).
+    private static func rows(_ ids: [String], _ places: [String: Place]) -> [(here: [String], shown: [String])] {
+        Set(places.values.map(\.screen)).sorted().map { s in
+            let here = ids.filter { places[$0]?.screen == s }
+            return (here, here.sorted { (places[$0]?.minX ?? 0) < (places[$1]?.minX ?? 0) })
+        }
+    }
+
+    /// Whether the icons stand out of the profile order: on any screen, the icons placed there don't read left to right
+    /// in it. Icons on different screens aren't compared; one with no place (not shown, off every screen) is left out.
+    static func outOfOrder(_ ids: [String], places: [String: Place]) -> Bool {
+        rows(ids, places).contains { $0.shown != $0.here }
+    }
+
+    /// Whether the icons stand exactly the wrong way round: every screen with two or more of them reads in the reverse
+    /// order, and there is one. Seen right after a round, new icons go rightmost on this Mac.
+    static func reversed(_ ids: [String], places: [String: Place]) -> Bool {
+        let rows = rows(ids, places).filter { $0.here.count >= 2 }
+        return !rows.isEmpty && rows.allSatisfy { $0.shown == $0.here.reversed() }
+    }
+
+    /// The defaults macOS keeps (before macOS 26) for an icon by its autosave name.
+    static let keyPrefixes = ["NSStatusItem Preferred Position ", "NSStatusItem Visible "]
+
+    /// Of `keys`, cl_audit's own icons' keys whose name isn't in `keep` (older rounds, profiles gone).
+    static func staleKeys(_ keys: [String], keep: [String]) -> [String] {
+        let kept = Set(keep)
+        return keys.filter { k in
+            guard let p = keyPrefixes.first(where: { k.hasPrefix($0) }) else { return false }
+            let name = String(k.dropFirst(p.count))
+            return name.hasPrefix("cl_audit ") && !kept.contains(name)
+        }
+    }
+
+    /// Removes the stale keys from this app's own defaults domain (never the global one), after a round.
+    static func cleanStale(keep: [String], defaults: UserDefaults = .standard) {
+        guard let domain = Bundle.main.bundleIdentifier, let own = defaults.persistentDomain(forName: domain) else { return }
+        for k in staleKeys(Array(own.keys), keep: keep) { defaults.removeObject(forKey: k) }
     }
 }
 
