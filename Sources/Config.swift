@@ -300,7 +300,7 @@ struct ConfigFile: Codable {
     var accounts: [AccountEntry]
 }
 
-// (IconStatus, the status record, and its codec: cl_kit's ProfileCore, StatusRecord and StatusCodec)
+// (the status record and its codec: cl_kit's ProfileCore, StatusRecord and StatusCodec)
 
 // MARK: - Renewing an expired login through Claude Code
 
@@ -651,14 +651,14 @@ enum Store {
         }
     }
 
-    /// A profile's (or a standby account's) record, as it may be shown now (IconStatus.current): every screen reads it here.
+    /// A profile's (or a standby account's) record, as it may be shown now (StatusRecord.current): every screen reads it here.
     /// With this process's own account answer for it while that waits for the agent (`hold`), the answer in place of the
     /// record's.
-    static func status(_ id: String) -> IconStatus? {
+    static func status(_ id: String) -> StatusRecord? {
         let url = statusFolder.appendingPathComponent("\(id).json")
         var s = (try? Data(contentsOf: url)).flatMap(StatusCodec.decode)
         if let answer = held(id, file: url) {
-            var r = s ?? IconStatus(state: "idle")
+            var r = s ?? StatusRecord(state: "idle")
             r.resolved = answer
             s = r
         }
@@ -734,12 +734,12 @@ enum Store {
     /// out, so they never show "full", a countdown or a switch offer.
     /// `headline` false: Claude Code's own numbers in the split, for the card's labelled line and Settings' Claude Code row
     /// (the other rules still apply).
-    static func status(for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> IconStatus? {
+    static func status(for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> StatusRecord? {
         status(e.id).map { shown($0, for: e, now: now, headline: headline) }
     }
 
     /// `status(for:)` over a record already read (`status(_:)`): what the profile's headline surfaces may show of it.
-    static func shown(_ s: IconStatus, for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> IconStatus {
+    static func shown(_ s: StatusRecord, for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> StatusRecord {
         // ProfileCore's Headline decides: a reading that is the folder's account no more, or whose label isn't the account
         // it was read for, shows nowhere (nor when, nor the plan); the split's numbers and plan are Terminal's account's,
         // shown under its name (ages); numbers whose account couldn't be confirmed, or older than the profile's read
@@ -773,7 +773,7 @@ enum Store {
 
     /// Writes a profile's record. The agent's alone (Reader.save): the cl_audit window never writes it, it holds its own
     /// answer in memory (`hold`) and asks the agent to read.
-    static func writeStatus(_ id: String, _ s: IconStatus) -> Data? {
+    static func writeStatus(_ id: String, _ s: StatusRecord) -> Data? {
         guard let data = StatusCodec.encode(s) else { return nil }
         try? FileManager.default.createDirectory(at: statusFolder, withIntermediateDirectories: true)
         // the numbers of the account the profile was on, kept once when another account's take their place, so a switch
@@ -790,7 +790,7 @@ enum Store {
     /// The last numbers saved for the account a profile is linked to (`e.seat`), read before or after another account's
     /// took their place (status/<id>.json, else the copy kept then, status/<id>.prev), or nil. Only numbers read for that
     /// very account count.
-    static func lastStatus(of e: AccountEntry) -> IconStatus? {
+    static func lastStatus(of e: AccountEntry) -> StatusRecord? {
         guard let want = e.seat?.email?.lowercased(), !want.isEmpty else { return nil }
         let prev = (try? Data(contentsOf: statusFolder.appendingPathComponent("\(e.id).prev"))).flatMap(StatusCodec.decode)
         return [status(e.id), prev].compactMap { $0 }.first { $0.readFor == want }

@@ -137,7 +137,7 @@ do {
 
 // ============ 3. the folder's account is followed by itself (FolderRules.noteAccounts) ============
 do {
-    var st = IconStatus(state: "ok"); st.plan = "Ultra"; st.weekly = 97; st.weeklyResets = t0.addingTimeInterval(86400)
+    var st = StatusRecord(state: "ok"); st.plan = "Ultra"; st.weekly = 97; st.weeklyResets = t0.addingTimeInterval(86400)
     let main = profile("main", "~/.claude", u1)
     var dirs: [String: Seat] = ["~/.claude": u2]
     func note(_ list: [AccountEntry]) -> [AccountEntry] { FolderRules.noteAccounts(list, signedIn: { dirs[$0] }, status: { _ in st }, now: t0) }
@@ -1242,8 +1242,8 @@ do {
 
     // the leaving account's week, even after another account's numbers took its place
     let me = profile("lw", "~/.claude-lw", u1)
-    var a = IconStatus(state: "ok"); a.loginEmail = u1.email; a.weekly = 88; a.weeklyResets = t0.addingTimeInterval(3600); a.plan = "Max"
-    var b = IconStatus(state: "ok"); b.loginEmail = u2.email; b.weekly = 3
+    var a = StatusRecord(state: "ok"); a.loginEmail = u1.email; a.weekly = 88; a.weeklyResets = t0.addingTimeInterval(3600); a.plan = "Max"
+    var b = StatusRecord(state: "ok"); b.loginEmail = u2.email; b.weekly = 3
     _ = Store.writeStatus("lw", a)
     check(Store.lastStatus(of: me)?.weekly == 88, "the account's own numbers")
     _ = Store.writeStatus("lw", b)
@@ -1395,7 +1395,7 @@ do {
     check(hugeSeat == nil && Account.recordTooLarge(configDir: "~/.claude-huge12") && Date().timeIntervalSince(t) < 1, "a .claude.json over the cap (64 MB) isn't read (at once)")
     let hp = profile("hp", "~/.claude-huge12", u1)
     let hr = AccountResolver.resolve(hp, among: [hp], app: .unknown, code: nil, loginEmail: nil, names: [:], recordTooLarge: true, now: t0)
-    var hst = IconStatus(state: "ok"); hst.resolved = hr
+    var hst = StatusRecord(state: "ok"); hst.resolved = hr
     check(hr.line?.contains("too large to read") == true && AccountView.of(hst).recordTooLarge && !(hr.line ?? "").contains("signed out"),
           "said as too large to read, never as signed out: \(hr.line ?? "-")")
     try? fm.removeItem(atPath: expand("~/.claude-huge12"))
@@ -3242,7 +3242,7 @@ do {
     let keepAppLogin = AccountEntry.appLogin, keepSettled = SwitchEngine.settled
     AccountEntry.appLogin = { _ in AppSignIn.Login(account: annTeam.account, org: annTeam.organization, state: .known, source: "log", at: Date()) }
     SwitchEngine.settled = { ClaudeWindow.afterSwitch($0, activate: false) }
-    var flRec = IconStatus(state: "ok"); flRec.loginEmail = benF.email; flRec.weekly = 12
+    var flRec = StatusRecord(state: "ok"); flRec.loginEmail = benF.email; flRec.weekly = 12
     // (the reading with its account and organisation ids, so Claude Code's seat is known: the finish line's target is that seat)
     flRec.resolved = AccountResolver.resolve(fl, among: [fl], app: AccountEntry.appLogin(fl), code: benF, loginEmail: benF.email,
                                              loginAccount: benF.account, loginOrganization: benF.organization, names: [:])

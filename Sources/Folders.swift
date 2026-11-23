@@ -127,7 +127,7 @@ enum FolderRules {
     /// here is the one owner rule (Seat.sameAccount, `isThat`): ids in any case. `status`: the numbers of the account a
     /// profile was on, as last saved (only its own).
     static func noteAccounts(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = { Account.signedInSeat(configDir: $0) },
-                             status: (AccountEntry) -> IconStatus? = { Store.lastStatus(of: $0) },
+                             status: (AccountEntry) -> StatusRecord? = { Store.lastStatus(of: $0) },
                              now: Date = Date()) -> [AccountEntry] {
         var out = accounts
         for i in out.indices {

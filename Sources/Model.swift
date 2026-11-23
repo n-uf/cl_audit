@@ -228,7 +228,7 @@ struct Account {
 extension Usage {
     /// The numbers a saved record carries (the agent's status/<id>.json), for the screens that draw a Usage: nil when it
     /// has none. The record is the one answer: the menu bar and the Dock icon take their numbers from it.
-    static func of(_ s: IconStatus?) -> Usage? {
+    static func of(_ s: StatusRecord?) -> Usage? {
         guard let s, let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return nil }
         return Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly, weeklyResets: s.weeklyResets,
                      fetchedAt: at, source: s.source ?? "Anthropic", scoped: s.scoped ?? [], credits: s.credits,

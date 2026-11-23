@@ -140,8 +140,8 @@ let ann = Seat(account: "00000000-0000-4000-8000-000000000001", organization: "0
 var e = AccountEntry(id: id, name: "Dock", label: "DOCK", configDir: profileDir); e.seat = ann
 e.standby = [StandbyAccount(email: "bob@example.com", id: standbyID)]
 func saveProfiles() { try! Store.save([e]) }
-func record(five: Double? = 12, week: Double? = 40, fiveIn: TimeInterval = 3600, weekIn: TimeInterval = 2 * 86400) -> IconStatus {
-    var s = IconStatus(state: "ok"); s.loginEmail = ann.email; s.expectedEmail = ann.email; s.fiveHour = five; s.weekly = week
+func record(five: Double? = 12, week: Double? = 40, fiveIn: TimeInterval = 3600, weekIn: TimeInterval = 2 * 86400) -> StatusRecord {
+    var s = StatusRecord(state: "ok"); s.loginEmail = ann.email; s.expectedEmail = ann.email; s.fiveHour = five; s.weekly = week
     s.fiveHourResets = now.addingTimeInterval(fiveIn); s.weeklyResets = now.addingTimeInterval(weekIn)
     s.updatedAt = now.addingTimeInterval(-60); s.source = "Anthropic"
     s.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: ann, loginEmail: ann.email, names: [:], now: now)
@@ -377,7 +377,7 @@ do {
           + "Profile settings…; no account, number or status (got \(shown))")
     check(DockTileMenu.lines(rows, blur: true) == dockItems && !rows.contains { if case .address = $0 { return true }; if case .status = $0 { return true }; return false },
           "the Dock menu holds no address and no status line, whatever the setting")
-    for (what, raw) in [("full", record(five: 100, week: 40)), ("none", nil)] as [(String, IconStatus?)] {
+    for (what, raw) in [("full", record(five: 100, week: 40)), ("none", nil)] as [(String, StatusRecord?)] {
         let l = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: raw, now: now), windowOpen: false, now: now), blur: false)
         check(l == dockItems, "the Dock menu, \(what): the same items (got \(l))")
     }

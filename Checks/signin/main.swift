@@ -102,7 +102,7 @@ do {
     var e = AccountEntry(id: "zz-signin-test", name: "Test", label: "TEST", configDir: dir)
     e.seat = old
     // the agent's last status: the old account's numbers, full week
-    var st = IconStatus(state: "ok"); st.fiveHour = 40; st.weekly = 100; st.updatedAt = Date().addingTimeInterval(-60)
+    var st = StatusRecord(state: "ok"); st.fiveHour = 40; st.weekly = 100; st.updatedAt = Date().addingTimeInterval(-60)
     st.weeklyResets = Date().addingTimeInterval(86400); st.loginEmail = old.email; st.expectedEmail = old.email
     let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970
     try! fm.createDirectory(at: Store.statusFolder, withIntermediateDirectories: true)
@@ -431,8 +431,8 @@ MainActor.assumeIsolated {
 
 // MARK: 9. switching: what's offered, the alert, the window's sidebar counted (Switch.swift)
 MainActor.assumeIsolated {
-    func st(_ week: Double?, full: Bool = false) -> IconStatus {
-        var s = IconStatus(state: "ok"); s.weekly = week; s.updatedAt = Date()
+    func st(_ week: Double?, full: Bool = false) -> StatusRecord {
+        var s = StatusRecord(state: "ok"); s.weekly = week; s.updatedAt = Date()
         s.weeklyResets = Date().addingTimeInterval(full ? 3600 : 3 * 86400)
         return s
     }
@@ -441,7 +441,7 @@ MainActor.assumeIsolated {
                  StandbyAccount(email: "b-60@example.com", configDir: "~/.claude-b", id: "b"),
                  StandbyAccount(email: "c-8@example.com", configDir: "~/.claude-c", id: "c"),
                  StandbyAccount(email: "d-nosign@example.com", configDir: nil, id: "d")]
-    let statuses: [String: IconStatus] = ["pp~a": st(100, full: true), "pp~b": st(60), "pp~c": st(8)]
+    let statuses: [String: StatusRecord] = ["pp~a": st(100, full: true), "pp~b": st(60), "pp~c": st(8)]
     let offers = e.switchOffers(status: { statuses[$0] })
     check(offers.map(\.standby.id) == ["c", "b", "a"], "offers: room first, the least used first; no sign-in kept: not offered")
     check(offers.last?.room == false && offers.first?.room == true, "a full account has no room")
@@ -830,8 +830,8 @@ MainActor.assumeIsolated {
     check(out[0].keptFolder == home + "/.claude-eng-u2", "u2's own folder is kept for when it stands by again")
 
     // the numbers go with each account: never one account's limits under another's name
-    var n1 = IconStatus(state: "ok"); n1.loginEmail = "u1@example.com"; n1.expectedEmail = "u1@example.com"; n1.weekly = 100; n1.updatedAt = Date()
-    var n2 = IconStatus(state: "ok"); n2.loginEmail = "u2@example.com"; n2.weekly = 8; n2.updatedAt = Date()
+    var n1 = StatusRecord(state: "ok"); n1.loginEmail = "u1@example.com"; n1.expectedEmail = "u1@example.com"; n1.weekly = 100; n1.updatedAt = Date()
+    var n2 = StatusRecord(state: "ok"); n2.loginEmail = "u2@example.com"; n2.weekly = 8; n2.updatedAt = Date()
     _ = Store.writeStatus("eng", n1); _ = Store.writeStatus(AccountEntry.standbyStatusID("eng", "sb"), n2)
     let early = Store.status(for: out[0])
     check(early?.weekly == nil && early?.updatedAt == nil && early?.state == "ok",
@@ -1057,8 +1057,8 @@ MainActor.assumeIsolated {
     e.standby = [u1]
     let key = AccountEntry.standbyStatusID("bk", "s1")
     let t0 = Date(), resets = t0.addingTimeInterval(3600)
-    var full = IconStatus(state: "ok"); full.loginEmail = "ultra-1@example.com"; full.weekly = 100; full.weeklyResets = resets; full.updatedAt = t0
-    var st: IconStatus? = full
+    var full = StatusRecord(state: "ok"); full.loginEmail = "ultra-1@example.com"; full.weekly = 100; full.weeklyResets = resets; full.updatedAt = t0
+    var st: StatusRecord? = full
     var sent: [(String, BackWatch.Back)] = []
     func run(_ now: Date) { BackWatch.check([e], defaults: d, now: now, status: { _, _ in st }) { _, s, b in sent.append((s.id, b)) } }
     run(t0)
@@ -1081,14 +1081,14 @@ MainActor.assumeIsolated {
     run(resets.addingTimeInterval(300))
     check(BackWatch.load(key) == nil && d.string(forKey: BackWatch.markKey(key))?.hasPrefix("wk|") == true, "full again: the offer goes; remembered with its reset")
     // no numbers (read for another account: only() empties them): never "not full"
-    var none = IconStatus(state: "ok"); none.updatedAt = resets.addingTimeInterval(310)
+    var none = StatusRecord(state: "ok"); none.updatedAt = resets.addingTimeInterval(310)
     st = none; run(resets.addingTimeInterval(320))
     check(sent.count == 1 && d.string(forKey: BackWatch.markKey(key)) != nil, "no numbers: not back, and still remembered")
 
     // with a folder of its own (something reads it): back on numbers read after the reset, current and not full
     e.standby[0].configDir = home + "/.claude-bk-u1"
     let r5 = resets.addingTimeInterval(9000)
-    var five = IconStatus(state: "ok"); five.loginEmail = "ultra-1@example.com"; five.fiveHour = 100; five.fiveHourResets = r5; five.weekly = 30
+    var five = StatusRecord(state: "ok"); five.loginEmail = "ultra-1@example.com"; five.fiveHour = 100; five.fiveHourResets = r5; five.weekly = 30
     five.updatedAt = resets.addingTimeInterval(400)
     st = five; run(resets.addingTimeInterval(400))
     // a late reset: past its time, the numbers still say full and were read before it: wait for one fresh read
@@ -1161,7 +1161,7 @@ MainActor.assumeIsolated {
 
     // fix 0: read just after the reset, Anthropic still says 100 % (with the old reset): not back yet
     let rr = Date().addingTimeInterval(3600)
-    var wk = IconStatus(state: "ok"); wk.loginEmail = "ultra-1@example.com"; wk.weekly = 100; wk.weeklyResets = rr; wk.updatedAt = Date()
+    var wk = StatusRecord(state: "ok"); wk.loginEmail = "ultra-1@example.com"; wk.weekly = 100; wk.weeklyResets = rr; wk.updatedAt = Date()
     let sentBefore = sent.count
     st = wk; run(Date())
     var still = wk; still.updatedAt = rr.addingTimeInterval(2); st = still
@@ -1186,7 +1186,7 @@ MainActor.assumeIsolated {
     r.apply(Usage(fiveHour: nil, fiveHourResets: nil, weekly: 100, weeklyResets: Date().addingTimeInterval(86400), fetchedAt: Date(), source: "Anthropic"))
     r.tick()
     check(rd.string(forKey: "fullwk.rs") != nil, "its week full: remembered for its own \"is back\"")
-    var n2 = IconStatus(state: "ok"); n2.loginEmail = s2.email; n2.weekly = 8; n2.weeklyResets = Date().addingTimeInterval(4 * 86400); n2.updatedAt = Date()
+    var n2 = StatusRecord(state: "ok"); n2.loginEmail = s2.email; n2.weekly = 8; n2.weeklyResets = Date().addingTimeInterval(4 * 86400); n2.updatedAt = Date()
     _ = Store.writeStatus("rs", n2)                                   // what moveNumbers leaves for the new account
     let g0 = r.generation
     r.update(FolderRules.completeSwitch("rs", to: "r2", in: [p1])![0])
@@ -1219,7 +1219,7 @@ MainActor.assumeIsolated {
     check(Store.status("rso")?.renewNote == "Not renewed: this folder is signed in to another account", "Renew login now in a folder on another account: not run")
     ro.stop()
     // a saved status naming no account isn't taken as a linked account's numbers
-    var anon = IconStatus(state: "ok"); anon.weekly = 55; anon.updatedAt = Date()
+    var anon = StatusRecord(state: "ok"); anon.weekly = 55; anon.updatedAt = Date()
     _ = Store.writeStatus("rsa", anon)
     writeClaudeJSON(home + "/.claude-rsa", s1)
     var pa = AccountEntry(id: "rsa", name: "Main", label: "M", configDir: home + "/.claude-rsa"); pa.seat = s1; pa.autoRenew = false
@@ -1243,8 +1243,8 @@ MainActor.assumeIsolated {
     let rmB = StandbyAccount(email: "b@example.com", seat: seat("rb", "b@example.com"), configDir: home + "/.claude-rm-b", id: "b")
     let rmC = StandbyAccount(email: "c@example.com", seat: seat("rc", "c@example.com"), configDir: nil, id: "c")
     rooms.standby = [rmA, rmB, rmC]
-    func roomStatus(_ id: String) -> IconStatus? {
-        var s = IconStatus(state: "ok"); s.updatedAt = Date(); s.weeklyResets = Date().addingTimeInterval(86400)
+    func roomStatus(_ id: String) -> StatusRecord? {
+        var s = StatusRecord(state: "ok"); s.updatedAt = Date(); s.weeklyResets = Date().addingTimeInterval(86400)
         s.loginEmail = id.hasSuffix("~a") ? "a@example.com" : "b@example.com"; s.weekly = id.hasSuffix("~a") ? 50 : 10
         return s
     }
@@ -1314,11 +1314,11 @@ do {
     let k3 = StandbyAccount(email: u3.email!, seat: u3, configDir: home + "/.claude-cm-3", id: "k3")
     let k4 = StandbyAccount(email: uo.email!, seat: uo, configDir: nil, id: "k4")
     cm.standby = [k2, k3, k4]
-    func cst(_ week: Double, resetsIn: Double = 4 * 86400) -> IconStatus {
-        var s = IconStatus(state: "ok"); s.updatedAt = now; s.plan = "Ultra"; s.weekly = week; s.noFiveHour = true
+    func cst(_ week: Double, resetsIn: Double = 4 * 86400) -> StatusRecord {
+        var s = StatusRecord(state: "ok"); s.updatedAt = now; s.plan = "Ultra"; s.weekly = week; s.noFiveHour = true
         s.weeklyResets = now.addingTimeInterval(resetsIn); return s
     }
-    let numbers: [String: IconStatus] = ["cm~k2": cst(97), "cm~k3": cst(12)]
+    let numbers: [String: StatusRecord] = ["cm~k2": cst(97), "cm~k3": cst(12)]
     let sh = AccountNames.short
 
     // the card: the trays, most room first; an account with no numbers stays off the card
@@ -1589,7 +1589,7 @@ do {
     // menus and trays: an account not linked to its organization can't be switched to
     let k6 = StandbyAccount(email: "ultra-6@example.com", seat: Seat(account: suid(6), organization: nil, email: "ultra-6@example.com"), configDir: home + "/.claude-cm-6", id: "k6")
     var cm6 = cm; cm6.standby = [k3, k6]
-    let n6: [String: IconStatus] = ["cm~k3": cst(97), "cm~k6": cst(5)]
+    let n6: [String: StatusRecord] = ["cm~k3": cst(97), "cm~k6": cst(5)]
     let l6 = SwitchMenu.lines(cm6, status: { n6[$0] }, now: now)
     check(l6.map(\.key) == ["cm~k6", "cm~k3"] && l6.map(\.canSwitch) == [false, true], "menu lines: an account not linked to its organization is marked")
     check(SwitchMenu.best(l6, backs: [])?.key == "cm~k3", "menu: the best is never an account that can't be switched to")

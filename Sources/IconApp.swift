@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The profile as its record says it, through the one value (ProfileShow): the face, the menu and the panel draw this.
     var show: ProfileShow?
     /// The record as the headline surfaces read it (Store.status(for:)).
-    var status: IconStatus? { show?.record }
+    var status: StatusRecord? { show?.record }
     /// Refresh now was asked: "Updating…" until the agent saves newer numbers (at most 15 s).
     var refreshAsked: Date?
     var claudeOpen = false        // this account's Claude window is running (drawn as a dot on the tile)

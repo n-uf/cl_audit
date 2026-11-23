@@ -233,7 +233,7 @@ for i in 0..<4 { fm.createFile(atPath: "\(odir2)/local_\(uuid(1500 + i)).json", 
 
 try! fm.createDirectory(at: Store.statusFolder, withIntermediateDirectories: true)
 func status(_ id: String, _ email: String, week: Double, fable: Double, resetsIn: Double) {
-    var st = IconStatus(state: "ok"); st.loginEmail = email; st.expectedEmail = email; st.updatedAt = Date(); st.plan = "Ultra"
+    var st = StatusRecord(state: "ok"); st.loginEmail = email; st.expectedEmail = email; st.updatedAt = Date(); st.plan = "Ultra"
     st.weekly = week; st.weeklyResets = Date().addingTimeInterval(resetsIn); st.noFiveHour = true
     st.scoped = [ScopedLimit(name: "Fable", percent: fable, resets: Date().addingTimeInterval(resetsIn))]
     let e = JSONEncoder(); e.dateEncodingStrategy = .secondsSince1970
@@ -624,7 +624,7 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": pat.account]).write(to: URL(fileURLWithPath: expand(e.desktopDataDir) + "/config.json"))
     try! Store.save([e])
     let now = Date()
-    var rec = IconStatus(state: "ok"); rec.loginEmail = mo.email; rec.numbersOwner = mo.email; rec.expectedEmail = mo.email
+    var rec = StatusRecord(state: "ok"); rec.loginEmail = mo.email; rec.numbersOwner = mo.email; rec.expectedEmail = mo.email
     rec.weekly = 100; rec.weeklyResets = now.addingTimeInterval(41 * 3600); rec.noFiveHour = true; rec.plan = "Ultra"; rec.updatedAt = now
     rec.source = "Anthropic"
     rec.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: mo, loginEmail: mo.email, names: [:], now: now)
@@ -718,7 +718,7 @@ if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
     defer { try? Store.save(before); Store.removeStatus(e.id) }
     try! Store.save([e])
     let now = Date()
-    var rec = IconStatus(state: "ok"); rec.loginEmail = zed.email; rec.numbersOwner = zed.email; rec.expectedEmail = zed.email
+    var rec = StatusRecord(state: "ok"); rec.loginEmail = zed.email; rec.numbersOwner = zed.email; rec.expectedEmail = zed.email
     rec.weekly = 0; rec.weeklyResets = now.addingTimeInterval(6 * 86400); rec.noFiveHour = true; rec.plan = "Ultra"; rec.updatedAt = now
     rec.source = "Anthropic"
     rec.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: zed, loginEmail: zed.email, names: [:], now: now)
@@ -770,8 +770,8 @@ if ProcessInfo.processInfo.environment["TWONAMES_ONLY"] != nil { print("done"); 
         var e = AccountEntry(id: id, name: id, label: label, configDir: "~/.claude-\(id)"); e.desktop = .separate
         e.desktopDataDir = "~/Library/Application Support/Claude-\(id)"; return e
     }
-    func record(_ state: String, _ who: Seat, week: Double?, five: Double?) -> IconStatus {
-        var r = IconStatus(state: state); r.loginEmail = state == "noLogin" ? nil : who.email; r.expectedEmail = who.email
+    func record(_ state: String, _ who: Seat, week: Double?, five: Double?) -> StatusRecord {
+        var r = StatusRecord(state: state); r.loginEmail = state == "noLogin" ? nil : who.email; r.expectedEmail = who.email
         r.weekly = week; r.fiveHour = five; r.updatedAt = now.addingTimeInterval(-60); r.source = "Anthropic"
         r.weeklyResets = now.addingTimeInterval(2 * 86400); r.fiveHourResets = now.addingTimeInterval(3600); r.plan = "Max"
         return r
@@ -857,15 +857,15 @@ if ProcessInfo.processInfo.environment["DOCKPREVIEW_ONLY"] != nil {
     e.standby = [StandbyAccount(email: ben.email!, seat: ben, id: "kb", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
     e.menuBar = true
     try! Store.save([e])
-    func rec(_ state: String, week: Double, five: Double, age: TimeInterval, login: String? = "ann@example.com") -> IconStatus {
-        var r = IconStatus(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = ann.email
+    func rec(_ state: String, week: Double, five: Double, age: TimeInterval, login: String? = "ann@example.com") -> StatusRecord {
+        var r = StatusRecord(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = ann.email
         r.weekly = week; r.fiveHour = five; r.updatedAt = now.addingTimeInterval(-age); r.source = "Anthropic"; r.plan = "Max"
         r.weeklyResets = now.addingTimeInterval(2 * 86400 + 3 * 3600); r.fiveHourResets = now.addingTimeInterval(2 * 3600)
         r.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: ann, loginEmail: login, names: [:], now: now)
         if state == "denied" { r.problem = FetchState.deniedWords }
         return r
     }
-    let cases: [(String, IconStatus)] = [
+    let cases: [(String, StatusRecord)] = [
         ("fresh", rec("ok", week: 64, five: 12, age: 60)), ("lastknown", rec("ok", week: 100, five: 30, age: 10 * 60)),
         ("old", rec("ok", week: 64, five: 12, age: 40 * 60)), ("full", rec("ok", week: 100, five: 30, age: 60)),
         ("denied", rec("denied", week: 64, five: 12, age: 60)), ("mismatch", rec("ok", week: 64, five: 12, age: 60, login: ben.email)),
@@ -930,9 +930,9 @@ if ProcessInfo.processInfo.environment["SHOW3A_ONLY"] != nil {
     s.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
     try! Store.save([e, work, s])
     func rec(_ state: String, week: Double?, five: Double?, age: TimeInterval, login: String? = "ann@example.com", code: Seat? = nil,
-             unconfirmed: Bool = false) -> IconStatus {
+             unconfirmed: Bool = false) -> StatusRecord {
         let code = code ?? ann
-        var r = IconStatus(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = code.email
+        var r = StatusRecord(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = code.email
         r.weekly = week; r.fiveHour = five; r.updatedAt = now.addingTimeInterval(-age); r.source = "Anthropic"; r.plan = "Max"
         r.weeklyResets = now.addingTimeInterval(2 * 86400 + 3 * 3600); r.fiveHourResets = now.addingTimeInterval(2 * 3600)
         r.resolved = AccountResolver.resolve(e, among: [e, work], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
@@ -940,8 +940,8 @@ if ProcessInfo.processInfo.environment["SHOW3A_ONLY"] != nil {
         if unconfirmed { r.ownerUnconfirmed = true }
         return r
     }
-    func splitRec(_ app: AppSignIn.Login, newest: SwitchReceipt? = nil) -> IconStatus {
-        var r = IconStatus(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
+    func splitRec(_ app: AppSignIn.Login, newest: SwitchReceipt? = nil) -> StatusRecord {
+        var r = StatusRecord(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
         r.weekly = 100; r.weeklyResets = now.addingTimeInterval(41 * 3600); r.noFiveHour = true; r.plan = "Ultra"; r.updatedAt = now
         r.source = "Anthropic"
         r.resolved = AccountResolver.resolve(s, among: [s], app: app, code: mo, loginEmail: mo.email, names: [:], newestSwitch: newest, now: now)
@@ -952,7 +952,7 @@ if ProcessInfo.processInfo.environment["SHOW3A_ONLY"] != nil {
     var toMo = SwitchReceipt(id: SwitchEngine.receiptID(now, "c3s"), profile: "c3s", standby: "km", dataDir: "/x", from: SeatID(pat), to: SeatID(mo), started: now)
     toMo.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
     toMo.linked = now
-    let cases: [(String, AccountEntry, IconStatus?)] = [
+    let cases: [(String, AccountEntry, StatusRecord?)] = [
         ("fresh", e, rec("ok", week: 64, five: 12, age: 60)), ("lastknown", e, rec("ok", week: 100, five: 30, age: 10 * 60)),
         ("old40", e, rec("ok", week: 64, five: 12, age: 40 * 60)), ("old70", e, rec("ok", week: 64, five: 12, age: 70 * 60)),
         ("full", e, rec("ok", week: 100, five: 30, age: 60)), ("denied", e, rec("denied", week: 64, five: 12, age: 60)),
@@ -1002,17 +1002,17 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
     for d in [e.configDir, work.configDir, s.configDir] { try? fm.createDirectory(atPath: expand(d), withIntermediateDirectories: true) }
     try! Store.save([e, work, s])
     let model = SettingsModel(); model.accounts = [e, work, s]
-    func rec(_ state: String, week: Double?, five: Double?, age: TimeInterval, login: String? = "ann@example.com", code: Seat? = nil) -> IconStatus {
+    func rec(_ state: String, week: Double?, five: Double?, age: TimeInterval, login: String? = "ann@example.com", code: Seat? = nil) -> StatusRecord {
         let code = code ?? ann
-        var r = IconStatus(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = code.email
+        var r = StatusRecord(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = code.email
         r.weekly = week; r.fiveHour = five; r.updatedAt = now.addingTimeInterval(-age); r.source = "Anthropic"; r.plan = "Max"
         r.weeklyResets = now.addingTimeInterval(2 * 86400 + 3 * 3600); r.fiveHourResets = now.addingTimeInterval(2 * 3600)
         r.resolved = AccountResolver.resolve(e, among: [e, work], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
         if state == "denied" { r.problem = FetchState.deniedWords }
         return r
     }
-    func splitRec(_ app: AppSignIn.Login) -> IconStatus {
-        var r = IconStatus(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
+    func splitRec(_ app: AppSignIn.Login) -> StatusRecord {
+        var r = StatusRecord(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
         r.weekly = 30; r.weeklyResets = now.addingTimeInterval(41 * 3600); r.noFiveHour = true; r.plan = "Ultra"
         r.updatedAt = now.addingTimeInterval(-120); r.source = "Anthropic"
         r.resolved = AccountResolver.resolve(s, among: [s], app: app, code: mo, loginEmail: mo.email, names: [:], now: now)
@@ -1029,7 +1029,7 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
     // a record whose resolver worked out no account: the folder's own address stands in for the account in use (the Switch
     // page's in-use box), outside a clash
     var oldRecord = rec("ok", week: 64, five: 12, age: 60); oldRecord.resolved?.email = nil; oldRecord.resolved?.account = nil
-    let cases: [(String, AccountEntry, IconStatus?, [AccountEntry])] = [
+    let cases: [(String, AccountEntry, StatusRecord?, [AccountEntry])] = [
         ("fresh", e, rec("ok", week: 64, five: 12, age: 60), [e, work, s]),
         ("oldrecord", e, oldRecord, [e, work, s]),
         ("clash-none", e, rec("ok", week: nil, five: nil, age: 60, login: cat.email, code: cat), [e, work, s]),
@@ -1183,7 +1183,7 @@ MainActor.assumeIsolated {
     var plainRecord = Store.status("main")
     for (tag, app) in [("a1-surfaces-different", AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: now)),
                        ("a2-surfaces-same", AppSignIn.Login(account: u1.account, org: u1.organization, state: .known, source: "log", at: now))] {
-        var rec = plainRecord ?? IconStatus(state: "ok")
+        var rec = plainRecord ?? StatusRecord(state: "ok")
         rec.resolved = AccountResolver.resolve(main, among: [main], app: app, code: u1, loginEmail: u1.email, names: [:])
         _ = Store.writeStatus("main", rec)
         let st = Store.status(for: main)
@@ -1223,7 +1223,7 @@ MainActor.assumeIsolated {
         } }
     }
     // a standby account whose kept sign-in ran out: no numbers, when they were last read
-    var expired = IconStatus(state: "expired"); expired.loginEmail = u2.email; expired.weekly = 97; expired.updatedAt = now.addingTimeInterval(-3 * 86400)
+    var expired = StatusRecord(state: "expired"); expired.loginEmail = u2.email; expired.weekly = 97; expired.updatedAt = now.addingTimeInterval(-3 * 86400)
     let keptStandby = Store.status("main~k2")
     _ = Store.writeStatus("main~k2", expired)
     try? fm.createDirectory(atPath: expand("~/.claude-ultra-2"), withIntermediateDirectories: true)
@@ -1364,7 +1364,7 @@ MainActor.assumeIsolated {
     plainRecord = Store.status(for: main)
     for (tag, app) in [("o7c-card-app-other", appOn2), ("o7d-card-app-signed-out", appOut)] {
         // the record as the agent writes it (AccountResolver), then every surface from it
-        var rec = plainRecord ?? IconStatus(state: "ok")
+        var rec = plainRecord ?? StatusRecord(state: "ok")
         rec.resolved = AccountResolver.resolve(main, among: [main], app: app, code: u1, loginEmail: u1.email, names: [u2.account: u2.email!])
         _ = Store.writeStatus("main", rec)
         let row = cardRow(main)
@@ -1440,7 +1440,7 @@ MainActor.assumeIsolated {
     // the account in use signed out, then expired: no bars, Sign in… the one key
     let keepRecord = Store.status("main")
     for (tag, state) in [("o14a-accounts-signed-out", "noLogin"), ("o14b-accounts-expired", "expired")] {
-        var st = IconStatus(state: state); st.loginEmail = state == "expired" ? u1.email : nil; st.expectedEmail = u1.email
+        var st = StatusRecord(state: state); st.loginEmail = state == "expired" ? u1.email : nil; st.expectedEmail = u1.email
         st.resolved = AccountResolver.resolve(main, among: [main], app: .unknown, code: u1, loginEmail: st.loginEmail, names: [:])
         _ = Store.writeStatus("main", st)
         for f in [Face.std, .silver] { for (wn, w) in oWidths {

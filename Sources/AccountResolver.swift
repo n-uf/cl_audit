@@ -26,7 +26,7 @@ import ClaudeAuth
 import Foundation
 import ProfileCore
 
-// (ResolvedAccount, what the resolver decided as the status record keeps it: StatusRecord.swift)
+// (ResolvedAccount, what the resolver decided as the status record keeps it: cl_kit's ProfileCore, Core/StatusRecord.swift)
 
 /// Claude Code's record as the resolver takes it: the one folder reader's account (Account.codeRecord: an account id or an
 /// address, A1), or a saved seat (a check's, a profile's: always with its id).
@@ -247,7 +247,7 @@ struct SplitUsage: Equatable {
 
     /// The words for record `s` while its headline answer is the split (`split`: the answer's, Headline.split); nil when it
     /// isn't, or the record has no resolver answer to name the accounts.
-    static func words(_ s: IconStatus?, _ split: Headline.Split?) -> SplitUsage? {
+    static func words(_ s: StatusRecord?, _ split: Headline.Split?) -> SplitUsage? {
         guard let split, let r = s?.resolved else { return nil }
         return of(r, switched: split.switchWaits)
     }
@@ -327,7 +327,7 @@ struct AccountView: Equatable {
     /// The one line of state, built now (ResolvedAccount.lineText: an address in it follows Show emails as it is at this read).
     var line: String? { resolved?.lineText() }
 
-    static func of(_ s: IconStatus?) -> AccountView {
+    static func of(_ s: StatusRecord?) -> AccountView {
         guard let s else { return AccountView(label: nil, numbersOwner: nil, lit: false) }
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.codeName ?? r.numbersFor,

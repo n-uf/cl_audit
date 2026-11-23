@@ -12,14 +12,14 @@ struct ProfileShow {
     /// The one value.
     let display: ProfileDisplay
     /// The record as the headline surfaces read it (Store.status(for:)): its plan, problem, renew note and addresses.
-    let record: IconStatus?
+    let record: StatusRecord?
     /// The account's names: the active account for the account line, and the standby lists without it.
     let view: AccountView
     /// The split's words (SplitUsage), only while the display says the split.
     let splitWords: SplitUsage?
 
     /// The value for `raw`, the record as read (Store.status(_:)), at `now`.
-    static func of(_ e: AccountEntry, raw read: IconStatus?, now: Date = Date()) -> ProfileShow {
+    static func of(_ e: AccountEntry, raw read: StatusRecord?, now: Date = Date()) -> ProfileShow {
         let raw = read?.current(now: now)
         let ages = Store.ages(e, resolved: raw?.resolved)       // (in the split, Terminal's numbers only when the record names them)               // (Store.status(_:) has done it already; once more changes nothing)
         let shown = raw.map { Store.shown($0, for: e, now: now) }

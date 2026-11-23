@@ -1575,9 +1575,9 @@ struct AccountSettings: View {
         _picked = State(initialValue: picked)
     }
 
-    var status: IconStatus? { _ = model.tick; return Store.status(for: entry) }
+    var status: StatusRecord? { _ = model.tick; return Store.status(for: entry) }
     /// Claude Code's own record (its numbers even in the split, SplitUsage): for its own row only, never the IN USE box.
-    var codeStatus: IconStatus? { _ = model.tick; return Store.status(for: entry, headline: false) }
+    var codeStatus: StatusRecord? { _ = model.tick; return Store.status(for: entry, headline: false) }
     /// What the folder's .claude.json names, as the profile's record has it (the agent's reader wrote it).
     var expected: String? { status?.expectedEmail }
     var mismatch: Bool {
@@ -2144,13 +2144,13 @@ struct AccountSettings: View {
     }
 
     /// The limits as the dashboard draws them, or one line why there are none yet.
-    @ViewBuilder func limitsOrWhy(_ st: IconStatus?, entry e: AccountEntry, none: String?) -> some View {
+    @ViewBuilder func limitsOrWhy(_ st: StatusRecord?, entry e: AccountEntry, none: String?) -> some View {
         limitsOrWhy(Limit.card(st, entry: e), credits: st?.credits, st, none: none)
     }
 
     /// The same for limits already decided (the in-use box: the one value's, AccountRow.limits); `st`: the record, for its
     /// problem's words.
-    @ViewBuilder func limitsOrWhy(_ limits: [Limit], credits: Credits?, _ st: IconStatus?, none: String?) -> some View {
+    @ViewBuilder func limitsOrWhy(_ limits: [Limit], credits: Credits?, _ st: StatusRecord?, none: String?) -> some View {
         if limits.contains(where: { $0.p != nil }) {
             CardLimits(limits: limits, design: DashboardPrefs.shared.cardStyle, credits: credits)
         } else {
@@ -2671,7 +2671,7 @@ struct AccountSettings: View {
 /// lane opens right under its tile, and tile and lane share one surface.
 struct IconGallery: View {
     @Binding var entry: AccountEntry
-    var status: IconStatus?
+    var status: StatusRecord?
     @Environment(\.face) private var face
     static let states: [(Double, Double)] = [(5, 12), (30, 45), (58, 62), (84, 78), (97, 94)]
     static let columns = 4
@@ -2884,7 +2884,7 @@ struct NoneSwatch: View {
 /// profile that is signed out, expired, in the split or without a record (missing, unreadable). Samples (23 % and 41 %) only
 /// for a profile that doesn't exist yet (the new-profile flow: `sample` on, no record); an existing profile is never filled in
 /// with them. The expected address is the record's, never read from the folder.
-func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, tick: Int = 0, sample: Bool = false) -> NSImage {
+func preview(_ e: AccountEntry, status: StatusRecord?, style: IconStyle? = nil, tick: Int = 0, sample: Bool = false) -> NSImage {
     let expected = status?.expectedEmail
     let warn = status?.loginEmail.map { $0.lowercased() != expected?.lowercased() } ?? false
     let sampled = status == nil && sample
@@ -2899,7 +2899,7 @@ func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, ti
 /// Store.status(for:) gives it, nil when there is none), drawn as the Dock icon's own panel draws it (DetailsInfo.of): the
 /// numbers, their age and grey, the lamp, the line and the key. The samples (5-hour 23 %, week 58 %) only for a profile
 /// that doesn't exist yet (`sample` on, no record).
-func samplePanel(_ entry: AccountEntry, status s: IconStatus?, sample: Bool = false, now: Date = Date()) -> DetailsInfo {
+func samplePanel(_ entry: AccountEntry, status s: StatusRecord?, sample: Bool = false, now: Date = Date()) -> DetailsInfo {
     let name = entry.name.isEmpty ? "profile" : entry.name, icon = preview(entry, status: s, sample: sample)
     guard s == nil && sample else {
         // the value of the profile's saved record, as the Dock icon makes it (ProfileShow.load: the record as read, so the

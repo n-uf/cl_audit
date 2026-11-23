@@ -68,7 +68,7 @@ func blankTile(_ p: AccountEntry) -> Data? {
     Painter.image(TileModel(label: p.label.isEmpty ? "?" : p.label, fiveHour: nil, weekly: nil, stale: false, style: p.style,
                             warn: false, tint: p.color, frame: p.frame), pixels: 128).tiffRepresentation
 }
-func previewShowsNone(_ p: AccountEntry, _ rec: IconStatus?) -> Bool {
+func previewShowsNone(_ p: AccountEntry, _ rec: StatusRecord?) -> Bool {
     let blank = blankTile(p)
     let sample = preview(p, status: nil, sample: true).tiffRepresentation
     return blank != nil && sample != blank && preview(p, status: rec).tiffRepresentation == blank
@@ -77,7 +77,7 @@ func previewShowsNone(_ p: AccountEntry, _ rec: IconStatus?) -> Bool {
 }
 
 /// Settings' panel preview (`samplePanel`) for a record that has no numbers: no limit, no full panel, never the samples (23 % and 58 %).
-func panelShowsNone(_ p: AccountEntry, _ rec: IconStatus?) -> Bool {
+func panelShowsNone(_ p: AccountEntry, _ rec: StatusRecord?) -> Bool {
     func none(_ info: DetailsInfo) -> Bool {
         info.fiveHour == nil && info.weekly == nil && info.fiveHourResets == nil && info.weeklyResets == nil
             && info.limits.allSatisfy { $0.p == nil && $0.resets == nil } && info.full == nil
@@ -300,7 +300,7 @@ do {
     // (the read from before the sign-in changed: its sign-in isn't the kept one, so Anthropic's reply for it is no verified word)
     let late = AccountResolver.resolve(main, among: [main, other], app: appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"),
                                        loginEmail: u1.email, readingVerified: false, names: [:], now: t0)
-    var lateRec = IconStatus(state: "ok"); lateRec.loginEmail = u1.email; lateRec.weekly = 94; lateRec.resolved = late
+    var lateRec = StatusRecord(state: "ok"); lateRec.loginEmail = u1.email; lateRec.weekly = 94; lateRec.resolved = late
     // (B8: numbersFor is only ever the reading's own account: u1's here, and the reading is stale, so they show nowhere)
     check(!late.fromApp && late.email == "free@example.com" && !late.differs && late.numbersFor == u1.email && late.readStale == true
           && late.codeName == "free@example.com",
@@ -310,7 +310,7 @@ do {
           "an older read's numbers (ultra-1's) never show once the folder is on another account: none until its own read")
     check(res(main, AppSignIn.Login(account: u1.account.uppercased(), org: nil, state: .known, source: "config", at: nil), code: u1, numbers: u1.email).line == nil,
           "the same account in any case: no line")
-    check(AccountView.of({ var s = IconStatus(state: "ok"); s.resolved = res(main, AppSignIn.Login(account: uuid(77), org: nil, state: .known, source: "log", at: t0), code: u1, numbers: u1.email); return s }()).label == "account 00000000",
+    check(AccountView.of({ var s = StatusRecord(state: "ok"); s.resolved = res(main, AppSignIn.Login(account: uuid(77), org: nil, state: .known, source: "log", at: t0), code: u1, numbers: u1.email); return s }()).label == "account 00000000",
           "an app account no record names: by its id's first 8")
 }
 
@@ -323,7 +323,7 @@ do {
     let model = SettingsModel()
     model.accounts = [main, other]
     for (name, app, code, numbers) in cases {
-        var rec = IconStatus(state: "ok"); rec.loginEmail = numbers; rec.weekly = 40; rec.updatedAt = t0
+        var rec = StatusRecord(state: "ok"); rec.loginEmail = numbers; rec.weekly = 40; rec.updatedAt = t0
         rec.resolved = res(main, app, code: code, numbers: numbers)
         _ = Store.writeStatus("main", rec)
         let want = AccountView.of(Store.status(for: main))
@@ -378,10 +378,10 @@ do {
         }
     }
     // a record from before the resolver: the sign-in it was read for
-    var old = IconStatus(state: "ok"); old.loginEmail = u1.email
+    var old = StatusRecord(state: "ok"); old.loginEmail = u1.email
     check(AccountView.of(old).label == u1.email && AccountView.of(old).line == nil, "an older record: its sign-in, no line")
     // a switch: the record already names ultra-2 as the numbers' owner, the store still holds ultra-1's numbers
-    var mid = IconStatus(state: "ok"); mid.loginEmail = u1.email; mid.weekly = 88; mid.updatedAt = t0; mid.plan = "Ultra"
+    var mid = StatusRecord(state: "ok"); mid.loginEmail = u1.email; mid.weekly = 88; mid.updatedAt = t0; mid.plan = "Ultra"
     mid.resolved = res(main, appU2, code: u2, numbers: u2.email)
     _ = Store.writeStatus("main", mid)
     let shownMid = Store.status(for: main)
@@ -391,7 +391,7 @@ do {
     mid.loginEmail = u2.email; mid.weekly = 12; _ = Store.writeStatus("main", mid)
     check(Store.status(for: main)?.weekly == 12, "the new read: ultra-2's own numbers show")
     // the status line's numbers (no sign-in address): nothing to tell them apart by, so they show
-    var line = IconStatus(state: "ok"); line.loginEmail = nil; line.expectedEmail = "free@example.com"; line.weekly = 33; line.updatedAt = t0
+    var line = StatusRecord(state: "ok"); line.loginEmail = nil; line.expectedEmail = "free@example.com"; line.weekly = 33; line.updatedAt = t0
     line.source = "Claude Code status line"
     line.resolved = res(main, appU1, code: u1, numbers: u1.email)
     _ = Store.writeStatus("main", line)
@@ -404,7 +404,7 @@ do {
     var sw = profile("sw", "~/.claude-sw", u1); sw.claudeWindow = false
     sw.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "w2"), StandbyAccount(email: u4.email!, seat: u4, id: "w4")]
     // the record as it was before the switch (ultra-1 in use), then the folder signed in to ultra-2
-    var rec = IconStatus(state: "ok"); rec.loginEmail = u1.email; rec.weekly = 40; rec.updatedAt = t0
+    var rec = StatusRecord(state: "ok"); rec.loginEmail = u1.email; rec.weekly = 40; rec.updatedAt = t0
     rec.resolved = AccountResolver.resolve(sw, among: [sw], app: .unknown, code: u1, loginEmail: u1.email, names: [:], now: t0)
     _ = Store.writeStatus("sw", rec)
     put(expand("~/.claude-sw/.claude.json"), #"{"oauthAccount":{"accountUuid":"\#(u2.account)","organizationUuid":"\#(u2.organization!)","emailAddress":"\#(u2.email!)"}}"#)
@@ -458,7 +458,7 @@ do {
     // a profile on ultra-1 whose folder signed in to ultra-2 (a switch ended); its record, the agent's, still names ultra-1
     var ow = profile("ow", "~/.claude-ow", u1); ow.claudeWindow = false
     ow.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "o2")]
-    var old = IconStatus(state: "ok"); old.loginEmail = u1.email; old.weekly = 40; old.updatedAt = Date()
+    var old = StatusRecord(state: "ok"); old.loginEmail = u1.email; old.weekly = 40; old.updatedAt = Date()
     old.resolved = AccountResolver.resolve(ow, among: [ow], app: .unknown, code: u1, loginEmail: u1.email, names: [:], now: t0)
     _ = Store.writeStatus("ow", old)
     let oldBytes = bytes("ow")
@@ -514,7 +514,7 @@ do {
     let answer = AccountResolver.resolve(ow, among: [ow], app: .unknown, code: u1, loginEmail: u1.email, names: [:], now: t0)
     Store.hold("oldrec", answer, file: Store.stamp("oldrec"), lifetime: 600)
     check(Store.status("oldrec")?.weekly == 12 && Store.status("oldrec")?.resolved == answer, "a held answer over an old record: its numbers kept, the answer shown")
-    var rewritten = StatusCodec.decode(bytes("oldrec") ?? Data()) ?? IconStatus(state: "ok"); rewritten.weekly = 13
+    var rewritten = StatusCodec.decode(bytes("oldrec") ?? Data()) ?? StatusRecord(state: "ok"); rewritten.weekly = 13
     _ = Store.writeStatus("oldrec", rewritten)
     check(!Store.isHeld("oldrec") && Store.status("oldrec")?.weekly == 13 && Store.status("oldrec")?.resolved == nil,
           "the agent's write of it wins over the held answer")
@@ -719,7 +719,7 @@ do {
     check(fresh?.weekly == 40 && fresh?.fiveHour == 12 && fresh?.source == "Claude Code status line", "written 14 minutes ago, resets ahead: its numbers")
 
     // the saved record of 26.11.15 (week 90% from the status line a week ago, the sign-in expired): no numbers on any screen
-    var old = IconStatus(state: "expired"); old.expectedEmail = "stale-1@example.com"; old.weekly = 90; old.fiveHour = 100
+    var old = StatusRecord(state: "expired"); old.expectedEmail = "stale-1@example.com"; old.weekly = 90; old.fiveHour = 100
     old.weeklyResets = now.addingTimeInterval(-60); old.fiveHourResets = weekAgo.addingTimeInterval(3600); old.updatedAt = weekAgo
     old.source = "Claude Code status line"; old.problem = FetchState.expired.menuText
     _ = Store.writeStatus("stale", old)
@@ -760,7 +760,7 @@ do {
     noNumbersAnywhere("a fresh status line with the sign-in expired")
     reader.stop()
     // a fresh status line with a good sign-in: its numbers show (the record's state ok)
-    var live = IconStatus(state: "ok"); live.expectedEmail = "stale-1@example.com"; live.weekly = 53; live.weeklyResets = now.addingTimeInterval(86400)
+    var live = StatusRecord(state: "ok"); live.expectedEmail = "stale-1@example.com"; live.weekly = 53; live.weeklyResets = now.addingTimeInterval(86400)
     live.updatedAt = now.addingTimeInterval(-60); live.source = "Claude Code status line"
     _ = Store.writeStatus("stale", live)
     let liveShown = Store.status(for: p)
@@ -769,7 +769,7 @@ do {
     Login.runSecurity = { _ in (44, Data()) }
 
     // a limit whose reset has passed never shows its percent, from Anthropic too, whatever the state
-    var a = IconStatus(state: "ok"); a.expectedEmail = "stale-1@example.com"; a.source = "Anthropic"; a.updatedAt = now.addingTimeInterval(-120)
+    var a = StatusRecord(state: "ok"); a.expectedEmail = "stale-1@example.com"; a.source = "Anthropic"; a.updatedAt = now.addingTimeInterval(-120)
     a.fiveHour = 100; a.fiveHourResets = now.addingTimeInterval(-30); a.weekly = 53; a.weeklyResets = now.addingTimeInterval(86400)
     a.scoped = [ScopedLimit(name: "Fable", percent: 77, resets: now.addingTimeInterval(-5))]
     _ = Store.writeStatus("stale", a)
@@ -795,7 +795,7 @@ do {
     check(e.current(now: now).fiveHour == 100 && e.current(now: now).weekly == 53, "the same numbers with a good read (ok): shown")
 
     // signed out (no sign-in at all) with saved numbers: none on any screen, the same as expired; a good read brings them back
-    var out = IconStatus(state: "noLogin"); out.expectedEmail = "stale-1@example.com"; out.weekly = 61; out.fiveHour = 22
+    var out = StatusRecord(state: "noLogin"); out.expectedEmail = "stale-1@example.com"; out.weekly = 61; out.fiveHour = 22
     out.weeklyResets = now.addingTimeInterval(2 * 86400); out.fiveHourResets = now.addingTimeInterval(3600)
     out.updatedAt = now.addingTimeInterval(-3 * 3600); out.source = "Anthropic"; out.problem = FetchState.noLogin.menuText
     _ = Store.writeStatus("stale", out)
@@ -1164,7 +1164,7 @@ do {
     /// read for Claude Code's account.
     func after(_ s: Seat, appOn: Seat) -> (e: AccountEntry, v: AccountView) {
         let noted = FolderRules.noteAccounts([m0, w0], signedIn: { $0 == m0.configDir ? s : ($0 == w0.configDir ? cat : nil) }, status: { _ in nil }, now: t0)
-        var rec = IconStatus(state: "ok"); rec.loginEmail = s.email; rec.weekly = 12
+        var rec = StatusRecord(state: "ok"); rec.loginEmail = s.email; rec.weekly = 12
         rec.resolved = AccountResolver.resolve(noted[0], among: noted, app: app(appOn), code: s, loginEmail: s.email, names: [:], now: t0)
         return (noted[0], AccountView.of(rec))
     }
@@ -1201,7 +1201,7 @@ do {
     // 05 in Settings ▸ Accounts: Claude Code's row on ben (a standby entry of this profile) is clickable like every standby
     // row; picked, it lights with the Switch account key. The view is read through its AccountBox's own props.
     do {
-        var rec5 = IconStatus(state: "ok"); rec5.loginEmail = ben.email; rec5.weekly = 12
+        var rec5 = StatusRecord(state: "ok"); rec5.loginEmail = ben.email; rec5.weekly = 12
         // a split by hand: the profile's seat is still ann's and ben is still one of its standby entries (the folder not followed)
         rec5.resolved = AccountResolver.resolve(m0, among: [m0], app: app(ann), code: ben, loginEmail: ben.email, names: [:], now: t0)
         _ = Store.writeStatus(m0.id, rec5)
@@ -1236,7 +1236,7 @@ do {
         defer { AccountEntry.appLogin = keepLogin }
         check(e5.seat?.same(ben) == true && !e5.standby.contains { $0.seat?.same(ben) == true } && e5.standby.contains { $0.seat?.same(ann) == true },
               "05 followed: the seat is ben's, ann on standby, ben has no standby entry")
-        var rec = IconStatus(state: "ok"); rec.loginEmail = ben.email; rec.weekly = 12
+        var rec = StatusRecord(state: "ok"); rec.loginEmail = ben.email; rec.weekly = 12
         // (the reading as the reader takes it: the account and its organisation by id, so Claude Code's seat is known; the
         // Switch page's target takes the profile's seat only for that very seat)
         rec.resolved = AccountResolver.resolve(e5, among: [e5, w0], app: app(ann), code: ben, loginEmail: ben.email, loginAccount: ben.account,
@@ -1432,7 +1432,7 @@ do {
 
     // the Claude app signed out: Claude Code's account is the active one; no own row, nothing twice
     let noted7 = FolderRules.noteAccounts([m0, w0], signedIn: { $0 == m0.configDir ? dan : nil }, status: { _ in nil }, now: t0)
-    var recOut = IconStatus(state: "ok"); recOut.loginEmail = dan.email
+    var recOut = StatusRecord(state: "ok"); recOut.loginEmail = dan.email
     recOut.resolved = AccountResolver.resolve(noted7[0], among: noted7, app: appOut, code: dan, loginEmail: dan.email, names: [:], now: t0)
     let vOut = AccountView.of(recOut)
     check(vOut.label == dan.email && vOut.codeRow == nil && Set(standby(noted7[0], vOut)) == [ann.email!, ben.email!],
@@ -1441,7 +1441,7 @@ do {
     // Claude Code's account known by its id only ("account <8>", no address): its row, and never on standby too
     let noMail = Seat(account: uuid(15), organization: uuid(55), email: nil)
     var m8 = m0; m8.seat = noMail; m8.standby = [kb, StandbyAccount(email: "", seat: noMail, id: "kx"), StandbyAccount(email: ann.email!, seat: ann, id: "ka")]
-    var rec8 = IconStatus(state: "ok")
+    var rec8 = StatusRecord(state: "ok")
     rec8.resolved = AccountResolver.resolve(m8, among: [m8, w0], app: app(ann), code: noMail, loginEmail: nil, names: [:], now: t0)
     let v8 = AccountView.of(rec8)
     check(v8.codeRow?.hasPrefix("account ") == true && standby(m8, v8) == [ben.email!] && !v8.mayCallStandby("", id: noMail.account),
@@ -1567,8 +1567,8 @@ do {
     try! Store.save([e])
     let now = Date()
     let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
-    func record(app: AppSignIn.Login, code: Seat?, reading: String?, weekly: Double, age: TimeInterval = 0) -> IconStatus {
-        var s = IconStatus(state: "ok"); s.loginEmail = reading; s.numbersOwner = reading; s.weekly = weekly
+    func record(app: AppSignIn.Login, code: Seat?, reading: String?, weekly: Double, age: TimeInterval = 0) -> StatusRecord {
+        var s = StatusRecord(state: "ok"); s.loginEmail = reading; s.numbersOwner = reading; s.weekly = weekly
         s.weeklyResets = now.addingTimeInterval(2 * 86400); s.noFiveHour = true; s.plan = "Ultra"; s.updatedAt = now.addingTimeInterval(-age)
         s.resolved = AccountResolver.resolve(e, among: [e], app: app, code: code, loginEmail: reading, names: [:], now: now)
         return s
@@ -1846,7 +1846,7 @@ do {
     check(w.first { $0.id == "spm" }.map { $0.week == nil && $0.full(now: now) == nil } == true, "the widget: 20-minute-old numbers never full")
     // whose the numbers are is the record's answer only (the resolver's, through Headline), never the profile's seat
     // address: a reading of the seat's id under another address shows in the widget as on the card
-    var renamedRec = IconStatus(state: "ok"); renamedRec.weekly = 40; renamedRec.updatedAt = now
+    var renamedRec = StatusRecord(state: "ok"); renamedRec.weekly = 40; renamedRec.updatedAt = now
     renamedRec.loginEmail = "mo-renamed@example.com"; renamedRec.numbersOwner = renamedRec.loginEmail; renamedRec.numbersAccount = mo.account
     renamedRec.resolved = AccountResolver.resolve(same, among: [same], app: .unknown, code: mo, loginEmail: renamedRec.loginEmail,
                                                   loginAccount: mo.account, names: [:], now: now)
@@ -2071,7 +2071,7 @@ do {
 
 // ============ 8. the status record's one codec (cl_kit's StatusCodec): today's bytes, older files, the headline over them ============
 do {
-    // written by main 20489f5's own writer (its IconStatus and ResolvedAccount, Store.writeStatus's settings): every field the
+    // written by main 20489f5's own writer (its StatusRecord and ResolvedAccount, Store.writeStatus's settings): every field the
     // agent writes; the split with a switch waiting and a stale reading; a file from before the resolver, numbersOwner and
     // ownerUnconfirmed; a resolver answer from before its newer keys, with a clash, expired and unconfirmed
     let fixtures: [(String, String)] = [
@@ -2079,7 +2079,7 @@ do {
         ("split", #"{"expectedEmail":"mo@example.com","loginEmail":"mo@example.com","noFiveHour":true,"numbersOwner":"mo@example.com","plan":"max","resolved":{"account":"00000000-0000-4000-8000-000000000002","at":1800000000,"codeAccount":"00000000-0000-4000-8000-000000000003","codeName":"mo@example.com","codeUsageLine":true,"differs":true,"email":"pat@example.com","fromApp":true,"lit":true,"numbersFor":"mo@example.com","readStale":true,"switchWaits":true},"state":"ok","updatedAt":1800000000,"weekly":100,"weeklyResets":1800007200}"#),
         ("old", #"{"fiveHour":5,"loginEmail":"free@example.com","source":"Claude Code status line","state":"ok","updatedAt":1800000000,"weekly":33}"#),
         ("mid", #"{"expectedEmail":"ultra-2@example.com","loginEmail":"ultra-2@example.com","ownerUnconfirmed":true,"plan":"pro","problem":"Sign-in expired","resolved":{"at":1799999970,"clash":"Home","differs":false,"fromApp":false,"line":"Claude Code's folder is signed in to Home's account: its numbers show on Home.","lit":false,"numbersFor":"account 00000000","recordTooLarge":true},"state":"expired"}"#)]
-    var decoded: [String: IconStatus] = [:]
+    var decoded: [String: StatusRecord] = [:]
     for (name, json) in fixtures {
         let rec = StatusCodec.decode(Data(json.utf8))
         decoded[name] = rec
@@ -2157,14 +2157,14 @@ MainActor.assumeIsolated {
     e.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
     try! Store.save([e, other])
     func rec(_ state: String = "ok", week: Double? = 40, five: Double? = 12, age: TimeInterval = 60, weekIn: TimeInterval = 2 * 86400,
-             fiveIn: TimeInterval = 3600, login: String? = u1.email, code: Seat? = u1) -> IconStatus {
-        var s = IconStatus(state: state); s.loginEmail = login; s.expectedEmail = u1.email; s.weekly = week; s.fiveHour = five
+             fiveIn: TimeInterval = 3600, login: String? = u1.email, code: Seat? = u1) -> StatusRecord {
+        var s = StatusRecord(state: state); s.loginEmail = login; s.expectedEmail = u1.email; s.weekly = week; s.fiveHour = five
         s.weeklyResets = now.addingTimeInterval(weekIn); s.fiveHourResets = now.addingTimeInterval(fiveIn)
         s.updatedAt = now.addingTimeInterval(-age); s.source = "Anthropic"; s.plan = "Max"
         s.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
         return s
     }
-    func show(_ r: IconStatus, _ entry: AccountEntry? = nil) -> ProfileShow {
+    func show(_ r: StatusRecord, _ entry: AccountEntry? = nil) -> ProfileShow {
         _ = Store.writeStatus("show", r); return ProfileShow.load(entry ?? e, now: now)
     }
     func items(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) } }
@@ -2407,7 +2407,7 @@ do {
         q.standby = [StandbyAccount(email: mo.email!, seat: mo, id: "kmo", lastInUse: t0, lastWeek: 5),
                      StandbyAccount(email: quinn.email!, seat: quinn, id: "kq", lastInUse: t0, lastWeek: 40)]
         let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: t0)
-        var s = IconStatus(state: "ok"); s.loginEmail = mo.email; s.numbersOwner = mo.email; s.weekly = 100; s.updatedAt = t0
+        var s = StatusRecord(state: "ok"); s.loginEmail = mo.email; s.numbersOwner = mo.email; s.weekly = 100; s.updatedAt = t0
         s.resolved = AccountResolver.resolve(q, among: [q], app: appPat, code: mo, loginEmail: mo.email, names: [:], now: t0)
         let v = AccountView.of(s)
         let codeRow: (StandbyAccount) -> Bool = { v.isCodeRow(id: $0.seat?.account, email: $0.seat?.email ?? $0.email) }
@@ -2624,9 +2624,9 @@ do {
     e.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
     try! Store.save([e, other])
     func rec(_ state: String = "ok", week: Double? = 40, five: Double? = 12, age: TimeInterval = 60, weekIn: TimeInterval = 2 * 86400,
-             login: String? = u1.email, code: Seat? = u1) -> IconStatus {
+             login: String? = u1.email, code: Seat? = u1) -> StatusRecord {
         // (the folder's .claude.json names Claude Code's account: another profile's in a clash)
-        var s = IconStatus(state: state); s.loginEmail = state == "noLogin" ? nil : login; s.expectedEmail = code?.email
+        var s = StatusRecord(state: state); s.loginEmail = state == "noLogin" ? nil : login; s.expectedEmail = code?.email
         s.weekly = week; s.fiveHour = five; s.weeklyResets = now.addingTimeInterval(weekIn); s.fiveHourResets = now.addingTimeInterval(3600)
         s.updatedAt = now.addingTimeInterval(-age); s.source = "Anthropic"; s.plan = "Max"
         s.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
@@ -2634,7 +2634,7 @@ do {
     }
     /// The card's row for a record of profile `p` (default the card's), checked against the value it draws: the lamp, the
     /// line, what is full, the tile's grey and warning, the numbers (each state below says its notice and key itself).
-    func card(_ r: IconStatus?, _ p: AccountEntry? = nil, _ what: String) -> (row: AccountRow, notice: UsageNotice?, terminalInRow: Bool) {
+    func card(_ r: StatusRecord?, _ p: AccountEntry? = nil, _ what: String) -> (row: AccountRow, notice: UsageNotice?, terminalInRow: Bool) {
         let p = p ?? e
         if let r { _ = Store.writeStatus(p.id, r) } else { Store.removeStatus(p.id) }
         let row = cardRow(p, now: now), d = row.show.display
@@ -2695,7 +2695,7 @@ do {
     // the record keeps the folder account's organisation beside its id; when the Claude app decided the account in use (the app
     // on the profile's own u1, the folder on Other's u3) the record says the app decided, and names no clash
     var win = e; win.claudeWindow = true
-    func appRec(_ app: AppSignIn.Login, code: Seat) -> IconStatus {
+    func appRec(_ app: AppSignIn.Login, code: Seat) -> StatusRecord {
         var s = rec(week: nil, five: nil, login: code.email, code: code)
         s.resolved = AccountResolver.resolve(win, among: [win, other], app: app, code: code, loginEmail: code.email, names: [:], now: now)
         return s
@@ -2767,7 +2767,7 @@ do {
     let clashModel = SettingsModel(); clashModel.accounts = [noSeat, other]
     // the address pop-up's Sign in… on a profile with no seat whose sign-in is on another account (u2; the folder names
     // u1): the folder's u1, never the account the sign-in is on (the pop-up's ticked line, u2)
-    var onOther = IconStatus(state: "ok"); onOther.loginEmail = u2.email; onOther.expectedEmail = u1.email; onOther.updatedAt = now
+    var onOther = StatusRecord(state: "ok"); onOther.loginEmail = u2.email; onOther.expectedEmail = u1.email; onOther.updatedAt = now
     _ = Store.writeStatus(e.id, onOther)
     let popUp = AccountSettings(entry: .constant(noSeat), model: clashModel)
     let popUpItems = popUp.loginItems
@@ -2790,7 +2790,7 @@ do {
           "unconfirmed: as read, a full week left out, the line says so")
 
     // standby is never read: the card's numbers are the account in use's only, its switch menu names standby by address
-    var standbyRec = IconStatus(state: "ok"); standbyRec.loginEmail = u2.email; standbyRec.weekly = 77; standbyRec.updatedAt = now
+    var standbyRec = StatusRecord(state: "ok"); standbyRec.loginEmail = u2.email; standbyRec.weekly = 77; standbyRec.updatedAt = now
     _ = Store.writeStatus("card~k2", standbyRec)
     let withStandby = card(rec(week: 100, weekIn: 3 * 3600), nil, "standby")
     let trays = withStandby.row.entry.listed(by: withStandby.row.view).cardTrays().map(\.offer.standby.label)
@@ -2809,8 +2809,8 @@ do {
     var s = profile("csp", "~/.claude-csp", mo); s.claudeWindow = true
     s.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
     try! Store.save([s])
-    func splitRec(app: AppSignIn.Login, newest: SwitchReceipt? = nil) -> IconStatus {
-        var r = IconStatus(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
+    func splitRec(app: AppSignIn.Login, newest: SwitchReceipt? = nil) -> StatusRecord {
+        var r = StatusRecord(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
         r.weekly = 100; r.weeklyResets = now.addingTimeInterval(2 * 86400); r.noFiveHour = true; r.plan = "Ultra"; r.updatedAt = now
         r.resolved = AccountResolver.resolve(s, among: [s], app: app, code: mo, loginEmail: mo.email, names: [:], newestSwitch: newest, now: now)
         return r
@@ -2855,7 +2855,7 @@ do {
     let expiredHead = "Terminal's sign-in has expired", outHead = "Terminal is signed out"
     let ownMo = SplitUsage.windowLine
     try! Store.save([e, other, s])
-    let precedence: [(String, IconStatus, AccountEntry?, String?)] = [
+    let precedence: [(String, StatusRecord, AccountEntry?, String?)] = [
         // (the profile `card`: Claude Code on u1; Other's account is u3)
         ("expired + the sign-in on another account", rec("expired", week: nil, five: nil, login: u2.email, code: u1), nil, anotherAccount),
         ("signed out + the sign-in on another account", rec("noLogin", week: nil, five: nil, login: u2.email, code: u1), nil, outHead),
@@ -2893,15 +2893,15 @@ MainActor.assumeIsolated {
     let model = SettingsModel(); model.accounts = [e, twin, other]
     try! Store.save([e, twin, other])
     func rec(_ state: String = "ok", week: Double? = 40, five: Double? = 12, age: TimeInterval = 60, login: String? = u1.email,
-             code: Seat? = u1) -> IconStatus {
-        var s = IconStatus(state: state); s.loginEmail = state == "noLogin" ? nil : login; s.expectedEmail = code?.email
+             code: Seat? = u1) -> StatusRecord {
+        var s = StatusRecord(state: state); s.loginEmail = state == "noLogin" ? nil : login; s.expectedEmail = code?.email
         s.weekly = week; s.fiveHour = five; s.weeklyResets = now.addingTimeInterval(2 * 86400); s.fiveHourResets = now.addingTimeInterval(3600)
         s.updatedAt = now.addingTimeInterval(-age); s.source = "Anthropic"; s.plan = "Max"
         s.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
         return s
     }
     /// Settings ▸ Accounts, the Switch page and the panel preview for profile `p` with record `r` written.
-    func surfaces(_ r: IconStatus?, _ p: AccountEntry? = nil) -> (settings: AccountSettings, page: SwitchPage, preview: DetailsInfo, panel: DetailsInfo) {
+    func surfaces(_ r: StatusRecord?, _ p: AccountEntry? = nil) -> (settings: AccountSettings, page: SwitchPage, preview: DetailsInfo, panel: DetailsInfo) {
         let p = p ?? e
         if let r { _ = Store.writeStatus(p.id, r) } else { Store.removeStatus(p.id) }
         let preview = samplePanel(p, status: Store.status(for: p), now: now)
@@ -2980,7 +2980,7 @@ MainActor.assumeIsolated {
     // the record as the Reader writes it in a clash: the numbers and the plan dropped, the problem the line; the status
     // file only loses those keys (same codec, no other change)
     var asRead = rec(login: u3.email, code: u3); asRead.dropForClash(asRead.resolved?.line)
-    func keys(_ s: IconStatus) -> Set<String> {
+    func keys(_ s: StatusRecord) -> Set<String> {
         Set(((try? JSONSerialization.jsonObject(with: StatusCodec.encode(s) ?? Data())) as? [String: Any] ?? [:]).keys)
     }
     let before = rec(login: u3.email, code: u3)
@@ -3004,7 +3004,7 @@ MainActor.assumeIsolated {
           "a clash: no plan in the Dock menu's title, the Dock panel or the card: \(noSeatDock.menu.items.first?.title ?? "-")")
     // the Switch page's in-use name: the profile's own in a clash, none known there "its account" (never the folder's u3);
     // a record with no account worked out, outside a clash: the folder's own address, else "its account"
-    var unworked = IconStatus(state: "noLogin"); unworked.expectedEmail = u1.email
+    var unworked = StatusRecord(state: "noLogin"); unworked.expectedEmail = u1.email
     unworked.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: nil, loginEmail: nil, names: [:], now: now)
     let unworkedShow = ProfileShow.of(e, raw: unworked, now: now)
     check(SwitchPage.inUseName(clashShow, expected: u3.email) == u1.email && SwitchPage.inUseName(noSeatShow, expected: u3.email) == "its account"
@@ -3125,7 +3125,7 @@ MainActor.assumeIsolated {
     check(us.settings.inUseRow.line == Store.unconfirmedWords && us.settings.inUseRow.full == nil && us.page.inUseRow.line == Store.unconfirmedWords
           && us.page.inUseRow.weekly == nil && us.page.inUseRow.fiveHour == 12, "unconfirmed: the line says so, a full week left out")
     // standby never shown: the standby's own numbers nowhere in the in-use boxes, and it isn't listed in use
-    var standbyRec = IconStatus(state: "ok"); standbyRec.loginEmail = u2.email; standbyRec.weekly = 77; standbyRec.updatedAt = now
+    var standbyRec = StatusRecord(state: "ok"); standbyRec.loginEmail = u2.email; standbyRec.weekly = 77; standbyRec.updatedAt = now
     _ = Store.writeStatus("acc~k2", standbyRec)
     let withStandby = surfaces(rec())
     check(withStandby.settings.inUseRow.limits.allSatisfy { $0.p != 77 } && withStandby.page.inUseRow.limits.allSatisfy { $0.p != 77 }
@@ -3143,8 +3143,8 @@ MainActor.assumeIsolated {
     var s = profile("asp", "~/.claude-asp", mo); s.claudeWindow = true
     s.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
     model.accounts = [s]; try! Store.save([s])
-    func splitRec(_ app: AppSignIn.Login) -> IconStatus {
-        var r = IconStatus(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
+    func splitRec(_ app: AppSignIn.Login) -> StatusRecord {
+        var r = StatusRecord(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
         r.weekly = 30; r.weeklyResets = now.addingTimeInterval(2 * 86400); r.noFiveHour = true; r.updatedAt = now.addingTimeInterval(-120)
         r.resolved = AccountResolver.resolve(s, among: [s], app: app, code: mo, loginEmail: mo.email, names: [:], now: now)
         return r
@@ -3318,7 +3318,7 @@ do {
     let idOnly = Seat(account: h2.account, organization: h2.organization, email: nil), foreign = "hex-9@example.com"
     let otherAcct = "00000000-0000-4000-8000-0000000000e9"
     func shownWeekly(_ r: ResolvedAccount, id: String? = nil) -> Double? {
-        var rec = IconStatus(state: "ok"); rec.loginEmail = r.numbersFor; rec.numbersOwner = r.numbersFor; rec.numbersAccount = id
+        var rec = StatusRecord(state: "ok"); rec.loginEmail = r.numbersFor; rec.numbersOwner = r.numbersFor; rec.numbersAccount = id
         rec.weekly = 40; rec.updatedAt = t0; rec.resolved = r
         _ = Store.writeStatus(me.id, rec)
         return Store.status(for: me, now: t0)?.weekly
@@ -3445,7 +3445,7 @@ do {
     check(orgWithoutID.readStale == nil && !orgWithoutID.differs, "an organisation without the reading's account id: not taken (kept only with the id)")
     let guardKept = orgRead(h2, h2.organization, account: otherAcct)
     check(guardKept.readStale == nil && !guardKept.differs, "the ids' guard unchanged: another id, the folder's organisation and address keep the reading")
-    var withOrgRec = IconStatus(state: "ok"); withOrgRec.numbersOwner = h2.email; withOrgRec.numbersAccount = h2.account; withOrgRec.numbersOrganization = teamOrg
+    var withOrgRec = StatusRecord(state: "ok"); withOrgRec.numbersOwner = h2.email; withOrgRec.numbersAccount = h2.account; withOrgRec.numbersOrganization = teamOrg
     let orgBack = StatusCodec.encode(withOrgRec).flatMap(StatusCodec.decode)
     var orgNoAcct = withOrgRec; orgNoAcct.numbersAccount = nil
     check(orgBack?.readingOrganization == teamOrg && orgNoAcct.readingOrganization == nil
@@ -3536,7 +3536,7 @@ do {
     check(!due(s0, s1, asking: true) && !due(s0, s1, ready: false), "…never while one runs, never on a folder that isn't there")
     // the record's new field: an older record (no numbersAccount) decodes, with no id; a new one keeps it
     let olderRec = StatusCodec.decode(Data(#"{"state":"ok","numbersOwner":"hex-2@example.com","weekly":40}"#.utf8))
-    var withID = IconStatus(state: "ok"); withID.numbersOwner = h2.email; withID.numbersAccount = h2.account
+    var withID = StatusRecord(state: "ok"); withID.numbersOwner = h2.email; withID.numbersAccount = h2.account
     let back = StatusCodec.encode(withID).flatMap(StatusCodec.decode)
     var noOwner = withID; noOwner.numbersOwner = nil
     check(olderRec?.numbersOwner == h2.email && olderRec?.numbersAccount == nil && olderRec?.readingAccount == nil
@@ -3561,7 +3561,7 @@ do {
             #"{"oauthAccount":{"accountUuid":"\#(s.account)","organizationUuid":"\#(s.organization!)","emailAddress":"\#(s.email!)"}}"#)
     }
     func seatRecord(_ id: String, org: String) {
-        var r = IconStatus(state: "ok"); r.loginEmail = h2.email; r.numbersOwner = h2.email; r.numbersAccount = h2.account
+        var r = StatusRecord(state: "ok"); r.loginEmail = h2.email; r.numbersOwner = h2.email; r.numbersAccount = h2.account
         r.numbersOrganization = org; r.weekly = 40; r.updatedAt = Date()
         _ = Store.writeStatus(id, r)
     }
@@ -3569,7 +3569,7 @@ do {
     var seatAway = profile("hseataway", "~/.claude-hseataway", h1); seatAway.claudeWindow = false
     folderOn("~/.claude-hseatnow", h2); folderOn("~/.claude-hseataway", h1)
     seatRecord("hseatnow", org: teamOrg)
-    var awayRec = IconStatus(state: "ok"); awayRec.loginEmail = h1.email; awayRec.numbersOwner = h1.email; awayRec.numbersAccount = h1.account
+    var awayRec = StatusRecord(state: "ok"); awayRec.loginEmail = h1.email; awayRec.numbersOwner = h1.email; awayRec.numbersAccount = h1.account
     awayRec.numbersOrganization = otherOrg.organization; awayRec.weekly = 40; awayRec.updatedAt = Date()
     _ = Store.writeStatus("hseataway", awayRec)
     try! Store.save([seatNow, seatAway])                        // (profiles on file: not the first run, which answers nothing)
@@ -3924,7 +3924,7 @@ MainActor.assumeIsolated {
     e.standby = [StandbyAccount(email: a2, seat: seat(42, a2), id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400)),
                  StandbyAccount(email: a3, seat: seat(43, a3), id: "k3", plan: "Max", lastInUse: now.addingTimeInterval(-2 * 86400))]
     try! Store.save([e])
-    var rec = IconStatus(state: "ok"); rec.loginEmail = a1; rec.expectedEmail = a1; rec.weekly = 100; rec.fiveHour = 12
+    var rec = StatusRecord(state: "ok"); rec.loginEmail = a1; rec.expectedEmail = a1; rec.weekly = 100; rec.fiveHour = 12
     rec.weeklyResets = now.addingTimeInterval(3 * 3600); rec.fiveHourResets = now.addingTimeInterval(3600)
     rec.updatedAt = now.addingTimeInterval(-60); rec.source = "Anthropic"; rec.plan = "Max"
     rec.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: seat(41, a1), loginEmail: a1, names: [:], now: now)
@@ -3992,7 +3992,7 @@ MainActor.assumeIsolated {
         check(resolved.differs && resolved.line == nil && resolved.codeUsageLine == true && resolved.codeName == a3
               && resolved.lineText() == "Usage: Claude Code on \(a3)" && resolved.lineText(blur: true) == "Usage: Claude Code on hidden address",
               "M1: resolved while shown: the record holds the fact and the account, no sentence; the sentence is built per setting")
-        var rec = IconStatus(state: "ok"); rec.loginEmail = a3; rec.expectedEmail = a1; rec.weekly = 40; rec.fiveHour = 12
+        var rec = StatusRecord(state: "ok"); rec.loginEmail = a3; rec.expectedEmail = a1; rec.weekly = 40; rec.fiveHour = 12
         rec.weeklyResets = now.addingTimeInterval(2 * 86400); rec.fiveHourResets = now.addingTimeInterval(3600); rec.updatedAt = now.addingTimeInterval(-60)
         rec.source = "Anthropic"; rec.plan = "Max"; rec.resolved = resolved
         _ = Store.writeStatus("pm", rec)
@@ -4063,7 +4063,7 @@ MainActor.assumeIsolated {
         // an expired sign-in on the card: the notice names "hidden address"
         var px = profile("px", "~/.claude-px", seat(71, a1)); px.claudeWindow = false
         try! Store.save([pm, px])
-        var exp = IconStatus(state: "expired"); exp.loginEmail = a1; exp.expectedEmail = a1; exp.updatedAt = now
+        var exp = StatusRecord(state: "expired"); exp.loginEmail = a1; exp.expectedEmail = a1; exp.updatedAt = now
         exp.resolved = AccountResolver.resolve(px, among: [px], app: .unknown, code: seat(71, a1), loginEmail: a1, names: [:], now: now)
         _ = Store.writeStatus("px", exp)
         let notice = UsageNotice.of(cardRow(px, now: now))
@@ -4174,7 +4174,7 @@ MainActor.assumeIsolated {
         let appIn = AppSignIn.Login(account: uuid(71), org: uuid(171), state: .known, source: "log", at: now)
         AddressPrivacy.shared.apply(blur: false)
         let resolvedF = AccountResolver.resolve(pf, among: [pf], app: appIn, code: seat(73, a3), loginEmail: a3, names: [:], now: now)
-        var recF = IconStatus(state: "ok"); recF.loginEmail = a3; recF.expectedEmail = a1; recF.weekly = 40; recF.fiveHour = 12
+        var recF = StatusRecord(state: "ok"); recF.loginEmail = a3; recF.expectedEmail = a1; recF.weekly = 40; recF.fiveHour = 12
         recF.weeklyResets = now.addingTimeInterval(2 * 86400); recF.fiveHourResets = now.addingTimeInterval(3600); recF.updatedAt = now.addingTimeInterval(-60)
         recF.source = "Anthropic"; recF.plan = "Max"; recF.resolved = resolvedF
         _ = Store.writeStatus("pf", recF)
@@ -4372,10 +4372,10 @@ do {
     let now = Date()
     var e = profile("kitface", "~/.claude-kitface", seat(81, "kit@example.com"))
     e.pollMinutes = 7; e.windowDot = false
-    var rec = IconStatus(state: "ok")
+    var rec = StatusRecord(state: "ok")
     rec.loginEmail = "kit@example.com"; rec.expectedEmail = "kit@example.com"; rec.updatedAt = now
     rec.fiveHour = 42; rec.fiveHourResets = now.addingTimeInterval(2 * 3600); rec.weekly = 61; rec.weeklyResets = now.addingTimeInterval(3 * 86400)
-    func face(_ r: IconStatus, windowOpen: Bool = true) -> TileModel { TileModel.face(e, ProfileShow.of(e, raw: r, now: now), windowOpen: windowOpen, now: now) }
+    func face(_ r: StatusRecord, windowOpen: Bool = true) -> TileModel { TileModel.face(e, ProfileShow.of(e, raw: r, now: now), windowOpen: windowOpen, now: now) }
     func near(_ a: Double?, _ b: Double) -> Bool { a.map { abs($0 - b) < 0.01 } ?? false }
     check(e.look == ProfileLook(name: "Kitface", label: "KITFACE", pollMinutes: 7, windowDot: false), "a profile's look in the kit's terms")
     // fresh numbers: the label, both percents, the share of each window gone (5-hour: 2 h of 5 left, 60; week: 3 days of 7

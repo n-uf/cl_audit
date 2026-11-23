@@ -157,7 +157,7 @@ struct AccountRow: Identifiable {
     /// The agent is starting the Dock icon with its window.
     var followStarting = false
     /// The record as the headline surfaces read it (Store.status(for:)): its plan, credits, addresses and state, for words.
-    var status: IconStatus? { show.record }
+    var status: StatusRecord? { show.record }
     var display: ProfileDisplay { show.display }
     /// The profile's account as its record says it (AccountResolver): the card's line under the name.
     var view: AccountView { show.view }
@@ -226,7 +226,7 @@ extension Limit {
 
     /// A record's limits, as Store.status(for:) gives it (Settings ▸ Accounts' boxes and the Switch page, Claude Code's own
     /// row included).
-    static func card(_ s: IconStatus?, entry e: AccountEntry) -> [Limit] {
+    static func card(_ s: StatusRecord?, entry e: AccountEntry) -> [Limit] {
         card(fiveHour: s?.fiveHour, fiveHourResets: s?.fiveHourResets, weekly: s?.weekly, weeklyResets: s?.weeklyResets,
              scoped: s?.scoped ?? [], noFiveHour: s?.noFiveHour == true, fable: e.showFable)
     }

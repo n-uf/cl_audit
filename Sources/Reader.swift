@@ -406,7 +406,7 @@ final class UsageReader {
         if !machine.onOtherAccount, a.acts, a.numbers() {
             noteBack(u)
             // the account in use as the resolver says it now (the record is saved after this)
-            var view = IconStatus(state: "ok"); view.resolved = resolved
+            var view = StatusRecord(state: "ok"); view.resolved = resolved
             checkThresholds(u, inUse: AccountView.of(view))
             noteCredits(u, before: before, now: now)
         }
@@ -691,7 +691,7 @@ final class UsageReader {
     func save() {
         let m = machine, usage = m.usage, state = m.state
         guard !m.stopped else { return }
-        var status = IconStatus(state: "\(state)")
+        var status = StatusRecord(state: "\(state)")
         status.loginEmail = m.loginEmail; status.expectedEmail = expectedEmail
         status.fiveHour = usage?.fiveHour; status.weekly = usage?.weekly; status.updatedAt = usage?.fetchedAt
         status.renewNote = m.renewNote; status.fiveHourResets = usage?.fiveHourResets; status.weeklyResets = usage?.weeklyResets
