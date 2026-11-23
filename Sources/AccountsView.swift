@@ -71,7 +71,7 @@ struct AccountBox<Header: View, Content: View>: View {
                 } else if let split {
                     // the display's two parts, both lit: TERMINAL, then APP (DisplayWindow's text and its second part)
                     DisplayWindow(text: SplitBadge.terminalWord, dim: SplitBadge.appWord, tone: split.terminal, height: 18, size: 9,
-                                  dimTone: split.app)
+                                  dimTone: split.app, divider: true)
                         .padding(.top, compact ? 0 : 1)
                 } else {
                     DisplayWindow(text: badge, tone: badgeTone, height: 18, size: 9).padding(.top, compact ? 0 : 1)

@@ -203,8 +203,10 @@ struct SplitUsage: Equatable {
     static let windowLine = "Claude window on another account"
     /// The keys of the band's two rows: on Terminal's account (it opens the Switch page) and on the Claude app's (Terminal's
     /// own sign-in, the app's address filled in when known).
-    static let appSignInKey = "Sign the Claude app in"
+    static let appSignInKey = "Sign the app in"
     static let terminalSignInKey = "Sign Terminal in"
+    /// The Dock panel's compact key in the split: Terminal's sign-in to the window's account.
+    static let panelSignInKey = "Sign in"
     /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…"; a switch waiting for the app:
     /// its first clause, "Switching to M@…: one step left".
     var shortLine: String {

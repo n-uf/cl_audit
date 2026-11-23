@@ -557,6 +557,7 @@ struct DisplayWindow: View {
     var fill = false                // take the whole width it's given (still the same whatever the text)
     var dimTone: Tone? = nil        // the second part in its own colour at full strength (RUNNING · HIDDEN)
     var black = false               // black glass with light printing on every face (the history totals)
+    var divider = false             // a hairline between the two parts (the split's TERMINAL | APP)
     @Environment(\.face) private var outer
 
     /// One meaning each: ok (green) = in use; mint = switching, and the account switched to; amber = waiting or a
@@ -587,6 +588,8 @@ struct DisplayWindow: View {
                 .shadow(color: face.displayGlow ? color.opacity(black && outer.light ? 0.35 : 0.75) : .clear, radius: 1.5)
                 .shadow(color: face.displayGlow && !(black && outer.light) ? color.opacity(0.35) : .clear, radius: 4.5)
             if let dim {
+                // two parts of one display (the split's TERMINAL | APP): a hairline between them
+                if divider { Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1).padding(.vertical, 3) }
                 if let dimTone {
                     let c2 = toneColor(dimTone)
                     Text(dim).foregroundStyle(c2).shadow(color: face.displayGlow ? c2.opacity(0.7) : .clear, radius: 1.5)
@@ -693,12 +696,25 @@ extension View {
 struct TopBandFill: View {
     let radius: CGFloat
     var body: some View {
-        let c = Color.hex(0xff6b5e)
-        LinearGradient(colors: [c.opacity(0.11), c.opacity(0.05)], startPoint: .top, endPoint: .bottom)
-            .overlay(alignment: .bottom) { c.opacity(0.17).frame(height: 1) }
+        let c = SplitAmber.base
+        LinearGradient(colors: [c.opacity(0.12), c.opacity(0.05)], startPoint: .top, endPoint: .bottom)
+            .overlay(alignment: .bottom) { c.opacity(0.18).frame(height: 1) }
             .clipShape(TopRounded(radius: radius))
             .allowsHitTesting(false)
     }
+}
+
+/// The split's amber (the Claude app and Terminal on different accounts): a warning, not a failure, since Terminal's
+/// numbers still work. The app's warning amber (FaceTheme.caution's #f59e0b) and its lighter print.
+enum SplitAmber {
+    /// The band's fill and lines, the header's hairline.
+    static let base = Color.hex(0xf59e0b)
+    /// The band's headline.
+    static func headline(_ f: FaceTheme) -> Color { f.light ? .hex(0xa85f00) : .hex(0xfbbf24) }
+    /// The band's two lines under it.
+    static func sub(_ f: FaceTheme) -> Color { f.light ? f.muted : .hex(0xb4b1ab) }
+    /// The linked line on the card, the menu bar row and the Dock panel.
+    static func link(_ f: FaceTheme) -> Color { f.light ? .hex(0xa85f00) : .hex(0xf5b54a) }
 }
 
 /// A rectangle with only its top corners rounded (continuous enough at a panel's 4–10 pt radius): macOS 13 has no

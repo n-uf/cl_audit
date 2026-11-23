@@ -1212,8 +1212,9 @@ struct TileText: View {
 struct SCard<Content: View>: View {
     let title: String
     var info: String? = nil
-    /// A red band at the very top of the card, above its title (the split's, Settings ▸ Accounts): its fill starts at the
-    /// card's top edge, inside its rounded top corners, edge to edge; what it holds keeps the card's own padding.
+    /// An amber band at the top of the card (the split's, Settings ▸ Accounts): it starts at the card's top edge, inside
+    /// its rounded corners, edge to edge, and holds the card's header (its hairline tinted amber, the one line) and then
+    /// `top`; what it holds keeps the card's own padding.
     var top: AnyView? = nil
     @ViewBuilder let content: Content
     @Environment(\.face) private var face
@@ -1221,23 +1222,52 @@ struct SCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let top {
-                top.padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 14)
+                VStack(alignment: .leading, spacing: 8) { SectionHeader(title: title, info: info, inBand: true); top }
+                    .padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(TopBandFill(radius: face.moduleRadius))
+                VStack(spacing: 0) { content }.padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 10)
+            } else {
+                VStack(alignment: .leading, spacing: 4) { SectionHeader(title: title, info: info); VStack(spacing: 0) { content } }
+                    .padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 10)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Printed(text: title)
-                    if let info { InfoDot(text: info) }
-                    EngravedRule(dark: face.light ? .black(0.28) : nil).frame(minWidth: 12)
-                }
-                .padding(.bottom, 4)
-                VStack(spacing: 0) { content }
-            }
-            .padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 10)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RaisedShape(finish: face.module, radius: face.moduleRadius))
+    }
+}
+
+/// The widest of the split band's key labels, as drawn (Settings ▸ Accounts: "Sign the app in", "Sign Terminal in").
+struct SplitKeyWidth: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// A section's header in a card: the printed title, its (i) and the hairline after it, the section's one line (the row
+/// under it starts with no separator of its own: SRow `first`). Inside the split's amber band the title is a light amber
+/// and the hairline one amber line, not the engraved pair.
+struct SectionHeader: View {
+    let title: String
+    var info: String? = nil
+    var inBand = false
+    @Environment(\.face) private var face
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if inBand {
+                Text(title).font(.system(size: 9.5, weight: .semibold)).tracking(9.5 * 0.16).textCase(.uppercase)
+                    .foregroundStyle(face.light ? Color.hex(0x8a4b00) : Color.hex(0xffe3b0)).lineLimit(1).fixedSize()
+            } else {
+                Printed(text: title)
+            }
+            if let info { InfoDot(text: info) }
+            if inBand {
+                Rectangle().fill(SplitAmber.base.opacity(face.light ? 0.45 : 0.25)).frame(minWidth: 12).frame(height: 1)
+            } else {
+                EngravedRule(dark: face.light ? .black(0.28) : nil).frame(minWidth: 12)
+            }
+        }
+        .padding(.bottom, inBand ? 2 : 4)
     }
 }
 
@@ -1586,13 +1616,18 @@ struct AccountSettings: View {
         InSettingsColumn { columnWidth in codeCard(stacked: columnWidth < SRow<EmptyView>.stackBelow) }
     }
 
+    /// Claude Code's card in two sections: ACCOUNTS (the accounts this profile has; in the split by hand the amber band
+    /// from the card's top edge, the header inside it) and FOLDER (the Claude Code folder, with Share from and Shared).
+    /// Each section header's hairline is its one line: no separator right under it.
     private func codeCard(stacked: Bool) -> some View {
-        SCard(title: "Claude Code",
-              info: "The claude.ai account this profile uses and the Claude Code folder it lives in. Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.",
-              // the split by hand: its red band at the card's very top, nothing above it
+        SCard(title: "Accounts", info: loginInfo,
+              // the split by hand: the amber band from the card's top edge, the ACCOUNTS header inside it
               top: splitBand ? view.codeRow.map { AnyView(splitBandRows($0)) } : nil) {
             accountRows(stacked: stacked)
-            SRow(label: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder; folders are used where they are (Claude Code names a folder's Keychain sign-in after its path).", stacked: stacked) {
+            // FOLDER: its header's hairline is the section's one line, so its first row has no separator of its own
+            SectionHeader(title: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder; folders are used where they are (Claude Code names a folder's Keychain sign-in after its path). Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.")
+                .padding(.top, 10)
+            SRow(label: "Folder", first: true, stacked: stacked) {
                 // the folder key beside the pop-up while the whole path fits; in a narrow column the pop-up alone (its
                 // menu has "Choose another folder…" too)
                 ViewThatFits(in: .horizontal) {
@@ -1689,8 +1724,7 @@ struct AccountSettings: View {
             else { return nil }
             return (was, at)
         }
-        // Accounts: the boxes need the card's width, so the row is always stacked (label above)
-        SRow(label: "Accounts", info: loginInfo, first: true, stacked: true) {
+        // the accounts: the boxes take the card's width, under the card's own ACCOUNTS header (no label of their own)
             VStack(alignment: .leading, spacing: 8) {
                 ClaudeMissingLine(model: model)          // every sign-in key below needs Claude Code: say so when it isn't there
                 // a switch of this profile running, or refused before anything: one line, the Switch page's strip words
@@ -1714,7 +1748,8 @@ struct AccountSettings: View {
                 usualAppNote
                 leftoverRows
             }
-        }
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
         // one grey line, worded like New profile's and short enough for one line in a 460 pt column
         if mismatch {
             rowLine("The Keychain's sign-in is another account than the folder's .claude.json names.")
@@ -1823,17 +1858,30 @@ struct AccountSettings: View {
     /// here (SettingsLink.splitBand).
     func splitBandRows(_ code: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(SplitUsage.bandHead).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.danger)
-                Text(SplitUsage.bandWhy).font(.system(size: 11.5)).foregroundStyle(face.muted)
-                Text(SplitUsage.bandFix).font(.system(size: 11.5)).foregroundStyle(face.muted)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(SplitUsage.bandHead).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(SplitAmber.headline(face))
+                Text(SplitUsage.bandWhy).font(.system(size: 11.5)).foregroundStyle(SplitAmber.sub(face))
+                Text(SplitUsage.bandFix).font(.system(size: 11.5)).foregroundStyle(SplitAmber.sub(face))
             }
             .fixedSize(horizontal: false, vertical: true)
             .padding(.bottom, 2)
             splitTerminalBox(code)
             splitAppBox
         }
+        // the two keys share one width, the wider label's (SplitKeyWidth), so they line up
+        .onPreferenceChange(SplitKeyWidth.self) { splitKeyLabel = $0 }
         .id(SettingsLink.splitBand)
+    }
+
+    /// One of the band's two keys: the metal compact key with an amber dot, its label centred in the width both labels
+    /// share (the wider one's, measured: SplitKeyWidth), so the two keys are one width and still sized to their labels.
+    func splitKey(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .background(GeometryReader { g in Color.clear.preference(key: SplitKeyWidth.self, value: g.size.width) })
+                .frame(minWidth: splitKeyLabel)
+        }
+        .buttonStyle(PillButtonStyle(tint: FaceTheme.ledAmber, compact: true)).fixedSize()
     }
 
     /// Terminal's account in the band: amber lamp, TERMINAL lit green and APP red, its numbers (read through Terminal's
@@ -1846,8 +1894,7 @@ struct AccountSettings: View {
             AccountBoxTitle(text: code)
         } content: {
             limitsOrWhy(own, entry: entry, none: nil)
-            Button(SplitUsage.appSignInKey) { if let p = pick { model.showSwitch(AccountEntry.switchKey(entry.id, p.id)) } }
-                .buttonStyle(PillButtonStyle(tint: FaceTheme.ledRed, compact: true)).fixedSize()
+            splitKey(SplitUsage.appSignInKey) { if let p = pick { model.showSwitch(AccountEntry.switchKey(entry.id, p.id)) } }
                 .disabled(pick == nil)
                 .help("Opens the Switch page: the Claude window closes, its sessions move to \(AddressSettings.words(code)), and you sign the Claude app in there.")
         }
@@ -1863,11 +1910,10 @@ struct AccountSettings: View {
     /// address filled in (ProfileShow.loginAddress; none filled in while the app's account is known by its id only).
     var splitAppBox: some View {
         let v = view
-        return AccountBox(lamp: FaceTheme.ledRed, badge: "", detail: inUsePlan.map(Account.planWords), inUse: true, split: .app) {
+        return AccountBox(lamp: FaceTheme.ledAmber, badge: "", detail: inUsePlan.map(Account.planWords), inUse: true, split: .app) {
             loginPopUp(v.label ?? (v.recordTooLarge ? "account not known (record too large)" : "not signed in yet"))
         } content: {
-            Button(SplitUsage.terminalSignInKey) { signInAgain(email: show.loginAddress) }
-                .buttonStyle(PillButtonStyle(tint: FaceTheme.ledRed, compact: true)).fixedSize()
+            splitKey(SplitUsage.terminalSignInKey) { signInAgain(email: show.loginAddress) }
                 .disabled(signingIn)
                 .help(show.loginAddress.map { "Sign Terminal in to \(AddressSettings.words($0)), the Claude app's account" }
                       ?? "Sign Terminal in to the Claude app's account")
@@ -2029,6 +2075,8 @@ struct AccountSettings: View {
         }
     }
     @State private var newestSwitch: SwitchReceipt?
+    /// The wider of the split band's two key labels (SplitKeyWidth): both keys take it.
+    @State private var splitKeyLabel: CGFloat = 0
 
     /// The account the profile's current switch went for: the runner's goal while it has one going or just ended (nil for a
     /// sign-in again); else (after a restart) the profile's newest switch: when it went to Claude Code's account (`code`,
