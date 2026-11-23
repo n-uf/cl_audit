@@ -1541,7 +1541,7 @@ do {
     check(split?.app == pat.email && split?.code == mo.email, "the split: the app on pat, Claude Code on mo")
     // the headline record: no numbers, no plan, the line instead; nothing full, red or counting down
     check(head?.weekly == nil && head?.fiveHour == nil && head?.plan == nil && AccountView.of(head).label == pat.email
-          && AccountView.of(head).line == "cl_audit can't read \(AddressSettings.words(pat.email!))'s usage: Claude Code in Terminal is signed in to \(AddressSettings.words(mo.email!)).",
+          && AccountView.of(head).line == "The Claude app and Terminal are signed in to different accounts.",
           "the profile's record has no numbers for pat, and its line says so: \(AccountView.of(head).line ?? "-")")
     // the record holds the fact, not the sentence (the sentence names both accounts): the line is built when it is drawn, so the
     // same record read again with Show emails off says "hidden address" and a record never holds an address-bearing line
@@ -1550,7 +1550,7 @@ do {
     let splitHidden = AccountView.of(head).line ?? ""
     AddressPrivacy.shared.apply(blur: false)
     check(head?.resolved?.line == nil && head?.resolved?.splitLine == true && head?.resolved?.lineText() == splitSentence
-          && splitHidden == "cl_audit can't read hidden address's usage: Claude Code in Terminal is signed in to hidden address."
+          && splitHidden == SplitUsage.bandHead && splitSentence == SplitUsage.bandHead
           && !splitHidden.contains("example.com") && !splitHidden.contains("@"),
           "the split's sentence is not stored in the record (a flag), and it is said by the setting when drawn: \(splitHidden)")
     let row = cardRow(e, now: now)
@@ -1561,9 +1561,9 @@ do {
           "the menu bar strip and the Dock icon: no numbers for pat (neutral)")
     check(previewShowsNone(e, head) && panelShowsNone(e, head),
           "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
-    check(row.show.splitWords?.key == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!))…" && split?.loginEmail == pat.email,
-          "the key: Sign Claude Code in Terminal in to pat, with pat's address filled in")
-    check(split?.numbersHint == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!)) to see its numbers."
+    check(row.show.splitWords?.key == "Sign Terminal in" && split?.loginEmail == pat.email,
+          "the key: Sign Terminal in, with pat's address filled in")
+    check(split?.numbersHint == "Sign Terminal in to \(AddressSettings.words(pat.email!)) to see its numbers."
           && split?.shortLine == "Can't read \(AddressSettings.words(pat.email!))'s usage\nTerminal: \(AddressSettings.words(mo.email!))",
           "the line under it and the short form: \(split?.numbersHint ?? "-") / \(split?.shortLine ?? "-")")
     let splitShow = ProfileShow.load(e, now: now)
@@ -1582,10 +1582,16 @@ do {
     let notSplitShow = ProfileShow.of(e, raw: notSplit, now: now)
     check(MenuBarRow.lineWords(barProfile) == split?.shortLine && notSplitShow.display.split == nil
           && MenuBarRow.lineWords(MenuBarItems.Profile(show: notSplitShow)) == notSplit.resolved?.lineText(),
-          "the menu bar row says the short split line, and the record's line outside the split")
-    // every key and menu item reads its label once, with its ellipsis (the menus no longer add one)
-    check(split?.key?.hasSuffix("…") == true && split?.key?.hasSuffix("……") == false && split?.shortKey?.hasSuffix("…") == true,
-          "the keys carry their ellipsis once")
+          "the menu bar row's short split line, and the record's line outside the split")
+    // the menu bar row draws the card's red line in its place, the same link: this profile's Settings ▸ Accounts, at the
+    // split's red band; none outside the split
+    check(MenuBarRow.splitLink(barProfile) == SettingsLink(profile: "spl", section: SettingsLink.splitBand)
+          && MenuBarRow.splitLink(barProfile) == UsageNotice.of(row)?.link
+          && MenuBarRow.splitLink(MenuBarItems.Profile(show: notSplitShow)) == nil,
+          "the menu bar row's red line links to spl's Settings ▸ Accounts at the split band: \(String(describing: MenuBarRow.splitLink(barProfile)))")
+    // keys carry no ellipsis (menu items keep theirs); the Dock panel's short key is held for its own sketch
+    check(split?.key?.hasSuffix("…") == false && split?.shortKey?.hasSuffix("…") == true,
+          "the Settings key has no ellipsis; the Dock panel's held short key keeps its one")
     // no split surface says "No usage" or "yet" (the lines, the key, the hint, the short form), whether the addresses show or
     // are hidden (AddressText.hidden: the setting itself is the operator's, never touched here) and with the app's account by id
     for (what, app, code) in [("shown", pat.email!, mo.email!), ("hidden", AddressText.hidden, AddressText.hidden),
@@ -1639,8 +1645,8 @@ do {
     anonRec.resolved = AccountResolver.resolve(e, among: [e], app: anon, code: mo, loginEmail: mo.email, names: [:], now: now)
     _ = Store.writeStatus("spl", anonRec)
     let anonSplit = ProfileShow.load(e).splitWords
-    check(anonSplit != nil && anonSplit?.key == nil && anonSplit?.hint == "Sign Claude Code in Terminal in to the Claude app's account"
-          && anonSplit?.numbersHint == "Sign Claude Code in Terminal in to the Claude app's account to see its numbers."
+    check(anonSplit != nil && anonSplit?.key == nil && anonSplit?.hint == "Sign Terminal in to the Claude app's account"
+          && anonSplit?.numbersHint == "Sign Terminal in to the Claude app's account to see its numbers."
           && ProfileShow.load(e).loginAddress == nil,
           "the app's account known by its id only: no key, the hint, and no address (never mo's): \(anonSplit?.app ?? "-")")
     launches.removeAll(); scripts.removeAll()
@@ -1674,18 +1680,18 @@ do {
     let zed = Seat(account: uuid(33), organization: uuid(73), email: "zed@example.com")
     let appZed = AppSignIn.Login(account: zed.account, org: zed.organization, state: .known, source: "log", at: now)
     let third = splitWith(app: appZed, newest: linkedToMo, names: [zed.account.lowercased(): zed.email!])
-    check(third?.switched == false && third?.key?.hasPrefix("Sign Claude Code in Terminal in to ") == true && third?.line.hasPrefix("cl_audit can't read ") == true,
+    check(third?.switched == false && third?.key == SplitUsage.terminalSignInKey && third?.line == SplitUsage.bandHead,
           "the app on a third account (not the one the switch left): a split by hand, the B8 line and key")
     var undone = toMo; undone.undone = now
     var leftAsIs = toMo; leftAsIs.leftAsIs = now
     for (what, r) in [("undone", undone), ("left as it is", leftAsIs)] {
         let s = splitWith(app: appPat, newest: r)
-        check(s?.switched == false && s?.key == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!))…" && s?.loginEmail == pat.email,
+        check(s?.switched == false && s?.key == SplitUsage.terminalSignInKey && s?.loginEmail == pat.email,
               "the switch \(what): a split by hand, the B8 line and key")
     }
     var dayOld = linkedToMo; dayOld.linked = now.addingTimeInterval(-25 * 3600)
     let dayOldSplit = splitWith(app: appPat, newest: dayOld)
-    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Sign Claude Code in Terminal in to \(AddressSettings.words(pat.email!))…",
+    check(dayOldSplit?.switched == false && dayOldSplit?.key == SplitUsage.terminalSignInKey && dayOldSplit?.loginEmail == pat.email,
           "a switch linked 25 hours ago waits no more: a split by hand, the B8 line and key")
     let older = splitWith(app: appPat, newest: nil)
     check(older?.switched == false && older?.key != nil, "no switch at all: a split by hand")
@@ -2545,16 +2551,21 @@ do {
     }
     let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
     let split = card(splitRec(app: appPat), s, "split")
-    check(split.notice?.heading == "Terminal is signed in to \(AddressSettings.words(mo.email!))" && split.notice?.tone == .red
-          && split.notice?.key == .signIn && split.notice?.line == "Sign in as \(AddressSettings.words(pat.email!)) to read Csp's usage."
+    check(split.notice?.heading == "Claude window on another account" && split.notice?.tone == .red
+          && split.notice?.key == UsageNotice.Key.none && split.notice?.line == ""
           && split.row.lit && split.row.full == nil && split.row.limits.allSatisfy { $0.p == nil } && split.row.status?.plan == nil
-          && split.row.show.loginAddress == pat.email, "the split: red, Sign in… as pat, lit (pat is in use), no numbers or plan, nothing full")
+          && split.row.show.loginAddress == pat.email, "the split: one red line, no key on the card, lit (pat is in use), no numbers or plan, nothing full")
+    // the red line is a link to this profile's Settings ▸ Accounts, at the split's red band; the window key reddish, then
+    // Terminal and ⋯ (the keys row: Show window, Terminal, ⋯)
+    let splitActs = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    check(split.notice?.link == SettingsLink(profile: "csp", section: SettingsLink.splitBand) && split.notice?.windowRed == true
+          && AccountCard(row: split.row, actions: splitActs).windowKeyTint == FaceTheme.ledRed && split.terminalInRow,
+          "the split: the red line links to csp's Settings ▸ Accounts at the band, the window key reddish, Terminal in the row")
     let anonApp = AppSignIn.Login(account: uuid(63), org: uuid(163), state: .known, source: "log", at: now)
     let anon = card(splitRec(app: anonApp), s, "split, the app's account by id")
-    check(anon.notice?.key == UsageNotice.Key.none && anon.notice?.line == "Sign Claude Code in Terminal in to the Claude app's account."
-          && anon.row.show.loginAddress == nil && anon.terminalInRow,
-          "the split with the app's account known by its id only: no key (the value's), the hint, Terminal in the keys row")
-    check(!split.terminalInRow, "the split with its Sign in…: Terminal steps into ⋯")
+    check(anon.notice?.key == UsageNotice.Key.none && anon.notice?.heading == SplitUsage.windowLine
+          && anon.notice?.link == SettingsLink.split("csp") && anon.row.show.loginAddress == nil && anon.terminalInRow,
+          "the split with the app's account known by its id only: the same red line and link, no key, Terminal in the keys row")
     var toMo = SwitchReceipt(id: SwitchEngine.receiptID(now, "csp"), profile: "csp", standby: "km", dataDir: "/x", from: SeatID(pat), to: SeatID(mo), started: now)
     toMo.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
     toMo.linked = now
@@ -2575,7 +2586,7 @@ do {
     // says it. Every pair that can co-occur in a record:
     let anotherAccount = "Terminal is signed in to another account"
     let expiredHead = "Terminal's sign-in has expired", outHead = "Terminal is signed out"
-    let ownMo = "Terminal is signed in to \(AddressSettings.words(mo.email!))"
+    let ownMo = SplitUsage.windowLine
     try! Store.save([e, other, s])
     let precedence: [(String, IconStatus, AccountEntry?, String?)] = [
         // (the profile `card`: Claude Code on u1; Other's account is u3)
@@ -2873,17 +2884,46 @@ MainActor.assumeIsolated {
     }
     let split = surfaces(splitRec(AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)), s)
     check(split.panel.weekly == nil && abs((split.panel.updated?.timeIntervalSince(now) ?? 0) + 120) < 1 && split.panel.noNumbers == nil
-          && split.settings.inUseRow.lit && UsageNotice.of(split.settings.inUseRow)?.key == .signIn && split.settings.popUpSignInAddress == pat.email
-          && same(split.preview, split.panel) && split.preview.splitKey != nil,
-          "the split: the panel's age line says when (not Reading usage…), Settings lit with Sign in… to pat, the preview as the panel")
+          && split.settings.inUseRow.lit && split.settings.splitBand && split.settings.popUpSignInAddress == pat.email
+          && split.settings.show.loginAddress == pat.email && same(split.preview, split.panel) && split.preview.splitKey != nil,
+          "the split: the panel's age line says when (not Reading usage…), Settings lit with its band, pat's address for Sign Terminal in, the preview as the panel")
+    // the band (Settings ▸ Accounts): its words, its two rows (lamps, the TERMINAL APP badge with each row's half green and
+    // the missing half bright red, Terminal's row not selectable) and their keys
+    func bandBox(_ v: Any) -> (lamp: Color?, split: SplitBadge?, tap: Bool, selected: Bool)? {
+        let m = Mirror(reflecting: v)
+        if "\(m.subjectType)".hasPrefix("AccountBox<") {
+            func val(_ k: String) -> Any? { m.children.first { $0.label == k }?.value }
+            func some(_ a: Any?) -> Any? { a.flatMap { Mirror(reflecting: $0).children.first?.value } }
+            return (some(val("lamp")) as? Color, some(val("split")) as? SplitBadge, some(val("tap")) != nil, val("selected") as? Bool ?? false)
+        }
+        for c in m.children { if let p = bandBox(c.value) { return p } }
+        return nil
+    }
+    let termBox = bandBox(split.settings.splitTerminalBox(mo.email!)), appBox = bandBox(split.settings.splitAppBox)
+    check(termBox?.lamp == FaceTheme.ledAmber && termBox?.split == .terminal && termBox?.tap == false && termBox?.selected == false
+          && appBox?.lamp == FaceTheme.ledRed && appBox?.split == .app && appBox?.tap == false,
+          "the band's rows: Terminal's amber with its badge, not selectable (no click); the Claude app's red with its badge: \(String(describing: termBox)) / \(String(describing: appBox))")
+    check(SplitBadge.terminal.terminal == .ok && SplitBadge.terminal.app == .warn && SplitBadge.app.terminal == .warn && SplitBadge.app.app == .ok
+          && SplitBadge.terminalWord == "Terminal" && SplitBadge.appWord == "App",
+          "the badge: TERMINAL then APP; Terminal's row TERMINAL green, APP bright red; the Claude app's row TERMINAL bright red, APP green")
+    check(SplitUsage.bandHead == "The Claude app and Terminal are signed in to different accounts."
+          && SplitUsage.bandWhy == "cl_audit can read usage only through Terminal's sign-in, so the Claude app's account shows no numbers."
+          && SplitUsage.bandFix == "Use the key on either account to put both on the same account."
+          && SplitUsage.appSignInKey == "Sign the Claude app in" && SplitUsage.terminalSignInKey == "Sign Terminal in"
+          && SplitUsage.windowLine == "Claude window on another account",
+          "the band's headline and two lines, the two keys, and the card's red line, as worded")
+    // Terminal's key opens the Switch page for Terminal's account (here mo has no standby entry: Claude Code's own)
+    let bandTarget = split.settings.splitSwitchTarget(mo.email!)
+    model.showSwitch(AccountEntry.switchKey(s.id, bandTarget?.id ?? "-"))
+    check(bandTarget?.id == AccountEntry.codeStandbyID && model.selection == SettingsModel.switchID && model.switchTarget?.standby.id == AccountEntry.codeStandbyID,
+          "the band's Sign the Claude app in opens the Switch page on Terminal's account: \(bandTarget?.id ?? "none")")
+    model.selection = s.id
     let anon = surfaces(splitRec(AppSignIn.Login(account: uuid(83), org: uuid(183), state: .known, source: "log", at: now)), s)
-    check(UsageNotice.of(anon.settings.inUseRow)?.key == UsageNotice.Key.none && anon.settings.popUpSignInAddress == nil && same(anon.preview, anon.panel),
-          "the split with the app's account by id only: no Sign in… in Settings' box, the pop-up's plain sign-in (never mo's)")
-    // Settings' red box's key as the view draws it (inUseSignInKey): the value's key; none, no row
-    // (the views read the saved record when asked: each record is written again before its view is asked)
-    let anonKey = anon.settings.inUseSignInKey
-    let byHandKey = surfaces(splitRec(AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)), s).settings.inUseSignInKey
-    check(!anonKey && byHandKey, "Settings' red box: the split by id only has no key (no empty row); by hand, Sign in…")
+    check(anon.settings.splitBand && anon.settings.show.loginAddress == nil && anon.settings.popUpSignInAddress == nil && same(anon.preview, anon.panel)
+          && anon.settings.splitSwitchTarget(mo.email!)?.id == AccountEntry.codeStandbyID,
+          "the split with the app's account by id only: the band, Sign Terminal in fills in no address (never mo's), Terminal's key still offered")
+    // the band takes the in-use box's place: its red box's Sign in… key is never drawn in the split
+    check(!anon.settings.inUseSignInKey && !split.settings.inUseSignInKey, "the split: no red in-use box key (the band's rows have the keys)")
     model.accounts = [e, twin, other]; try! Store.save([e, twin, other])
     check(!surfaces(rec()).settings.inUseSignInKey && surfaces(rec("expired")).settings.inUseSignInKey
           && !surfaces(rec("denied", week: nil, five: nil)).settings.inUseSignInKey,
@@ -3488,7 +3528,8 @@ MainActor.assumeIsolated {
     let said = [split.line, split.shortLine, split.numbersHint ?? "", split.key ?? "", split.shortKey ?? "", switched.line, switched.shortLine,
                 SplitUsage.switchingHead(a3), AccountNote(kind: .came, email: a3, profile: "Work", at: now).words,
                 FolderChoice(path: "~/.claude-x", detail: a1).title, NewAccountSetup.folderWho("~/.claude-none")]
-    check(said.allSatisfy(clean) && split.line.contains("hidden address") && split.key == "Sign Claude Code in Terminal in to hidden address…",
+    check(said.allSatisfy(clean) && split.shortLine.contains("hidden address") && split.numbersHint?.contains("hidden address") == true
+          && split.line == SplitUsage.bandHead && split.key == SplitUsage.terminalSignInKey,
           "hidden: the usage lines, keys and notes written from addresses say \"hidden address\" and hold no part of any: \(said)")
     func server(_ s: Seat) -> SignedInAccount { SignedInAccount(accountID: s.account, email: s.email, organizationID: s.organization, origin: .server) }
     // the shared note after a sign-in line: no address in any form, whatever the setting
@@ -3498,7 +3539,7 @@ MainActor.assumeIsolated {
           && note.map { !$0.contains("@") && !$0.contains("hidden address") } == true,
           "hidden: the sign-in line holds no part of an address; the shared note after it names none in any form: \(note ?? "-")")
     AddressPrivacy.shared.apply(blur: false)
-    check(split.key == "Sign Claude Code in Terminal in to \(a1)…", "shown: the same key names the address")
+    check(split.numbersHint == "Sign Terminal in to \(a1) to see its numbers.", "shown: the same hint names the address")
     AddressPrivacy.shared.apply(blur: true)
 
     // the Forget… question: its text says "hidden address", the address only in an accessory view that follows the pointer
