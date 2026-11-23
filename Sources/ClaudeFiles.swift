@@ -1,9 +1,9 @@
 // ClaudeFiles: the one reader of the files Claude Code and the Claude app keep about an account and its sessions.
 //
 // - Claude Code's record: a folder's .claude.json (or a `.claude.json.backup*` of it), its oauthAccount block, field by field as
-//   Claude Code wrote them (ids, the address, the organisation's type and name, the plan's name; never a token). It says which
-//   account the folder is signed in to as a guess (AccountIdentity, source `guessed`): Claude Code writes it at another moment
-//   than the sign-in itself. Read bounded (`recordMax`, SafeFiles.readPlain), never blocking (a FIFO or a device named like the
+//   Claude Code wrote them (ids, the address, the organisation's type and name, the plan's name; never a token). It feeds
+//   ClaudeAuth's one folder reader (Account.records), which says which account the folder is signed in to as a guess: Claude
+//   Code writes it at another moment than the sign-in itself. Read bounded (`recordMax`, SafeFiles.readPlain), never blocking (a FIFO or a device named like the
 //   file returns at once), through a link named by the path itself (~/.claude.json may be one to the real file), and parsed
 //   again only when the file changed (its size, date, status-change time and inode).
 // - The Claude app's sessions: claude-code-sessions/<account>/<organisation>/local_<id>.json in a window's data folder, by one
@@ -55,13 +55,6 @@ enum ClaudeFiles {
             return Seat(account: a, organization: organizationUuid, email: emailAddress)
         }
 
-        /// The same as an identity, guessed from the file (the process's own word, when there is one, is verified).
-        var identity: AccountIdentity? {
-            let a = accountUuid.flatMap { $0.isEmpty ? nil : $0 }, e = emailAddress.flatMap { $0.isEmpty ? nil : $0 }
-            guard a != nil || e != nil else { return nil }
-            return AccountIdentity(account: a, email: e, organization: organizationUuid, source: .guessed)
-        }
-
         /// Claude's own name for the plan ("Ultra"), when it isn't blank.
         var plan: String? { planDisplayName.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } }
     }
@@ -83,13 +76,8 @@ enum ClaudeFiles {
         return r
     }
 
-    /// A folder's record: `record(at: recordPath(...))`.
-    static func record(folder: String, isDefault: Bool, home: String = NSHomeDirectory()) -> Record? {
-        record(at: recordPath(folder: folder, isDefault: isDefault, home: home))
-    }
-
-    /// The record in one file as ClaudeAuth's record reader hands it over (AuthTools.readRecord: the oauthAccount block's
-    /// string fields), so the app's Authenticator reads .claude.json here too, with the same bounds and cache.
+    /// The record in one file as ClaudeAuth's one folder reader parses it (FolderRecordReader's `parse`: the oauthAccount
+    /// block's string fields), so Claude Code's account (Account.records) is read here too, with the same bounds and cache.
     static func oauthBlock(at path: String) -> [String: Any]? {
         guard let r = record(at: path) else { return nil }
         let fields: [(String, String?)] = [("accountUuid", r.accountUuid), ("organizationUuid", r.organizationUuid), ("emailAddress", r.emailAddress),
@@ -98,11 +86,6 @@ enum ClaudeFiles {
         var out: [String: Any] = [:]
         for (k, v) in fields { if let v { out[k] = v } }
         return out
-    }
-
-    /// The account a folder's record names, guessed from the file (cl_quick's "guessed from file"); nil when it names none.
-    static func identity(folder: String, isDefault: Bool, home: String = NSHomeDirectory()) -> AccountIdentity? {
-        record(folder: folder, isDefault: isDefault, home: home)?.identity
     }
 
     /// The file is a regular file larger than `recordMax` (by its size alone; nothing is read).

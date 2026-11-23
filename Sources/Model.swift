@@ -158,6 +158,27 @@ struct Account {
     /// The folder as ClaudeAuth (Auth/) knows it: the one place its sign-in is named and read.
     var authFolder: AuthFolder { AuthFolder(path: configDir, isDefault: isDefaultDir) }
 
+    /// The one folder reader of Claude Code's account (ClaudeAuth's FolderRecordReader), one for the whole app: the account a
+    /// folder's .claude.json names (a guess), signed in by an account id or an address (the kit's rule, A1). It parses through
+    /// ClaudeFiles' own bounded, cached reader (never a FIFO, through a link named by the path) and only after a write; its
+    /// `generation` counts each time the record names someone else (another account or seat, a sign-in, a sign-out).
+    static let records = FolderRecordReader(parse: { ClaudeFiles.oauthBlock(at: $0) }, stamp: { Account.recordStamp($0) })
+
+    /// The folder's record now, through the one folder reader: Claude Code's account as the file names it (guessed; the kit's
+    /// FolderSignIn.answer puts a verified word over it) and the reader's generation.
+    static func codeRecord(configDir: String) -> FolderRecordReader.Look { records.look(path: claudeJSON(configDir: configDir)) }
+
+    /// A record's stamp for the one folder reader: through a link named by the path itself (~/.claude.json may be one, and the
+    /// file behind it is what changes), with the status-change time in its date, so an edit in place that keeps the size and
+    /// puts the date back still moves it (as ClaudeFiles' own cache key does).
+    static func recordStamp(_ path: String) -> RecordStamp {
+        var st = stat()
+        guard stat(path, &st) == 0 else { return .none }
+        func seconds(_ t: timespec) -> TimeInterval { TimeInterval(t.tv_sec) + TimeInterval(t.tv_nsec) / 1e9 }
+        return RecordStamp(modified: Date(timeIntervalSince1970: max(seconds(st.st_mtimespec), seconds(st.st_ctimespec))),
+                           size: UInt64(st.st_size), file: UInt64(st.st_ino))
+    }
+
     /// Claude Code names the Keychain item after the config folder: the plain name for the
     /// default folder, otherwise the name plus the first 8 hex chars of SHA-256 of the path (AuthFolder.keychainItems).
     var keychainServices: [String] { authFolder.keychainItems }

@@ -2302,12 +2302,14 @@ do {
     let rec = dir + "/code/.claude.json"
     put(rec, #"{"oauthAccount":{"accountUuid":"\#(u1.account)","organizationUuid":"\#(u1.organization!)","emailAddress":"\#(u1.email!)","organizationType":"claude_max","organizationName":"x","planDisplayName":"Ultra"},"projects":{}}"#)
     let r = ClaudeFiles.record(at: rec)
-    check(r?.seat == Seat(account: u1.account, organization: u1.organization, email: u1.email) && r?.plan == "Ultra" && r?.organizationType == "claude_max"
-          && r?.identity == AccountIdentity(account: u1.account, email: u1.email, organization: u1.organization, source: .guessed),
-          "the record: its seat, plan and fields, and the identity guessed from the file")
-    check(ClaudeFiles.identity(folder: dir + "/code", isDefault: false) == r?.identity
+    check(r?.seat == Seat(account: u1.account, organization: u1.organization, email: u1.email) && r?.plan == "Ultra" && r?.organizationType == "claude_max",
+          "the record: its seat, plan and fields")
+    // Claude Code's account through ClaudeAuth's one folder reader (Account.records), fed by this reader: a guess, its fields
+    let look = Account.records.look(path: rec)
+    check(look.account == SignedInAccount(accountID: u1.account, email: u1.email, organizationID: u1.organization, organizationName: "x",
+                                          plan: "Ultra", origin: .record)
           && ClaudeFiles.recordPath(folder: dir + "/code", isDefault: true, home: "/h") == "/h/.claude.json",
-          "a folder in, its identity out; the default folder's record is in the home folder")
+          "the one folder reader: the record's account, guessed; the default folder's record is in the home folder")
     put(rec, #"{"oauthAccount":{"accountUuid":"\#(u2.account)","emailAddress":"\#(u2.email!)","planDisplayName":"  "}}"#)
     let again = ClaudeFiles.record(at: rec)
     check(again?.seat?.account == u2.account && again?.plan == nil && again?.planDisplayName == "  ", "read again once the file changed; a blank plan is none (the field kept as written)")
@@ -2324,6 +2326,18 @@ do {
     try? fm.createDirectory(atPath: dir + "/linked", withIntermediateDirectories: true)
     try? fm.createSymbolicLink(atPath: dir + "/linked/.claude.json", withDestinationPath: rec)
     check(ClaudeFiles.record(at: dir + "/linked/.claude.json")?.seat?.account == u2.account, "a .claude.json that is a link to the real one: read")
+    // the one folder reader through the link: a change of the file behind it is a change (its stamp follows the link), and
+    // its generation moves only when the record names someone else
+    let linkLook = Account.records.look(path: dir + "/linked/.claude.json")
+    put(rec, #"{"oauthAccount":{"accountUuid":"\#(u3.account)","emailAddress":"\#(u3.email!)"}}"#)
+    let linkAfter = Account.records.look(path: dir + "/linked/.claude.json")
+    check(linkLook.account?.accountID == u2.account && linkAfter.account?.accountID == u3.account && linkAfter.generation == linkLook.generation + 1,
+          "the one folder reader through a link: the file behind it changed to another account, read again, one change counted")
+    // A1: a record that names an address and no account id is signed in (by the address), never signed out
+    put(dir + "/addr/.claude.json", #"{"oauthAccount":{"emailAddress":"\#(u2.email!)"}}"#)
+    check(Account.records.look(path: dir + "/addr/.claude.json").account?.email == u2.email
+          && ClaudeFiles.record(at: dir + "/addr/.claude.json")?.seat == nil,
+          "A1: an address without an id names Claude Code's account (a guess), while the saved-seat reader still needs the id")
     try? fm.createDirectory(atPath: dir + "/fifo", withIntermediateDirectories: true)
     mkfifo(dir + "/fifo/.claude.json", 0o600)
     let tf = Date()
@@ -2334,14 +2348,15 @@ do {
     if let h = FileHandle(forWritingAtPath: dir + "/big/.claude.json") { try? h.truncate(atOffset: UInt64(ClaudeFiles.recordMax + 1)); try? h.close() }
     check(ClaudeFiles.tooLarge(dir + "/big/.claude.json") && ClaudeFiles.record(at: dir + "/big/.claude.json") == nil, "larger than recordMax: too large, not read")
     try? fm.removeItem(atPath: dir + "/big")
-    // ClaudeAuth's record read in the app goes through this one reader (ClaudeCLI.authTools.readRecord): the same account
-    // as ClaudeAuth's own RecordFile gives, nothing for none
+    // ClaudeAuth's record read in the app goes through the one folder reader (ClaudeCLI.authTools.reader: Account.records, fed
+    // by ClaudeFiles): the same account as ClaudeAuth's own RecordFile gives, nothing for none
     let full = dir + "/auth/.claude.json"
     put(full, #"{"oauthAccount":{"accountUuid":"\#(u1.account)","organizationUuid":"\#(u1.organization!)","emailAddress":"\#(u1.email!)","organizationName":"x","planDisplayName":"Ultra"},"projects":{}}"#)
-    let viaApp = SignedInAccount.record(ClaudeCLI.authTools.readRecord(full)), viaAuth = SignedInAccount.record(RecordFile.oauthAccount(full))
-    check(viaApp != nil && viaApp == viaAuth && viaApp?.accountID == u1.account && viaApp?.plan == "Ultra"
-          && ClaudeCLI.authTools.readRecord(dir + "/none/.claude.json") == nil && ClaudeCLI.authTools.readRecord(dir + "/missing/.claude.json") == nil,
-          "the app's Authenticator reads the record through ClaudeFiles: the same account as RecordFile's, none for none")
+    let authed = Authenticator(AuthFolder(path: dir + "/auth", isDefault: false), tools: ClaudeCLI.authTools)
+    let viaApp = authed.record(), viaAuth = SignedInAccount.record(RecordFile.oauthAccount(full))
+    check(ClaudeCLI.authTools.reader === Account.records && viaApp != nil && viaApp == viaAuth && viaApp?.accountID == u1.account && viaApp?.plan == "Ultra"
+          && Account.records.look(path: dir + "/none/.claude.json").account == nil && Account.records.look(path: dir + "/missing/.claude.json").account == nil,
+          "the app's Authenticator reads the record through the one folder reader: the same account as RecordFile's, none for none")
 
     // the sessions: account and organisation folders named like a UUID and real (no link), entries local_<UUID>.json and regular
     let data = dir + "/window", cs = dir + "/window/claude-code-sessions"

@@ -460,11 +460,11 @@ enum ClaudeCLI {
     static var providerVariables: [String] { AuthFolder.providerVariables }
 
     /// ClaudeAuth's tools with cl_audit's own guard: every run asks FolderGuard first (its log, its seam); the folder's
-    /// record read by cl_audit's one .claude.json reader (ClaudeFiles), not a second one.
+    /// record read through the app's one folder reader (Account.records, fed by ClaudeFiles), not a second one.
     static var authTools: AuthTools {
         var t = AuthTools.systemWithKeychain   // the Keychain reader cl_audit always had (ClaudeAuth's StoredSignInReader)
         t.mayLaunch = { what, folder in FolderGuard.mayLaunch(what, folder.path) }
-        t.readRecord = { ClaudeFiles.oauthBlock(at: $0) }
+        t.reader = Account.records
         return t
     }
 
