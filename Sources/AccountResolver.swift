@@ -191,7 +191,7 @@ enum AccountResolver {
     /// The line while the numbers are Claude Code's account's but its seat isn't known yet (a running claude names its
     /// organisation by name, the reading by id alone, and no name has come to tell them apart): held back, never another
     /// account's, until a read brings the name.
-    static let seatUnknownWords = "Numbers held back: which plan Claude Code is on isn't known yet."
+    static let seatUnknownWords = "Numbers held back. Terminal's account isn't fully known yet."
 
     /// The active account (its id, its address) and an account a source names are the same: by the ids where both have
     /// one, else by the addresses (sameAddress); nil when neither pair is known.
