@@ -760,6 +760,42 @@ if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
 MainActor.assumeIsolated { twoNamesRenders() }
 if ProcessInfo.processInfo.environment["TWONAMES_ONLY"] != nil { print("done"); exit(0) }
 
+// ==================================================================== New profile (NEWPROFILE_ONLY=1)
+// New profile's page in each state of its sign-in: unnamed (every Sign in off, one grey line), named, signing in (waiting
+// for the browser, amber), signed in without a Claude window (Create green), the Claude window step (its look at the
+// desktop app: this Mac's own process table, so held or not as it is), done. Std, 1180 wide (three columns). Files
+// newprofile-<state>-std-w1180.png. Sample names and addresses only.
+@MainActor func newProfileRenders() {
+    let wu = Seat(account: uuid(46), organization: uuid(86), email: "wu@example.com")
+    let model = SettingsModel(); model.accounts = []
+    let face = FaceTheme.of(.std)
+    func page(_ d: NewAccountDraft, _ name: String) {
+        model.draft = d; model.tick += 1
+        snapshot(NewAccountView(draft: .constant(d), model: model).frame(width: 1180, height: 760)
+                    .background(Color(white: 0.1)).environment(\.face, face).environment(\.colorScheme, .dark),
+                 "newprofile-\(name)-std-w1180", 1180, 760)
+    }
+    var d = NewAccountDraft(); d.color = .teal
+    page(d, "unnamed")
+    d.name = "Work"
+    page(d, "named")
+    var s = d; try! NewAccountSetup.createCode(&s); s.signInRunning = true; s.signInAsked = Date()
+    page(s, "signing-in")
+    NewAccountSetup.discard(s, claude: nil)
+    var off = d; off.claudeWindow = false; try! NewAccountSetup.createCode(&off); sign(off.configDir, wu)
+    page(off, "signed-in-no-window")
+    NewAccountSetup.discard(off, claude: nil)
+    var w = d; try! NewAccountSetup.createCode(&w); sign(w.configDir, wu)
+    page(w, "window-step")
+    try! NewAccountSetup.makeWindowFolder(&w)
+    try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": wu.account]).write(to: URL(fileURLWithPath: expand(w.dataDir) + "/config.json"))
+    page(w, "done")
+    NewAccountSetup.discard(w, claude: nil)
+    model.draft = nil
+}
+MainActor.assumeIsolated { newProfileRenders() }
+if ProcessInfo.processInfo.environment["NEWPROFILE_ONLY"] != nil { print("done"); exit(0) }
+
 // ==================================================================== the Dock icon's preview (DOCKPREVIEW_ONLY=1, ProfileCore step 0)
 // The preview Settings' tile and the Dock's tile draw (`preview(_:status:)`), from each record as the app keeps it: a good read, a
 // signed-out, an expired and a split profile (no numbers, not the samples 23 % and 41 %), a login on another account (the warning
