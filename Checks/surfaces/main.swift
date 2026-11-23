@@ -3958,5 +3958,33 @@ do {
           "the line and Move to Trash…'s words")
 }
 
+// ============ the status record and the Dock face are cl_kit's (ProfileCore: StatusRecord, StatusCodec, StatusFace) ============
+do {
+    let now = Date()
+    var e = profile("kitface", "~/.claude-kitface", seat(81, "kit@example.com"))
+    e.pollMinutes = 7; e.windowDot = false
+    var rec = IconStatus(state: "ok")
+    rec.loginEmail = "kit@example.com"; rec.expectedEmail = "kit@example.com"; rec.updatedAt = now
+    rec.fiveHour = 42; rec.fiveHourResets = now.addingTimeInterval(2 * 3600); rec.weekly = 61; rec.weeklyResets = now.addingTimeInterval(3 * 86400)
+    // the face cl_audit draws is the kit's picture: the same label, numbers, elapsed shares, grey, warning and window dot
+    let show = ProfileShow.of(e, raw: rec, now: now)
+    let tile = TileModel.face(e, show, windowOpen: true, now: now)
+    let kit = StatusFace.of(show.display, look: e.look, windowOpen: true, now: now)
+    check(tile.label == kit.label && tile.label == "KITFACE" && tile.fiveHour == kit.fiveHour && tile.weekly == kit.weekly
+          && tile.fiveHourElapsed == kit.fiveHourElapsed && tile.weeklyElapsed == kit.weeklyElapsed && tile.stale == kit.grey
+          && tile.warn == kit.otherAccount && tile.windowOpen == false && kit.windowOpen == false,
+          "the Dock face is the kit's StatusFace (label, numbers, elapsed, grey, warning, the window dot off by the profile's look)")
+    check(e.look == ProfileLook(name: "Kitface", label: "KITFACE", pollMinutes: 7, windowDot: false), "a profile's look in the kit's terms")
+    // the record's bytes: written as the agent writes them and read back whole; keys a newer build adds are skipped
+    let bytes = StatusCodec.encode(rec)
+    let back = bytes.flatMap(StatusCodec.decode)
+    var newer = (bytes.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]) ?? [:]
+    newer["aFieldFromLater"] = ["x": 1]
+    let newerBack = (try? JSONSerialization.data(withJSONObject: newer)).flatMap(StatusCodec.decode)
+    check(back?.fiveHour == 42 && back?.weekly == 61 && back?.loginEmail == "kit@example.com" && back?.state == "ok"
+          && newerBack?.weekly == 61 && newerBack?.state == "ok",
+          "the record round-trips through the kit's codec, and a newer record's unknown key is skipped")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
