@@ -18,6 +18,7 @@ the notes before updating.
   - The Switch page opens for Terminal's account even when something is missing, and says what.
   - The struck-through sign-in chips and the red "Terminal is signed in to …" lines are gone.
   - The dashboard card, the menu bar row and the Dock panel name Terminal's account, then say "Claude window on another account ›" in amber under it.
+  - They keep Terminal's numbers above that line, and its alerts still come. The widget doesn't name the account, so it shows none.
   - That line is a link to the profile's Settings ▸ Accounts, at the band.
   - Show window turns amber on the card and the Dock panel.
   - The Dock panel names Terminal's account, marked "· Terminal", and shows the TERMINAL | APP badge by the name.
