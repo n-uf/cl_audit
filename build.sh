@@ -130,6 +130,9 @@ cat > "$app/Contents/Library/LaunchAgents/local.usage-n-uf-agent.plist" <<PLIST
 PLIST
 # What launchd starts: a tiny launcher (Launcher/main.c) that hands over to the agent. Built the same way it comes
 # out byte for byte the same, so an update doesn't change it and macOS goes on accepting it without a new notice.
+# (Under a Developer ID macOS knows it by its team instead, so that holds across updates too.)
+# The signing below goes inside out, in scripts/signing.sh's sign_plan order (the order --check-signing prints): the
+# launcher, the agent, the widget, the Dock tile plug-in, then the app. A new nested piece goes into both.
 mkdir -p "$app/Contents/Helpers"
 clang -O2 -arch arm64 -mmacosx-version-min=13.0 -o "$app/Contents/Helpers/cl_audit-agent" "$here/Launcher/main.c"
 sign "$app/Contents/Helpers/cl_audit-agent" --identifier local.usage-n-uf-agent-launcher

@@ -10,7 +10,7 @@ before.
 
 | Setting | What it is | Unset |
 |---|---|---|
-| `CL_SIGN_ID` | The Developer ID Application identity, as `security find-identity -v -p codesigning` lists it: `Developer ID Application: Your Name (TEAMID)`, or its 40-character SHA-1 | Ad hoc, as today |
+| `CL_SIGN_ID` | The Developer ID Application identity, as `security find-identity -v -p codesigning` lists it: its 40-character SHA-1 (best: after a renewal two certificates share one name), or its whole name `Developer ID Application: Your Name (TEAMID)`. Only an exact match on a Developer ID Application line counts | Ad hoc, as today |
 | `CL_NOTARY_PROFILE` | The name of a notarytool keychain profile, for example `cl-notary` | No notarization |
 
 `CL_NOTARY_PROFILE` needs `CL_SIGN_ID` (Apple notarizes Developer ID signatures only); a release with only the profile set
@@ -95,7 +95,8 @@ mark is removed, so Gatekeeper never checks it, and an ad hoc copy has no harden
 The first notarized release replaces an ad hoc signature (identified by its code hash) with a Developer ID one
 (identified by its team). macOS treats it as a new identity once:
 
-- **Automation:** "cl_audit wants to control Claude" comes again, the first time a restore sends its link.
+- **Automation:** "cl_audit wants to control Claude" comes again, the first time a restore sends its link; and "cl_audit
+  wants to control Terminal", the first time a sign-in opens Terminal through `osascript` (cl_kit's `ClaudeSignIn`).
 - **Background item:** macOS shows "Background Items Added" again for the agent (System Settings ▸ General ▸ Login
   Items & Extensions), now with the developer's name instead of "cl_audit". From then on, updates signed by the same
   team don't ask again.
@@ -147,8 +148,9 @@ In Terminal:
 security find-identity -v -p codesigning
 ```
 
-The line `"Developer ID Application: Your Name (TEAMID)"` is the value for `CL_SIGN_ID` (the quotes' content, or the
-40-character hash before it). The list shows names and hashes only, no key.
+On the line with `"Developer ID Application: Your Name (TEAMID)"`, the 40-character hash before the name is the best
+value for `CL_SIGN_ID`: when the certificate is renewed, the old and the new one share the name, and the hash still
+names one. The whole name in the quotes works too. The list shows names and hashes only, no key.
 
 ### 4. An app-specific password for notarytool
 
@@ -179,7 +181,12 @@ CL_SIGN_ID="Developer ID Application: Your Name (TEAMID)" CL_NOTARY_PROFILE=cl-n
 ```
 
 Both lines should say found / answers. The first signing may ask once whether codesign may use the key: **Always
-Allow**. Then release as usual with the two settings in front of `scripts/release.sh --push`. Keep them out of shell
-profiles shared with other projects if you prefer; they hold no secret themselves.
+Allow**. Then release as usual with the two settings in front of `scripts/release.sh --push`. They hold no secret
+themselves.
+
+Prefer setting them on the release command, not exporting them from a shell profile: with `CL_SIGN_ID` exported, every
+local `./build.sh` signs with the Developer ID too. It then needs the network (Apple's timestamp server) and installs a
+hardened build, which for example keeps a restore from sending its link until the Automation question is answered
+again.
 
 After the first notarized release, update README ▸ Install and the site's download text: the Open Anyway step goes away.

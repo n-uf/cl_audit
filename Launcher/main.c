@@ -1,7 +1,8 @@
 // cl_audit agent launcher: the program launchd starts for the cl_audit agent (Sources/Agent.swift). It only hands
 // over to the agent inside the same cl_audit.app. Its bytes don't change between releases, so macOS keeps
 // accepting it after an update (an ad hoc signed program is known by its exact hash) and no new
-// "background item added" notice appears; the agent it starts is the one the update brought.
+// "background item added" notice appears; the agent it starts is the one the update brought. Signed with a
+// Developer ID (CL_SIGN_ID, docs/signing.md), macOS knows it by its team instead, so updates by that team don't ask either.
 #include <limits.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
