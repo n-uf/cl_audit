@@ -38,7 +38,8 @@ struct UsageNotice: Equatable {
         // (signed out or expired, a split by hand kept from the last reading's account is no sign-in any more: the sign-in's
         // own notice below says it, never "signed in to M"; a switch waiting for the app keeps its notice)
         let signedIn = d.sign != .signedOut && d.sign != .expired
-        if d.split != nil, let split = show.splitWords, signedIn || split.switched {
+        // (the split by hand only while Settings ▸ Accounts draws its band: Terminal's own row, `codeRow`, is there to link to)
+        if d.split != nil, let split = show.splitWords, signedIn || split.switched, split.switched || show.view.codeRow != nil {
             if split.switched {
                 let to = AddressSettings.words(split.code)
                 return UsageNotice(tone: .amber, heading: SplitUsage.switchingHead(split.code),
