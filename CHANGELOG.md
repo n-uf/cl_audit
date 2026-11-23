@@ -11,6 +11,16 @@ the notes before updating.
 - **Account rows in the menu bar menu and the dashboard's Switch account menu**, while addresses are hidden:
   - Moving to an address with the arrow keys doesn't show it, and nothing stays shown after the menu closes.
   - The words after an address (" · Terminal", the "…" after "Sign Terminal in to") are smaller and quieter.
+- **Terminal's account follows cl_kit's one account rule, the same as cl_quick's.**
+  - Claude Code's .claude.json is only a guess. Anthropic's answer for the sign-in cl_audit reads with is the verified word, and it wins when the two disagree.
+  - So numbers that Anthropic says are this sign-in's now show under that account, where before they hid behind "Numbers for another account".
+  - When the file and Anthropic's answer disagree, or the sign-in changes, cl_audit asks Claude Code itself once: a short claude in the profile's own folder that sends no message and keeps nothing. At most once every 10 minutes per profile, never for a standby account.
+  - If Claude Code says another account than the sign-in read, those numbers hide again and the sign-in is read afresh.
+  - A .claude.json that names an address but no account id now counts as signed in to that address.
+  - A personal plan and a Team seat on one address stay apart: when only one side names the organisation, cl_audit no longer borrows it from the other.
+  - The line "Claude Code's record has no address: sign in again in Claude Code." is gone; such numbers now show under Anthropic's account, or hide with the usual "Numbers for another account" line.
+- A standby account whose organisation is found later no longer carries its old week onto that seat (the week was read before the seat was known).
+- When the profiles file needs a new shape and its copy as it was can't be kept, cl_audit no longer rewrites it: the change waits and the copy is tried again at the next save.
 
 ## 26.11.88 — 2026-11-23
 
