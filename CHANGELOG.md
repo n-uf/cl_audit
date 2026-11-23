@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.88 — 2026-11-23
+
 - **The Claude app and Terminal on different accounts** now read in two names only: the Claude app and Terminal.
   - It is a warning in amber, not red: Terminal's numbers still work.
   - Settings ▸ Accounts puts both accounts in one amber band at the top, which says why the Claude app's account has no numbers.
