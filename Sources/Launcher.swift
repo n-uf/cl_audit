@@ -1046,7 +1046,8 @@ struct AccountCard: View {
                 if windowInRow {
                     // on this card a lit LED means running: the key's LED lights only while the window is open
                     Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
-                        .buttonStyle(.pill(windowKeyTint, lit: row.activity.desktopOpen))
+                        // (reddish in the split whether or not the window is open: the window is the part out of line)
+                        .buttonStyle(.pill(windowKeyTint, lit: row.activity.desktopOpen || notice?.windowRed == true))
                 }
                 if terminalInRow { Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill) }
                 moreMenu
