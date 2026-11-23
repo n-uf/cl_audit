@@ -26,6 +26,8 @@ struct SessionsCard: View {
         var id: String { m.id + "@" + (place ?? "") }
     }
     @State private var backups: [Listed] = []
+    @State private var boxHeights: [String: CGFloat] = [:]         // each backup box's measured height, by row id (the scroller's)
+    @FocusState private var focusedBackup: String?                 // "<row id> restore" / "<row id> more": scrolled into view
     @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, by address (shortened when drawn: `title`)
     /// A switch that stopped half way, not dismissed yet: said, with where its sessions are and Undo it.
     @State private var oldSwitch: SwitchReceipt?
@@ -209,8 +211,9 @@ struct SessionsCard: View {
         VStack(alignment: .leading, spacing: 8) {
             if backups.isEmpty {
                 text("None yet. Back up now makes one.")
+            } else {
+                backupsScroller
             }
-            ForEach(backups) { l in row(l) }
             HStack(spacing: 8) {
                 Button(working ? "Backing up…" : "Back up now") { backUpNow() }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(working || switching)
@@ -225,6 +228,45 @@ struct SessionsCard: View {
         }
     }
 
+    /// The boxes, newest on top, in an inset well that shows at most `shownBoxes` of them and scrolls for the rest, so the
+    /// card never grows past that; fewer, and it is as tall as they are. Keyboard focus on a box's Restore or ⋯ scrolls it
+    /// into view.
+    private var backupsScroller: some View {
+        let more = backups.count > Self.shownBoxes
+        let height = Self.listHeight(backups.prefix(Self.shownBoxes).map { boxHeights[$0.id] ?? Self.boxEstimate }, spacing: 8)
+        return ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(backups) { l in
+                        row(l)
+                            .background(GeometryReader { g in Color.clear.preference(key: BackupBoxHeights.self, value: [l.id: g.size.height]) })
+                            .id(l.id)
+                    }
+                }
+                .padding(.trailing, more ? 12 : 0)            // room for the scroller, so it never covers ⋯
+                .onPreferenceChange(BackupBoxHeights.self) { boxHeights = $0 }
+            }
+            .scrollIndicators(more ? .visible : .never)
+            .frame(height: height)
+            .padding(5)
+            .background(WellShape(well: face.win, radius: 9))
+            .onChange(of: focusedBackup) { f in
+                guard let f, let id = f.split(separator: " ").first.map(String.init) else { return }
+                withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) }
+            }
+        }
+    }
+
+    /// How many backup boxes show before the list scrolls, and a box's height before it is measured.
+    static let shownBoxes = 3
+    static let boxEstimate: CGFloat = 52
+
+    /// The scroller's height: the boxes it shows (at most `shownBoxes`, measured) and the gaps between them.
+    static func listHeight(_ heights: [CGFloat], spacing: CGFloat) -> CGFloat {
+        let shown = heights.prefix(shownBoxes)
+        return shown.reduce(0, +) + spacing * CGFloat(max(shown.count - 1, 0))
+    }
+
     private func row(_ l: Listed) -> some View {
         let m = l.m
         return HStack(alignment: .top, spacing: 8) {
@@ -237,6 +279,7 @@ struct SessionsCard: View {
             Button("Restore") { model.showRestore(RestoreKey(profile: entry.id, backup: m.id, place: placeOf(l).path)) }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 .help("Preview what a restore would do. Nothing is written until you press Close and restore, and it is built not to overwrite anything")
+                .focused($focusedBackup, equals: l.id + " restore")
             Menu {
                 Button("Show in Finder") { reveal(l) }
                 Divider()
@@ -246,6 +289,7 @@ struct SessionsCard: View {
             }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
             .help("Show in Finder, Delete…")
+            .focused($focusedBackup, equals: l.id + " more")
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -403,4 +447,12 @@ struct SessionsCard: View {
 
     /// Where a listed backup is: General ▸ Backups' folder, or the place a receipt named it in.
     private func placeOf(_ l: Listed) -> URL { l.place.map { URL(fileURLWithPath: $0) } ?? BackupPrefs.placeURL }
+}
+
+/// Each backup box's height, by row id: the Backups scroller is as tall as its first boxes (SessionsCard.listHeight).
+private struct BackupBoxHeights: PreferenceKey {
+    static let defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue()) { $1 }
+    }
 }

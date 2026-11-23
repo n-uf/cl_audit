@@ -4428,6 +4428,13 @@ do {
           "menu bar: older rounds' and gone profiles' keys are stale; the current plan's and other names' stay")
 }
 
+// ============ Settings ▸ Sessions ▸ Backups: the scroller shows at most 3 boxes ============
+do {
+    check(SessionsCard.shownBoxes == 3 && SessionsCard.listHeight([50, 60, 70, 80, 90], spacing: 8) == 196
+          && SessionsCard.listHeight([50, 60], spacing: 8) == 118 && SessionsCard.listHeight([], spacing: 8) == 0,
+          "Backups: as tall as the first 3 boxes and their gaps, shorter with fewer")
+}
+
 // ============ Settings ▸ Accounts: the standby selection (StandbyPick) ============
 do {
     check(StandbyPick.afterRowClick(nil, row: "s2") == "s2" && StandbyPick.afterRowClick("s2", row: "s3") == "s3"
