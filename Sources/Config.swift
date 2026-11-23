@@ -823,17 +823,11 @@ struct FolderChoice: Hashable {
 }
 
 enum Detect {
-    /// Claude Code settings folders: ~/.claude plus any ~/.claude* folder, with the account each is set up for.
+    /// Claude Code settings folders: ~/.claude (always, even before it exists) plus every ~/.claude-* folder (cl_kit's
+    /// AccountSources.claudeFolders: links to folders included, never claude-transplant's ~/.claude-switch), with the account
+    /// each is set up for.
     static func configFolders() -> [FolderChoice] {
-        let home = NSHomeDirectory()
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: home)) ?? []
-        var dirs = ["~/.claude"]
-        for n in names.sorted() where n.hasPrefix(".claude") && n != ".claude" {
-            var isDir: ObjCBool = false
-            if FileManager.default.fileExists(atPath: "\(home)/\(n)", isDirectory: &isDir), isDir.boolValue {
-                dirs.append("~/\(n)")
-            }
-        }
+        let dirs = ["~/.claude"] + AccountSources.claudeFolders(home: NSHomeDirectory()).filter { $0 != "~/.claude" }
         return dirs.map { FolderChoice(path: $0, detail: Account.expectedEmail(configDir: $0)) }
     }
 
