@@ -1,4 +1,3 @@
-import AddressPrivacy
 import AppKit
 import ProfileCore
 
@@ -69,18 +68,14 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.redraw("timer") }
     }
 
-    /// The right-click menu while the Dock icon app isn't running (DockTileMenu): the usage and the actions, each a notice
-    /// (the plug-in starts nothing itself). No menu without a profile.
+    /// The right-click menu while the Dock icon app isn't running (DockTileMenu.dockRows): the profile, the Claude window and
+    /// the actions, each a notice (the plug-in starts nothing itself). No record is read: the menu shows no account, number
+    /// or state. No menu without a profile.
     func dockMenu() -> NSMenu? {
         guard let id,
               let list = SafeRead.whole(Store.configURL.path, max: 4 << 20).flatMap({ try? JSONDecoder().decode(ConfigFile.self, from: $0) }),
               let e = list.accounts.first(where: { $0.id == id }) else { return nil }
-        let record = SafeRead.whole(Store.statusFolder.appendingPathComponent("\(id).json").path, max: SafeRead.recordMax)
-            .flatMap(StatusCodec.decode)
-        // the "Show emails" setting as it is now: the plug-in has no observer of its own, so it reads the store on each ask
-        AddressPrivacy.shared.store = AddressSettings.store
-        let rows = DockTileMenu.rows(e, ProfileShow.of(e, raw: record?.current()), windowOpen: DockTile.windowOpen(id),
-                                     agentRuns: DockTile.agentRuns())
+        let rows = DockTileMenu.dockRows(e, windowOpen: DockTile.windowOpen(id), agentRuns: DockTile.agentRuns())
         // plain titles: the Dock draws the menu and leaves out an item's view. Each item its own tag (DockTileMenu.tag): the
         // Dock hands a click back as the item's tag (_sendDockMenuCommand:withTag:)
         let m = DockTileMenu.menu(rows, light: ProfileLED.lamp(e.ownColor).color, views: false,

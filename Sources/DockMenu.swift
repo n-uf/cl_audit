@@ -18,7 +18,8 @@
 // Dock tile's menu back by the item's tag (_sendDockMenuCommand:withTag:).
 //
 // The plug-in starts nothing itself: Quick chat (cl_quick, opened by the agent: ClQuick) and Refresh now post their notices;
-// the rest ask the agent (DockTile.menuNote), which does them. It reads no sign-in and no record.
+// the rest ask the agent (DockTile.menuNote), which does them. Its menu (dockRows) needs only the profiles file's entry: it
+// reads no sign-in and no record.
 
 import AddressPrivacy
 import AppKit
@@ -48,7 +49,7 @@ enum DockTileMenu {
     indirect enum Row: Equatable {
         case profile(String)                // "Claude Main", with the profile's light
         case address(AddressRow)
-        case status(String, full: Bool)     // the account's one line; a full limit in crimson
+        case status(String)                 // a grey line under the menu bar menu's account in use (problemLine)
         case info(String)
         case separator
         case action(String, Act, String)    // the profile's id
@@ -68,9 +69,21 @@ enum DockTileMenu {
     /// agent's to do, are left out and the menu says so.
     static func rows(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, agentRuns: Bool = true, appRunning: Bool = false,
                      header: Bool = true, now: Date = Date()) -> [Row] {
-        var rows: [Row] = []
-        if header { rows.append(.profile(title(e.name.isEmpty ? Account.label(e) : e.name))) }
-        else { rows += accounts(e, show, actions: agentRuns, now: now) }
+        header ? dockRows(e, windowOpen: windowOpen, agentRuns: agentRuns, appRunning: appRunning)
+               : actions(e, after: accounts(e, show, actions: agentRuns, now: now), windowOpen: windowOpen, agentRuns: agentRuns,
+                         appRunning: appRunning)
+    }
+
+    /// A Dock menu's rows: the profile, then the Claude window and the actions. Nothing of the profile's record (no account,
+    /// number or state), so the menu needs none read.
+    static func dockRows(_ e: AccountEntry, windowOpen: Bool, agentRuns: Bool = true, appRunning: Bool = false) -> [Row] {
+        actions(e, after: [.profile(title(e.name.isEmpty ? Account.label(e) : e.name))], windowOpen: windowOpen,
+                agentRuns: agentRuns, appRunning: appRunning)
+    }
+
+    /// `rows` then the Claude window and the actions; without the agent, the line that says so instead.
+    private static func actions(_ e: AccountEntry, after head: [Row], windowOpen: Bool, agentRuns: Bool, appRunning: Bool) -> [Row] {
+        var rows = head
         guard agentRuns else {
             rows.append(.separator)
             rows.append(.info("cl_audit's agent isn't running"))
@@ -104,7 +117,7 @@ enum DockTileMenu {
         if d.sign != .signedOut, let inUse = show.view.label {
             out.append(.address(AddressRow(address: inUse, ticked: true)))
         }
-        if let why = problemLine(state: show.record?.state) { out.append(.status(why, full: false)) }
+        if let why = problemLine(state: show.record?.state) { out.append(.status(why)) }
         guard actions else { return out }
         // the split by hand: Terminal's account is its own row (a click switches to it, as the card's row does)
         var terminal: String?
@@ -171,7 +184,7 @@ enum DockTileMenu {
         for row in rows {
             switch row {
             case .profile(let s), .info(let s): out.append(fit(s))
-            case .status(let s, _): out.append(fit(s))
+            case .status(let s): out.append(fit(s))
             case .separator: out.append("—")
             case .action(let s, _, _): out.append(fit(s))
             case .address(let r): out.append((r.ticked ? "✓ " : "") + words(r, blur: blur))
@@ -219,13 +232,9 @@ enum DockTileMenu {
                 m.addItem(i)
             case .info(let s):
                 let i = NSMenuItem(title: fit(s), action: nil, keyEquivalent: ""); i.isEnabled = false; m.addItem(i)
-            case .status(let s, let full):
+            case .status(let s):
                 let i = NSMenuItem(title: fit(s), action: nil, keyEquivalent: ""); i.isEnabled = false
                 i.indentationLevel = 1
-                if full {
-                    i.attributedTitle = NSAttributedString(string: i.title, attributes: [
-                        .font: NSFont.menuFont(ofSize: 0).withWeight(.semibold), .foregroundColor: Painter.crimson])
-                }
                 m.addItem(i)
             case .action(let s, let act, let what):
                 let i = NSMenuItem(title: fit(s), action: action, keyEquivalent: "")

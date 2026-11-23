@@ -377,7 +377,7 @@ do {
           + "Profile settings…; no account, number or status (got \(shown))")
     check(DockTileMenu.lines(rows, blur: true) == dockItems && !rows.contains { if case .address = $0 { return true }; if case .status = $0 { return true }; return false },
           "the Dock menu holds no address and no status line, whatever the setting")
-    for (what, raw) in [("full", record(five: 100, week: 40)), ("none", nil)] as [(String, StatusRecord?)] {
+    for (what, raw) in [("full", record(five: 100, week: 40)), ("none", nil)] as [(String, IconStatus?)] {
         let l = DockTileMenu.lines(DockTileMenu.rows(win, ProfileShow.of(win, raw: raw, now: now), windowOpen: false, now: now), blur: false)
         check(l == dockItems, "the Dock menu, \(what): the same items (got \(l))")
     }
