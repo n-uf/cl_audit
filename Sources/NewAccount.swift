@@ -827,7 +827,8 @@ struct NewAccountView: View {
     @ViewBuilder private var accountValue: some View {
         if draft.asking {
             // the address is optional: empty, Sign in runs the same sign-in and the account picked in the browser is taken
-            AddressRow(email: $draft.email, canSignIn: true,        // never greyed: without Claude Code the click says why
+            // dimmed (its lamp dark) until it can act (signInWait); without Claude Code it isn't greyed: the click says why
+            AddressRow(email: $draft.email, canSignIn: signInWait == nil,
                        placeholder: NewAccountSetup.addressPlaceholder,
                        signIn: { startAddressSignIn() }, cancel: { gate.cancel(); draft.asking = false; addressProblem = nil })
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
@@ -880,6 +881,7 @@ struct NewAccountView: View {
                 return (s.text, s.danger ? face.danger : face.caution)
             }
             if draft.asking {
+                if let w = signInWait { return (w, nil) }           // what comes first: a hint, grey
                 if let p = addressProblem { return (p, face.danger) }
                 // another profile's account typed or picked: taken all the same, said once, amber
                 if let note = NewAccountSetup.addressNote(draft.email, among: model.accounts) { return (note, face.caution) }
@@ -1007,6 +1009,15 @@ struct NewAccountView: View {
         }
     }
 
+    /// What Sign in waits for before it can act, as the grey line under Account says it (a hint, never red: red is for
+    /// errors): a name, then (while the folder isn't made) the desktop app quit and the red lines fixed. nil: it can go.
+    private var signInWait: String? {
+        if draft.name.trimmingCharacters(in: .whitespaces).isEmpty { return "Name the profile first." }
+        if !made && running { return "Quit the desktop app first (step 1)." }
+        if !made && blocked { return "Fix the red lines first." }
+        return nil
+    }
+
     /// Sign in (the address route): the new folder is made if it isn't yet, then Terminal runs Claude Code's sign-in
     /// for it with the address filled in, if one was typed. The result is checked afterwards, by account and organisation ids.
     /// `confirmed`: a look made at the click found nothing in the way (the folder is made only then).
@@ -1017,10 +1028,10 @@ struct NewAccountView: View {
         // a folder connected as it was is never signed in again from here; the folder this setup made can be
         guard !draft.started || canSignInAgain else { addressProblem = "This profile uses \(draft.configDir) as it is. Cancel the setup to sign in to another account."; return }
         draft.email = e; draft.source = .new; draft.existingDir = nil
-        guard !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else { addressProblem = "Name the profile first."; return }
+        // not yet (no name, the desktop app open, a red line): the key is dimmed and the grey line says what comes first
+        // (signInWait); Return in the field ends here too
+        guard signInWait == nil else { addressProblem = nil; return }
         if !made {                                       // (the window's folder alone left is step b's, not this sign-in's)
-            if running { addressProblem = "Quit the desktop app first (step 1)."; return }
-            if blocked { addressProblem = "Fix the red lines first."; return }
             guard confirmed else {
                 // Cancel, the address row's cancel or leaving the page meanwhile drops the look: no folder is made
                 gate.look(monitor) { fresh in
@@ -1213,8 +1224,8 @@ struct NewAccountView: View {
             }
             stepRow(2 + n, state: folders ? .done : current == 2 ? .now : running ? .held : .todo,
                     title: draft.source == .new ? "Create the folder" + (draft.share.isEmpty ? "" : " and links") : "Connect the folder",
-                    detail: folders ? draft.configDir : running ? "held until the desktop app is quit" : checks.contains(where: { $0.blocks && $0.section != .running }) ? "fix the red lines first" : nil,
-                    detailBad: running && !folders) { EmptyView() }
+                    // what it waits for is a hint, grey (step 1's red mark is the block itself)
+                    detail: folders ? draft.configDir : running ? "held until the desktop app is quit" : checks.contains(where: { $0.blocks && $0.section != .running }) ? "fix the red lines first" : nil) { EmptyView() }
             stepRow(3 + n, state: !folders ? .todo
                         : (needsDesktop && signedIn != nil && desktop == .different) ? .warn
                         : current == 3 || current == 4 ? .now : .done,
