@@ -290,7 +290,9 @@ do {
     var noWin = main; noWin.claudeWindow = false
     check(res(noWin, appU2, code: u1, numbers: u1.email).line == nil && !res(noWin, appU2, code: u1, numbers: u1.email).fromApp, "no Claude window: Claude Code's account, nothing to say")
     let shared = res(main, .unknown, code: u3, numbers: u3.email)
-    check(shared.clash == nil && shared.clashID == nil && shared.line == nil && shared.lit && shared.email == u3.email,
+    // (no line of its own: the one a window with the app unknown has for any account)
+    check(shared.clash == nil && shared.clashID == nil && shared.line == res(main, .unknown, code: u1, numbers: u1.email).line
+          && shared.lit && shared.email == u3.email,
           "shared seats: Claude Code's folder on another profile's account in use: its numbers are this profile's too, no clash, lamp on")
     // a read from just before the folder's sign-in changed: the app signed out, the folder already on a free account, the
     // numbers still u1's: labelled with the address they were read for
@@ -344,9 +346,12 @@ do {
         // (the menu bar menu's ticked row: the account in use, whole; the Dock menu lists no account)
         let barLines = DockTileMenu.lines(DockTileMenu.rows(main, mainShow, windowOpen: false, header: false), blur: false)
         let dockLines = DockTileMenu.lines(DockTileMenu.rows(main, mainShow, windowOpen: false), blur: false)
-        check((named.map { n in barLines.contains { $0.hasPrefix("✓ " + n) } } ?? !barLines.contains { $0.hasPrefix("✓ ") })
+        // (the menu's tick and the view's in-use line are the account in use, the Claude app's in the split too; only the drawn row,
+        // card and Dock panel name Terminal's account, "· Terminal", so `named` is not the menu's)
+        check((want.label.map { n in barLines.contains { $0.hasPrefix("✓ " + n) } } ?? !barLines.contains { $0.hasPrefix("✓ ") })
               && !dockLines.contains { $0.hasPrefix("✓ ") }
-              && mainShow.view.inUseLine == named.map(AccountNames.short), "\(name): the menu bar menu and its row agree, the Dock menu has no account (\(barLines))")
+              && mainShow.view.inUseLine == want.label.map(AccountNames.short),
+              "\(name): the menu bar menu ticks the account in use and agrees with the view's line, the Dock menu has no account (\(barLines))")
         // (in the split the surfaces name Terminal's account, "· Terminal", so its numbers show there too: Store.ages opts in to
         // cl_kit's splitShowsNumbersOwner; each case here reads the folder's own account, so none is stale)
         check(Store.status(for: main)?.weekly == 40,
@@ -876,7 +881,7 @@ do {
     // the parts of bigger files that draw a profile: the card and the palette's row (Launcher.swift), Settings' IN USE box and
     // its Dock icon preview (Settings.swift)
     for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Launcher.swift", "struct AccountRow: Identifiable", "\n}\n"),
-                      ("Settings.swift", "func inUseBox(", "    /// Sign in… on the account in use"),
+                      ("Settings.swift", "var inUseBox: some View", "    /// Sign in… on the account in use"),
                       ("Settings.swift", "func preview(_ e: AccountEntry", "/// Settings is a page of the one cl_audit window")] {
         for l in section(f, from: a, to: b) where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
             for p in forbidden where l.contains(p) { reads.append("\(f) \(p): \(l.trimmingCharacters(in: .whitespaces).prefix(60))") }
@@ -1147,6 +1152,9 @@ do {
     var m0 = profile("atl", "~/.claude-atl-ann", ann)
     m0.standby = [StandbyAccount(email: ben.email!, seat: ben, id: "kb", plan: "Ultra", lastInUse: t0.addingTimeInterval(-3 * 86400))]
     var w0 = profile("atw", "~/.claude-atl-cat", cat); w0.claudeWindow = false
+    // (the runner's start refuses first when the profile's folder isn't there, goneLine: the fixture's folder is, so the steps below
+    // reach the refusals they pin)
+    try? fm.createDirectory(atPath: expand(m0.configDir), withIntermediateDirectories: true)
     func app(_ s: Seat) -> AppSignIn.Login { AppSignIn.Login(account: s.account, org: s.organization, state: .known, source: "log", at: t0) }
     /// The folder signed in to `s`: the profiles follow it, then the record answered with the app on `appOn` and the numbers
     /// read for Claude Code's account.
@@ -1784,8 +1792,13 @@ do {
     posts.removeAll()
     let mr = UsageReader(same, defaults: UserDefaults(suiteName: "cl-audit-surfaces-same-\(getpid())")!)
     let tr = UsageReader(twin, defaults: UserDefaults(suiteName: "cl-audit-surfaces-twin-\(getpid())")!)
-    mr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: mr.generation)
-    tr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: tr.generation)
+    // (a reading is whose the token's account is, never the folder's record: each is read with its own key, whose lookup says mo,
+    // with the seat's id and organisation, which is what the ledger keys the alert by; without one the seat is not known and the
+    // ledger shares nothing. spm's lookup returns first, so spm is the first one that alerts)
+    mr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: mr.generation, key: "m1")
+    tr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: tr.generation, key: "t1")
+    mr.profileFound(mo.email!, key: "m1", account: mo.account, organization: mo.organization); mr.save()
+    tr.profileFound(mo.email!, key: "t1", account: mo.account, organization: mo.organization); tr.save()
     let until = Date().addingTimeInterval(5)
     while !posts.contains(where: { $0.contains("full") }) && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
     RunLoop.main.run(until: Date().addingTimeInterval(0.5))                // time for a second, unwanted one to show
@@ -2141,18 +2154,20 @@ MainActor.assumeIsolated {
         let s = show(rec(state))
         let dk = dockOf(e, s)
         check(s.display.usage == nil && !s.display.lamp && s.display.needsLogin && dk.face.stale && !dk.panel.activeLit
-              && signIn(dk.menu) && signIn(menuBarMenu(s)) && dk.face.countdown == nil
-              && titles(dk.menu).contains(state == "expired" ? "The sign-in stopped working" : "Signed out"),
-              "\(state): no numbers, grey, the lamp off, the status line says why, the sign-in in both menus")
+              && !signIn(dk.menu) && signIn(menuBarMenu(s)) && dk.face.countdown == nil
+              && dk.panel.noNumbers == (state == "expired" ? "Sign-in expired" : "Signed out"),
+              "\(state): no numbers, grey, the lamp off, the panel's age line says why, the sign-in in the menu bar menu (the Dock menu has none)")
     }
     let mixed = show(rec(login: u3.email, code: u1))
     let mixedDock = dockOf(e, mixed)
     check(mixed.display.otherAccount && mixed.display.needsLogin && !mixed.display.lamp && mixedDock.face.warn && mixedDock.panel.mismatch
-          && signIn(mixedDock.menu),
-          "the sign-in on another account than the folder's: the warning, the sign-in, the lamp off")
+          && signIn(menuBarMenu(mixed)) && !signIn(mixedDock.menu),
+          "the sign-in on another account than the folder's: the warning, the sign-in in the menu bar menu (the Dock menu has none), the lamp off")
 
-    // shared seats: another profile's account in use is this profile's too, lit, no clash
-    let sharedShow = show(rec(login: u3.email, code: u3))
+    // shared seats: another profile's account in use is this profile's too, lit, no clash (the folder's own record names it, as
+    // a real folder on that account does: rec's default expectedEmail is the profile's u1)
+    var sharedRec = rec(login: u3.email, code: u3); sharedRec.expectedEmail = u3.email
+    let sharedShow = show(sharedRec)
     check(Store.status("show")?.resolved?.clash == nil && sharedShow.display.clash == nil && sharedShow.display.lamp,
           "Claude Code's folder on another profile's account: a shared seat, no clash, the lamp on")
     // an older build's clash record (its clash fields decoded, never used): the surfaces show it as the record's account,
@@ -2172,7 +2187,8 @@ MainActor.assumeIsolated {
 
     // standby is never read: no surface shows a standby account with numbers
     for (what, s) in [("fresh", ok), ("full", full)] {
-        let key = AccountEntry.switchKey("show", "k2")
+        // (a menu item's object is "<action>:<target>": DockTileMenu.object)
+        let key = DockTileMenu.object(.switchTo, AccountEntry.switchKey("show", "k2"))
         let standbyLines = items(menuBarMenu(s)).filter { ($0.representedObject as? String) == key }.map(\.title)
         check(!standbyLines.isEmpty && standbyLines.allSatisfy { !$0.contains("%") }
               && !items(dockOf(e, s).menu).contains { ($0.representedObject as? String) == key },
@@ -2633,8 +2649,9 @@ do {
     let split = card(splitRec(app: appPat), s, "split")
     check(split.notice?.heading == "Claude window on another account" && split.notice?.tone == .amber
           && split.notice?.key == UsageNotice.Key.none && split.notice?.line == ""
-          && split.row.lit && split.row.full == nil && split.row.limits.allSatisfy { $0.p == nil } && split.row.status?.plan == nil
-          && split.row.show.loginAddress == pat.email, "the split: one amber line (a warning), no key on the card, lit (pat is in use), no numbers or plan, nothing full")
+          && split.row.lit && split.row.full != nil && split.row.weekly == 100
+          && split.row.show.loginAddress == pat.email,
+          "the split: one amber line (a warning), no key on the card, lit (pat is in use), Terminal's numbers (mo's, the week full) above it")
     // the amber line is a link to this profile's Settings ▸ Accounts, at the split's band; the window key amber, then
     // Terminal and ⋯ (the keys row: Show window, Terminal, ⋯)
     let splitActs = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
@@ -2963,7 +2980,7 @@ MainActor.assumeIsolated {
         return r
     }
     let split = surfaces(splitRec(AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)), s)
-    check(split.panel.weekly == nil && abs((split.panel.updated?.timeIntervalSince(now) ?? 0) + 120) < 1 && split.panel.noNumbers == nil
+    check(split.panel.weekly == 30 && abs((split.panel.updated?.timeIntervalSince(now) ?? 0) + 120) < 1 && split.panel.noNumbers == nil
           && split.settings.inUseRow.lit && split.settings.splitBand && split.settings.popUpSignInAddress == pat.email
           && split.settings.show.loginAddress == pat.email && same(split.preview, split.panel) && split.preview.splitKey != nil,
           "the split: the panel's age line says when (not Reading usage…), Settings lit with its band, pat's address for Sign Terminal in, the preview as the panel")
@@ -3857,7 +3874,6 @@ MainActor.assumeIsolated {
             ("SessionsMove.swift", "\\(d.label): \\(d.hereWords)", "a setting's label and its words (\"hidden\"/\"shown\"), not an account"),
             ("Settings.swift", "\\($0.id)|\\($0.name)|\\($0.label)", "a change-detection key of the profiles (id, name, icon label), never drawn"),
             ("SetupRow.swift", "out.append(label + \":\")", "a setup row's label (\"Skills\"), not an account"),
-            ("SignInWindow.swift", "\\(who(address)) is \\(owner)", "who() is AddressSettings.words of the address (defined at the top of that function)"),
         ]
         var flagged: [String] = [], usedAllow = Set<Int>()
         for f in ((try? FileManager.default.contentsOfDirectory(atPath: srcDir.path)) ?? []).filter({ $0.hasSuffix(".swift") && !skipFiles.contains($0) }).sorted() {
